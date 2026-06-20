@@ -22,7 +22,7 @@ export default function CreateBidWizard() {
       message.error('Tenant not identified');
       return;
     }
-    if (!Array.isArray(values.supplier_ids) || values.supplier_ids.length < 3) {
+    if (values.supplier_ids.length < 3) {
       message.error('Minimum 3 verified suppliers required by Zambian Public Procurement Act.');
       return;
     }
@@ -35,7 +35,7 @@ export default function CreateBidWizard() {
         delivery_end: values.delivery_end?.toISOString(),
       });
       message.success('Bid created and opened');
-      navigate('/tenant-admin');
+      navigate('/admin/bids');
     } catch (err) {
       message.error(err.response?.data?.error || 'Creation failed');
     } finally {

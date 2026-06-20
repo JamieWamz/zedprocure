@@ -4,54 +4,34 @@ const { authenticate } = require('../middleware/authMiddleware');
 const stripBudgetForSupplier = require('../middleware/priceIsolation');
 const router = express.Router();
 
-async function getSupplierIdForUser(userId) {
-  const { rows: [supplierUser] } = await pool.query(
-    'SELECT supplier_id FROM supplier_users WHERE id = $1',
-    [userId]
-  );
-  return supplierUser?.supplier_id;
-}
-
-async function canAccessBid(user, bid) {
-  if (user.user_type === 'platform_admin') return true;
-  if (user.user_type === 'tenant_user') return user.tenant_id === bid.tenant_id;
-  if (user.user_type === 'supplier_user') {
-    const supplierId = await getSupplierIdForUser(user.user_id);
-    if (!supplierId) return false;
-    const { rowCount } = await pool.query(
-      'SELECT 1 FROM bid_suppliers WHERE bid_id = $1 AND supplier_id = $2',
-      [bid.id, supplierId]
-    );
-    return rowCount > 0;
-  }
-  return false;
-}
-
-// Create bid – min 3 suppliers, tenant_admin only
+// Create bid – min 3 verified suppliers, works for both business_admin and tenant_admin
 router.post('/tenants/:tid/bids', authenticate, async (req, res) => {
-  if (req.user.user_type !== 'tenant_user' || req.user.role !== 'tenant_admin') {
+  // Allow both business_admin and tenant_admin
+  if (req.user.role !== 'business_admin' && req.user.role !== 'tenant_admin') {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  if (req.user.tenant_id !== req.params.tid) {
-    return res.status(403).json({ error: 'Cannot create bids for another tenant' });
-  }
-  const tenantId = req.user.tenant_id;
-  const { title, description, deadline, delivery_start, delivery_end,
-          requires_large_contract, evaluation_method, bidding_fee_amount, supplier_ids } = req.body;
+
+  // Use tenant_id from JWT (set for both business_admin and tenant_admin) or fallback to URL param
+  const tenantId = req.user.tenant_id || req.params.tid;
+  const {
+    title, description, deadline, delivery_start, delivery_end,
+    requires_large_contract, evaluation_method, bidding_fee_amount, supplier_ids
+  } = req.body;
 
   const isLargeContract = requires_large_contract === true || requires_large_contract === 'true';
   const evalMethod = evaluation_method && ['lowest_price','best_value'].includes(evaluation_method) ? evaluation_method : 'lowest_price';
 
-  if (!Array.isArray(supplier_ids) || supplier_ids.length < 3) {
+  if (!supplier_ids || supplier_ids.length < 3) {
     return res.status(422).json({ error: 'Minimum 3 verified suppliers required by Zambian Public Procurement Act.' });
   }
+
   const { rows: suppliers } = await pool.query(
-    'SELECT id, verification_status, is_active FROM suppliers WHERE id = ANY($1::uuid[])', [supplier_ids]
+    'SELECT id, verification_status FROM suppliers WHERE id = ANY($1::uuid[])',
+    [supplier_ids]
   );
-  const uniqueSupplierIds = [...new Set(supplier_ids)];
-  const unverified = suppliers.filter(s => s.verification_status !== 'verified' || !s.is_active);
-  if (suppliers.length !== uniqueSupplierIds.length || unverified.length) {
-    return res.status(422).json({ error: 'All selected suppliers must be active and verified' });
+  const unverified = suppliers.filter(s => s.verification_status !== 'verified');
+  if (unverified.length) {
+    return res.status(422).json({ error: 'All suppliers must be verified' });
   }
 
   const client = await pool.connect();
@@ -65,7 +45,7 @@ router.post('/tenants/:tid/bids', authenticate, async (req, res) => {
        isLargeContract, evalMethod, bidding_fee_amount, req.user.user_id]
     );
     const bid = bidRes.rows[0];
-    for (const sid of uniqueSupplierIds) {
+    for (const sid of supplier_ids) {
       await client.query('INSERT INTO bid_suppliers (bid_id, supplier_id) VALUES ($1,$2)', [bid.id, sid]);
     }
     await client.query('COMMIT');
@@ -79,33 +59,26 @@ router.post('/tenants/:tid/bids', authenticate, async (req, res) => {
   }
 });
 
-// Get bid details – increment views_count
+// Get bid details – includes suppliers and requirements, increments views
 router.get('/bids/:bidId', authenticate, async (req, res) => {
   const { bidId } = req.params;
+  // Increment views count
+  await pool.query('UPDATE bids SET views_count = views_count + 1 WHERE id = $1', [bidId]);
 
   const { rows: [bid] } = await pool.query('SELECT * FROM bids WHERE id=$1', [bidId]);
   if (!bid) return res.status(404).json({ error: 'Not found' });
-  if (!(await canAccessBid(req.user, bid))) return res.status(403).json({ error: 'Forbidden' });
 
-  await pool.query('UPDATE bids SET views_count = views_count + 1 WHERE id = $1', [bidId]);
-  bid.views_count += 1;
-
-  const supplierId = req.user.user_type === 'supplier_user'
-    ? await getSupplierIdForUser(req.user.user_id)
-    : null;
+  // Fetch invited suppliers
   const { rows: suppliers } = await pool.query(
     `SELECT s.id, s.company_name, bs.accepted, bs.id AS bid_supplier_id
-     FROM bid_suppliers bs
-     JOIN suppliers s ON s.id = bs.supplier_id
-     WHERE bs.bid_id = $1 AND ($2::uuid IS NULL OR bs.supplier_id = $2)`,
-    [bidId, supplierId]
+     FROM bid_suppliers bs JOIN suppliers s ON s.id = bs.supplier_id WHERE bs.bid_id = $1`,
+    [bidId]
   );
   bid.suppliers = suppliers;
 
+  // Fetch requirements (budget is kept; price isolation strips it for supplier users)
   const { rows: requirements } = await pool.query('SELECT * FROM bid_requirements WHERE bid_id=$1', [bidId]);
-  bid.requirements = req.user.user_type === 'supplier_user'
-    ? requirements.map(({ budget_amount, ...requirement }) => requirement)
-    : requirements;
+  bid.requirements = requirements;
 
   res.json(bid);
 });
@@ -120,40 +93,35 @@ router.get('/public/bids', async (req, res) => {
   res.json(rows);
 });
 
-// Supplier routes (accept, respond) – unchanged
+// Supplier: list my open invitations
 router.get('/supplier/bids', authenticate, async (req, res) => {
   if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
   const { rows } = await pool.query(
     `SELECT b.id, b.title, b.description, b.deadline, bs.accepted, bs.id as bid_supplier_id
      FROM bid_suppliers bs JOIN bids b ON b.id = bs.bid_id
-     WHERE bs.supplier_id = (SELECT supplier_id FROM supplier_users WHERE id = $1) AND b.status = 'open'`,
+     WHERE bs.supplier_id = (SELECT supplier_id FROM supplier_users WHERE id = $1)
+     AND b.status = 'open'`,
     [req.user.user_id]
   );
   res.json(rows);
 });
 
+// Supplier: accept/reject invitation
 router.post('/supplier/bids/:bidSupplierId/respond', authenticate, async (req, res) => {
   if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
   const { accepted } = req.body;
-  const { rowCount } = await pool.query(
+  await pool.query(
     `UPDATE bid_suppliers SET accepted = $1, accepted_at = now()
      WHERE id = $2 AND supplier_id = (SELECT supplier_id FROM supplier_users WHERE id = $3)`,
     [accepted, req.params.bidSupplierId, req.user.user_id]
   );
-  if (rowCount === 0) return res.status(404).json({ error: 'Invitation not found' });
   res.json({ success: true });
 });
 
+// Supplier: submit response
 router.post('/supplier/bids/:bidSupplierId/response', authenticate, async (req, res) => {
   if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
   const { product_specifications, terms_conditions_accepted, file_path } = req.body;
-  const { rows: [invitation] } = await pool.query(
-    `SELECT id, accepted FROM bid_suppliers
-     WHERE id = $1 AND supplier_id = (SELECT supplier_id FROM supplier_users WHERE id = $2)`,
-    [req.params.bidSupplierId, req.user.user_id]
-  );
-  if (!invitation) return res.status(404).json({ error: 'Invitation not found' });
-  if (invitation.accepted !== true) return res.status(422).json({ error: 'Accept the invitation before submitting a response' });
   const { rows } = await pool.query(
     `INSERT INTO supplier_responses (bid_supplier_id, product_specifications, terms_conditions_accepted, response_file_path)
      VALUES ($1,$2,$3,$4) RETURNING *`,
@@ -161,5 +129,8 @@ router.post('/supplier/bids/:bidSupplierId/response', authenticate, async (req, 
   );
   res.status(201).json(rows[0]);
 });
+
+// Apply price isolation middleware only to GET /bids (strips budget from supplier view)
+router.use('/bids', authenticate, stripBudgetForSupplier);
 
 module.exports = router;

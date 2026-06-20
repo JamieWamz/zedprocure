@@ -5,11 +5,21 @@ const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(localStorage.getItem('token'));
+  const [user, setUser] = useState(null);
   const [dashboardRoute, setDashboardRoute] = useState('/login');
   const [loading, setLoading] = useState(true);
 
+  const decodeToken = (tok) => {
+    try {
+      const payload = JSON.parse(atob(tok.split('.')[1]));
+      return payload;
+    } catch { return null; }
+  };
+
   useEffect(() => {
     if (token) {
+      const payload = decodeToken(token);
+      setUser(payload);
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       axios.get('/api/me')
         .then(res => setDashboardRoute(res.data.dashboardRoute))
@@ -18,7 +28,7 @@ export function AuthProvider({ children }) {
     } else {
       setLoading(false);
     }
-  }, []);
+  }, [token]);
 
   const login = async (email, password) => {
     const res = await axios.post('/api/auth/login', { email, password });
@@ -26,6 +36,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('token', access_token);
     localStorage.setItem('email', email);
     setToken(access_token);
+    setUser(decodeToken(access_token));
     axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
     const meRes = await axios.get('/api/me');
     setDashboardRoute(meRes.data.dashboardRoute);
@@ -36,12 +47,13 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('token');
     localStorage.removeItem('email');
     setToken(null);
+    setUser(null);
     setDashboardRoute('/login');
     delete axios.defaults.headers.common['Authorization'];
   };
 
   return (
-    <AuthContext.Provider value={{ token, login, logout, dashboardRoute, loading }}>
+    <AuthContext.Provider value={{ token, user, login, logout, dashboardRoute, loading }}>
       {children}
     </AuthContext.Provider>
   );
