@@ -3,6 +3,10 @@ import { Form, Input, Button, message } from 'antd';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
+// Desaturated, minimalist architecture image (Unsplash CDN w/ optimization params).
+const HERO_IMAGE =
+  'https://images.unsplash.com/photo-1497366754035-f200968a6e3b?auto=format&fit=crop&w=1600&q=75';
+
 export default function UnifiedLogin() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -21,21 +25,53 @@ export default function UnifiedLogin() {
   };
 
   return (
-    <div className="login-container">
-      <Form name="login" onFinish={onFinish} className="login-card">
-        <h2>Sign in to Freshstart Procurement Portal</h2>
-        <Form.Item name="email" rules={[{ required:true, message:'Email required' }]}>
-          <Input placeholder="Email" size="large" />
-        </Form.Item>
-        <Form.Item name="password" rules={[{ required:true, message:'Password required' }]}>
-          <Input.Password placeholder="Password" size="large" />
-        </Form.Item>
-        <Form.Item>
-          <Button type="primary" htmlType="submit" loading={loading} block size="large">
-            Sign In
-          </Button>
-        </Form.Item>
-      </Form>
+    <div className="login-split">
+      <div className="login-hero" aria-hidden="true">
+        <img className="login-hero-img" src={HERO_IMAGE} alt="" loading="eager" />
+        <div className="login-hero-overlay" />
+        <div className="login-hero-content">
+          <div className="login-hero-brand">
+            <span className="login-hero-logo" />
+            Freshstart
+          </div>
+          <div>
+            <h1>Zambia Procurement Portal</h1>
+            <p>
+              Transparent, multi-tenant public procurement — from open bids
+              and supplier verification to escrow-backed payments and an
+              immutable financial ledger.
+            </p>
+          </div>
+          <span className="login-hero-foot">Secured with JWT · Role-based access</span>
+        </div>
+      </div>
+
+      <div className="login-form-pane">
+        <div className="login-card">
+          <h2>Sign in to your account</h2>
+          <Form name="login" onFinish={onFinish} layout="vertical">
+            <Form.Item
+              name="email"
+              label="Email"
+              rules={[{ required: true, message: 'Email required' }, { type: 'email', message: 'Enter a valid email' }]}
+            >
+              <Input placeholder="you@organization.zm" size="large" autoComplete="username" />
+            </Form.Item>
+            <Form.Item
+              name="password"
+              label="Password"
+              rules={[{ required: true, message: 'Password required' }]}
+            >
+              <Input.Password placeholder="••••••••" size="large" autoComplete="current-password" />
+            </Form.Item>
+            <Form.Item>
+              <Button type="primary" htmlType="submit" loading={loading} block size="large">
+                Sign In
+              </Button>
+            </Form.Item>
+          </Form>
+        </div>
+      </div>
     </div>
   );
 }
