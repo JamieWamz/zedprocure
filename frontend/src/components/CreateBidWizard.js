@@ -2,33 +2,42 @@ import React, { useState, useEffect } from 'react';
 import { Form, Input, DatePicker, InputNumber, Switch, Select, Button, message } from 'antd';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 export default function CreateBidWizard() {
   const [verifiedSuppliers, setVerifiedSuppliers] = useState([]);
+  const [tenants, setTenants] = useState([]);
   const [tenantId, setTenantId] = useState(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   useEffect(() => {
-    axios.get('/api/me').then(res => setTenantId(res.data.tenantId));
-  }, []);
+    if (user?.tenantId) {
+      setTenantId(user.tenantId);
+    } else if (user?.role === 'business_admin') {
+      // Business admin without tenant context needs to pick one
+      axios.get('/api/tenant/list').then(res => setTenants(res.data)).catch(() => {});
+    }
+  }, [user]);
 
   useEffect(() => {
     axios.get('/api/suppliers/verified').then(res => setVerifiedSuppliers(res.data));
   }, []);
 
   const onFinish = async (values) => {
-    if (!tenantId) {
-      message.error('Tenant not identified');
+    const tid = values.tenant_id || tenantId;
+    if (!tid) {
+      message.error('Please select a tenant');
       return;
     }
-    if (values.supplier_ids.length < 3) {
+    if (!values.supplier_ids || values.supplier_ids.length < 3) {
       message.error('Minimum 3 verified suppliers required by Zambian Public Procurement Act.');
       return;
     }
     setLoading(true);
     try {
-      await axios.post(`/api/tenants/${tenantId}/bids`, {
+      await axios.post(`/api/tenants/${tid}/bids`, {
         ...values,
         deadline: values.deadline.toISOString(),
         delivery_start: values.delivery_start?.toISOString(),
@@ -47,6 +56,15 @@ export default function CreateBidWizard() {
     <div style={{ maxWidth: 800, margin: 'auto' }}>
       <h2>Create New Bid</h2>
       <Form layout="vertical" onFinish={onFinish} initialValues={{ evaluation_method: 'lowest_price' }}>
+        {!tenantId && tenants.length > 0 && (
+          <Form.Item name="tenant_id" label="Tenant (Organization)" rules={[{ required: true }]}>
+            <Select placeholder="Select a tenant" onChange={val => setTenantId(val)}>
+              {tenants.map(t => (
+                <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+        )}
         <Form.Item name="title" label="Title" rules={[{ required: true }]}>
           <Input />
         </Form.Item>

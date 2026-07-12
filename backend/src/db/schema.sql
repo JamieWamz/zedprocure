@@ -167,6 +167,18 @@ CREATE TABLE escrow_accounts (
     released_at TIMESTAMPTZ
 );
 
+CREATE TABLE audit_log (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    actor_id UUID NOT NULL,
+    actor_type VARCHAR(20) NOT NULL,
+    actor_email VARCHAR(255),
+    action VARCHAR(100) NOT NULL,
+    target_type VARCHAR(50),
+    target_id UUID,
+    details JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE payment_transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     from_user_id UUID,

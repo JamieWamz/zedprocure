@@ -6,6 +6,8 @@ import {
   CheckCircleOutlined,
   ShopOutlined,
   DollarOutlined,
+  UserOutlined,
+  BankOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -15,6 +17,8 @@ import BidDetail from './BidDetail';
 import SupplierVerification from './SupplierVerification';
 import FinancialLedger from './FinancialLedger';
 import OrdersList from './OrdersList';
+import UserManagement from './UserManagement';
+import TenantManagement from './TenantManagement';
 
 const { Sider, Content } = Layout;
 
@@ -33,12 +37,15 @@ export default function AdminPortal() {
       { key: '/admin/orders', icon: <CheckCircleOutlined />, label: 'Orders' },
       { key: '/admin/verification', icon: <ShopOutlined />, label: 'Supplier Verification' },
       { key: '/admin/ledger', icon: <DollarOutlined />, label: 'Financial Ledger' },
+      { key: '/admin/users', icon: <UserOutlined />, label: 'User Accounts' },
+      { key: '/admin/tenants', icon: <BankOutlined />, label: 'Organizations' },
     );
   } else if (role === 'tenant_admin') {
     menuItems.push(
       { key: '/admin/bids', icon: <FileTextOutlined />, label: 'Bids' },
       { key: '/admin/bids/new', icon: <PlusOutlined />, label: 'Create Bid' },
       { key: '/admin/orders', icon: <CheckCircleOutlined />, label: 'Orders' },
+      { key: '/admin/users', icon: <UserOutlined />, label: 'User Accounts' },
     );
   }
 
@@ -56,6 +63,8 @@ export default function AdminPortal() {
     if (path === '/admin/orders') return <OrdersList />;
     if (path === '/admin/verification') return <SupplierVerification />;
     if (path === '/admin/ledger') return <FinancialLedger />;
+    if (path === '/admin/users') return <UserManagement />;
+    if (path === '/admin/tenants') return <TenantManagement />;
     return null;
   };
 
