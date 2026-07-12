@@ -16,7 +16,22 @@ router.post('/escrow/fund', authenticate, async (req, res) => {
   );
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (order.tenant_id !== req.user.tenant_id) return res.status(403).json({ error: 'Forbidden' });
-  // Create escrow account if not exists
+
+  // Check if escrow already exists and its status
+  const { rows: [existingEscrow] } = await pool.query(
+    `SELECT status FROM escrow_accounts WHERE order_id = $1`,
+    [order_id]
+  );
+  if (existingEscrow) {
+    if (existingEscrow.status === 'funded' || existingEscrow.status === 'released') {
+      return res.status(400).json({ error: 'Escrow is already funded' });
+    }
+    if (existingEscrow.status === 'refunded') {
+      return res.status(400).json({ error: 'Escrow has been refunded' });
+    }
+  }
+
+  // Create escrow account if not exists, or update if pending_funding
   await pool.query(
     `INSERT INTO escrow_accounts (order_id, customer_user_id, amount, status)
      VALUES ($1,$2,$3,'funded') ON CONFLICT (order_id) DO UPDATE SET status = 'funded', funded_at = now()`,

@@ -58,6 +58,17 @@ router.post('/tenants/:tid/bids', authenticate, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Re-verify inside the transaction to prevent race between check and insert
+    const supplierCheck = await client.query(
+      'SELECT id FROM suppliers WHERE id = ANY($1::uuid[]) AND verification_status = $2',
+      [supplier_ids, 'verified']
+    );
+    if (supplierCheck.rows.length !== supplier_ids.length) {
+      await client.query('ROLLBACK');
+      return res.status(422).json({ error: 'All suppliers must be verified' });
+    }
+
     const bidRes = await client.query(
       `INSERT INTO bids (tenant_id, title, description, deadline, delivery_start, delivery_end,
         requires_large_contract, evaluation_method, bidding_fee_amount, created_by, status)
@@ -159,6 +170,17 @@ router.post('/supplier/bids/:bidSupplierId/response', authenticate, uploadRespon
   try {
     const { product_specifications, terms_conditions_accepted } = req.body;
     const file_path = req.file ? req.file.path : null;
+
+    // Ensure the bid_supplier_id belongs to the current user's supplier record
+    const { rows: [bs] } = await pool.query(
+      `SELECT bs.id FROM bid_suppliers bs
+       JOIN supplier_users su ON su.supplier_id = bs.supplier_id
+       WHERE bs.id = $1 AND su.id = $2`,
+      [req.params.bidSupplierId, req.user.user_id]
+    );
+    if (!bs) {
+      return res.status(403).json({ error: 'You do not have access to submit a response for this bid invitation' });
+    }
 
     const { rows } = await pool.query(
       `INSERT INTO supplier_responses (bid_supplier_id, product_specifications, terms_conditions_accepted, response_file_path)

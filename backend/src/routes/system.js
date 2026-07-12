@@ -58,48 +58,76 @@ router.put('/system/admins/:id', authenticate, requireRole('system_admin'), asyn
     return res.status(400).json({ error: 'Invalid role' });
   }
 
-  // Fetch existing admin
-  const { rows: [existing] } = await pool.query('SELECT * FROM platform_admins WHERE id = $1', [id]);
-  if (!existing) return res.status(404).json({ error: 'Admin not found' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('LOCK TABLE platform_admins IN EXCLUSIVE MODE');
 
-  // Immutability checks
-  if (existing.email === IMMUTABLE_EMAIL) {
-    if (email !== undefined && email !== IMMUTABLE_EMAIL) return res.status(403).json({ error: 'Cannot change the immutable admin email.' });
-    if (role !== undefined) return res.status(403).json({ error: 'Cannot change role of immutable admin.' });
-    if (is_active === false) return res.status(403).json({ error: 'Cannot deactivate the immutable admin.' });
-    // Allow password and name changes only
-  }
-
-  // If trying to activate, enforce max 3 additional active admins (excluding immutable)
-  if (is_active === true) {
-    const { rows: [count] } = await pool.query(
-      'SELECT COUNT(*)::int AS cnt FROM platform_admins WHERE is_active = true AND id != $1 AND email != $2',
-      [id, IMMUTABLE_EMAIL]
-    );
-    if (count.cnt >= 3) {
-      return res.status(403).json({ error: 'Maximum 3 additional active administrators allowed.' });
+    const { rows: [existing] } = await client.query('SELECT * FROM platform_admins WHERE id = $1', [id]);
+    if (!existing) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Admin not found' });
     }
+
+    // Immutability checks
+    if (existing.email === IMMUTABLE_EMAIL) {
+      if (email !== undefined && email !== IMMUTABLE_EMAIL) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Cannot change the immutable admin email.' });
+      }
+      if (role !== undefined) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Cannot change role of immutable admin.' });
+      }
+      if (is_active === false) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Cannot deactivate the immutable admin.' });
+      }
+      // Allow password and name changes only
+    }
+
+    // If trying to activate, enforce max 3 additional active admins (excluding immutable)
+    if (is_active === true) {
+      const { rows: [count] } = await client.query(
+        'SELECT COUNT(*)::int AS cnt FROM platform_admins WHERE is_active = true AND id != $1 AND email != $2',
+        [id, IMMUTABLE_EMAIL]
+      );
+      if (count.cnt >= 3) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Maximum 3 additional active administrators allowed.' });
+      }
+    }
+
+    const updates = [];
+    const values = [];
+    let paramIdx = 1;
+
+    if (email !== undefined) { updates.push(`email = $${paramIdx++}`); values.push(email); }
+    if (full_name !== undefined) { updates.push(`full_name = $${paramIdx++}`); values.push(full_name); }
+    if (role !== undefined) { updates.push(`role = $${paramIdx++}`); values.push(role); }
+    if (is_active !== undefined) { updates.push(`is_active = $${paramIdx++}`); values.push(is_active); }
+    if (password) {
+      const hash = await bcrypt.hash(password, 12);
+      updates.push(`password_hash = $${paramIdx++}`);
+      values.push(hash);
+    }
+    if (updates.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    updates.push(`updated_at = now()`);
+    values.push(id);
+    await client.query(`UPDATE platform_admins SET ${updates.join(', ')} WHERE id = $${paramIdx}`, values);
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('Error updating admin:', e);
+    res.status(500).json({ error: 'Failed to update admin: ' + e.message });
+  } finally {
+    client.release();
   }
-
-  const updates = [];
-  const values = [];
-  let paramIdx = 1;
-
-  if (email !== undefined) { updates.push(`email = $${paramIdx++}`); values.push(email); }
-  if (full_name !== undefined) { updates.push(`full_name = $${paramIdx++}`); values.push(full_name); }
-  if (role !== undefined) { updates.push(`role = $${paramIdx++}`); values.push(role); }
-  if (is_active !== undefined) { updates.push(`is_active = $${paramIdx++}`); values.push(is_active); }
-  if (password) {
-    const hash = await bcrypt.hash(password, 12);
-    updates.push(`password_hash = $${paramIdx++}`);
-    values.push(hash);
-  }
-  if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
-
-  updates.push(`updated_at = now()`);
-  values.push(id);
-  await pool.query(`UPDATE platform_admins SET ${updates.join(', ')} WHERE id = $${paramIdx}`, values);
-  res.json({ success: true });
 });
 
 router.delete('/system/admins/:id', authenticate, requireRole('system_admin'), async (req, res) => {

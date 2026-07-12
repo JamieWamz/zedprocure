@@ -56,7 +56,8 @@ process.on('uncaughtException', (err) => {
 // Express global error handler
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+  const status = err.status || 500;
+  res.status(status).json({ error: err.message || 'Internal server error' });
 });
 
 const PORT = process.env.PORT || 4000;
