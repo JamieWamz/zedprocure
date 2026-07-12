@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Descriptions, Tag, List, Typography, Spin, Alert, Button, message, Input, Divider } from 'antd';
 import { useParams } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 
 const { Text } = Typography;
 
 export default function BidDetail() {
   const { bidId } = useParams();
+  const { user } = useAuth();
   const [bid, setBid] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -19,14 +21,7 @@ export default function BidDetail() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [submittingResponse, setSubmittingResponse] = useState(false);
 
-  const isSupplier = () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) return false;
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.user_type === 'supplier_user';
-    } catch { return false; }
-  };
+  const isSupplier = () => user?.role === 'supplier_user';
 
   const fetchBid = async () => {
     try {
@@ -57,10 +52,11 @@ export default function BidDetail() {
     try {
       const initRes = await axios.post('/api/payments/bidding-fee', {
         bid_id: bid.id,
-        amount: bid.bidding_fee_amount,
         payment_method: 'mobile_money',
       });
       const ref = initRes.data.transaction_ref;
+      // In production, this would redirect to a payment gateway.
+      // For MVP, we confirm the payment directly.
       await axios.post('/api/payments/confirm', { transaction_ref: ref, bid_id: bid.id });
       message.success('Bidding fee paid');
       fetchBid();
@@ -73,10 +69,21 @@ export default function BidDetail() {
     setSubmittingResponse(true);
     try {
       const bidSupplierId = bid.suppliers?.find(s => s.accepted !== false)?.bid_supplier_id;
-      await axios.post(`/api/supplier/bids/${bidSupplierId}/response`, {
-        product_specifications: responseSpecs,
-        terms_conditions_accepted: termsAccepted,
-        file_path: responseFile?.name ? `/uploads/${responseFile.name}` : null,
+      if (!bidSupplierId) {
+        message.error('No valid bid supplier entry found');
+        return;
+      }
+
+      // Use FormData for file upload
+      const formData = new FormData();
+      formData.append('product_specifications', responseSpecs);
+      formData.append('terms_conditions_accepted', termsAccepted);
+      if (responseFile) {
+        formData.append('file', responseFile);
+      }
+
+      await axios.post(`/api/supplier/bids/${bidSupplierId}/response`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
       message.success('Response submitted');
       setResponseSpecs('');

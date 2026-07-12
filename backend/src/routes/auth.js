@@ -3,15 +3,23 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 const { jwtSecret } = require('../config/auth');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
-router.post('/login', async (req, res) => {
+// Rate limiting: max 10 login attempts per 15 minutes per IP
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many login attempts. Please try again after 15 minutes.' }
+});
+
+router.post('/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
   const queries = [
     { text: 'SELECT id, email, password_hash, full_name, \'platform_admin\' AS user_type, role FROM platform_admins WHERE email=$1 AND is_active=true', param: [email] },
-    { text: 'SELECT id, email, password_hash, full_name, \'tenant_user\' AS user_type, role FROM tenant_users WHERE email=$1 AND is_active=true', param: [email] },
+    { text: 'SELECT id, email, password_hash, full_name, \'tenant_user\' AS user_type, role, tenant_id FROM tenant_users WHERE email=$1 AND is_active=true', param: [email] },
     { text: 'SELECT id, email, password_hash, full_name, \'supplier_user\' AS user_type, \'supplier_user\' AS role FROM supplier_users WHERE email=$1 AND is_active=true', param: [email] },
   ];
 
@@ -22,18 +30,14 @@ router.post('/login', async (req, res) => {
       const valid = await bcrypt.compare(password, user.password_hash);
       if (!valid) continue;
 
-      let tenant_id = null;
-      if (user.user_type === 'tenant_user') {
-        const { rows: tenantRows } = await pool.query(
-          'SELECT tenant_id FROM tenant_users WHERE id = $1',
-          [user.id]
-        );
-        tenant_id = tenantRows[0]?.tenant_id;
-      } else if (user.user_type === 'platform_admin' && user.role === 'business_admin') {
-        const { rows: tenantRows } = await pool.query(
-          'SELECT id FROM tenants WHERE is_active = true ORDER BY created_at LIMIT 1'
-        );
-        if (tenantRows.length > 0) tenant_id = tenantRows[0].id;
+      let tenant_id = user.tenant_id || null;
+
+      // Business admin: require explicit tenant association rather than auto-assigning
+      // to the first active tenant (which is fragile). Business admins operate across
+      // tenants and should have tenant_id set explicitly in their profile or passed via request.
+      if (user.user_type === 'platform_admin' && user.role === 'business_admin' && !tenant_id) {
+        // Business admin without a tenant_id can still log in - they'll see all tenants
+        // tenant_id remains null and they can select a tenant from the UI
       }
 
       const token = jwt.sign(
@@ -42,9 +46,15 @@ router.post('/login', async (req, res) => {
         { expiresIn: '12h' }
       );
 
+      // Update last_login for all user types
       if (user.user_type === 'platform_admin') {
         await pool.query('UPDATE platform_admins SET last_login=now() WHERE id=$1', [user.id]);
+      } else if (user.user_type === 'tenant_user') {
+        await pool.query('UPDATE tenant_users SET last_login=now() WHERE id=$1', [user.id]);
+      } else if (user.user_type === 'supplier_user') {
+        await pool.query('UPDATE supplier_users SET last_login=now() WHERE id=$1', [user.id]);
       }
+
       return res.json({ access_token: token, expires_in: 43200 });
     }
   }

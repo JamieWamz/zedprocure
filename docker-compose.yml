@@ -20,7 +20,7 @@ services:
       dockerfile: Dockerfile.backend
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/zambia_procurement
-      JWT_SECRET: zambia-jwt-secret
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       PORT: 4000
     ports:
       - "4000:4000"

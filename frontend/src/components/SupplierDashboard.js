@@ -21,7 +21,13 @@ export default function SupplierDashboard() {
     if (!docFile) return message.error('Select a file');
     setUploading(true);
     try {
-      await axios.post('/api/supplier/documents', { document_type: docType, file_path: `/uploads/${docFile.name}` });
+      const formData = new FormData();
+      formData.append('document_type', docType);
+      formData.append('file', docFile);
+
+      await axios.post('/api/supplier/documents', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
       message.success('Document submitted for verification');
       setDocFile(null);
     } catch { message.error('Upload failed'); }

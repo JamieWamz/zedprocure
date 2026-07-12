@@ -28,6 +28,7 @@ CREATE TABLE tenant_users (
     full_name VARCHAR(150) NOT NULL,
     role VARCHAR(20) NOT NULL CHECK (role IN ('tenant_admin', 'customer')),
     is_active BOOLEAN NOT NULL DEFAULT true,
+    last_login TIMESTAMPTZ,
     UNIQUE (tenant_id, email)
 );
 
@@ -48,7 +49,8 @@ CREATE TABLE supplier_users (
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(150) NOT NULL,
     role VARCHAR(20) NOT NULL DEFAULT 'supplier_user',
-    is_active BOOLEAN NOT NULL DEFAULT true
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    last_login TIMESTAMPTZ
 );
 
 CREATE TABLE supplier_documents (
@@ -76,7 +78,7 @@ CREATE TABLE bids (
     status VARCHAR(20) NOT NULL DEFAULT 'draft'
         CHECK (status IN ('draft','open','evaluation','awarded','closed')),
     views_count INTEGER NOT NULL DEFAULT 0,
-    created_by UUID NOT NULL REFERENCES tenant_users(id),
+    created_by UUID NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

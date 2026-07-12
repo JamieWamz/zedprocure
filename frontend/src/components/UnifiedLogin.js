@@ -23,7 +23,7 @@ export default function UnifiedLogin() {
   return (
     <div style={{ display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#f0f2f5' }}>
       <Form name="login" onFinish={onFinish} style={{ width:350, padding:24, background:'#fff', borderRadius:8 }}>
-        <h2 style={{ textAlign:'center', marginBottom:24 }}>Sign in to Procurement Portal</h2>
+        <h2 style={{ textAlign:'center', marginBottom:24 }}>Sign in to Freshstart Procurement Portal</h2>
         <Form.Item name="email" rules={[{ required:true, message:'Email required' }]}>
           <Input placeholder="Email" />
         </Form.Item>

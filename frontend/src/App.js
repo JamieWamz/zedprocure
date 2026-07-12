@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -15,7 +14,12 @@ function PrivateRoute({ children, requiredRoute }) {
   const { token, dashboardRoute, loading } = useAuth();
   if (loading) return <div style={{ display:'flex', justifyContent:'center', alignItems:'center', height:'100vh' }}>Loading...</div>;
   if (!token) return <Navigate to="/login" replace />;
-  if (requiredRoute && dashboardRoute !== requiredRoute) return <Navigate to={dashboardRoute} replace />;
+
+  // Check if the required route is compatible with the user's dashboard route
+  // Use prefix matching so /admin/* routes work when dashboardRoute is /admin
+  if (requiredRoute && dashboardRoute && !dashboardRoute.startsWith(requiredRoute.replace('/*', ''))) {
+    return <Navigate to={dashboardRoute} replace />;
+  }
   return <AppLayout>{children}</AppLayout>;
 }
 

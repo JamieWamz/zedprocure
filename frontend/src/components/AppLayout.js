@@ -42,7 +42,7 @@ export default function AppLayout({ children, showBack = false }) {
               Back
             </Button>
           )}
-          <Text strong style={{ color: '#fff', fontSize: 18 }}>Zambia Procurement Portal</Text>
+          <Text strong style={{ color: '#fff', fontSize: 18 }}>Freshstart Procurement Portal</Text>
         </div>
         <Space>
           <Text style={{ color: '#fff' }}>{localStorage.getItem('email') || 'User'}</Text>

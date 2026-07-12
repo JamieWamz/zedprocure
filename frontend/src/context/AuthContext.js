@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 
 const AuthContext = createContext();
@@ -8,48 +8,62 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [dashboardRoute, setDashboardRoute] = useState('/login');
   const [loading, setLoading] = useState(true);
+  const logoutRef = useRef();
 
-  const decodeToken = (tok) => {
-    try {
-      const payload = JSON.parse(atob(tok.split('.')[1]));
-      return payload;
-    } catch { return null; }
-  };
+  const logout = useCallback(() => {
+    localStorage.removeItem('token');
+    setToken(null);
+    setUser(null);
+    setDashboardRoute('/login');
+    delete axios.defaults.headers.common['Authorization'];
+  }, []);
+
+  logoutRef.current = logout;
+
+  // Axios interceptor for automatic 401 handling
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      response => response,
+      error => {
+        if (error.response && error.response.status === 401) {
+          if (logoutRef.current) {
+            logoutRef.current();
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      axios.interceptors.response.eject(interceptor);
+    };
+  }, []);
 
   useEffect(() => {
     if (token) {
-      const payload = decodeToken(token);
-      setUser(payload);
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       axios.get('/api/me')
-        .then(res => setDashboardRoute(res.data.dashboardRoute))
+        .then(res => {
+          setDashboardRoute(res.data.dashboardRoute);
+          setUser({ role: res.data.role, tenantId: res.data.tenantId });
+        })
         .catch(() => logout())
         .finally(() => setLoading(false));
     } else {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, logout]);
 
   const login = async (email, password) => {
     const res = await axios.post('/api/auth/login', { email, password });
     const { access_token } = res.data;
     localStorage.setItem('token', access_token);
-    localStorage.setItem('email', email);
     setToken(access_token);
-    setUser(decodeToken(access_token));
     axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
     const meRes = await axios.get('/api/me');
     setDashboardRoute(meRes.data.dashboardRoute);
+    setUser({ role: meRes.data.role, tenantId: meRes.data.tenantId });
     return meRes.data.dashboardRoute;
-  };
-
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('email');
-    setToken(null);
-    setUser(null);
-    setDashboardRoute('/login');
-    delete axios.defaults.headers.common['Authorization'];
   };
 
   return (

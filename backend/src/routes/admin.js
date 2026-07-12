@@ -40,7 +40,8 @@ router.post('/admins', authenticate, requireRole('system_admin'), async (req, re
     res.status(201).json(newAdmin.rows[0]);
   } catch (e) {
     await client.query('ROLLBACK');
-    throw e;
+    console.error('Error creating admin:', e);
+    res.status(500).json({ error: 'Failed to create admin: ' + e.message });
   } finally {
     client.release();
   }
