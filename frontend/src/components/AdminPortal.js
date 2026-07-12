@@ -74,8 +74,8 @@ export default function AdminPortal() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} theme="light" width={220}>
-        <div style={{ height: 32, margin: 16, background: 'rgba(0,0,0,0.05)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} theme="light" width={220} className="sidebar-gradient">
+        <div style={{ height: 32, margin: 16, background: 'rgba(255,255,255,0.1)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#fff' }}>
           Admin Panel
         </div>
         <Menu
@@ -83,9 +83,11 @@ export default function AdminPortal() {
           selectedKeys={[location.pathname]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
+          style={{ background: 'transparent', color: '#fff', borderRight: 0 }}
+          theme="dark"
         />
       </Sider>
-      <Content style={{ padding: '24px', background: '#fff', minHeight: 280 }}>
+      <Content style={{ padding: '24px', background: 'transparent', minHeight: 280 }}>
         {renderContent()}
       </Content>
     </Layout>

@@ -34,8 +34,8 @@ export default function AppLayout({ children, showBack = false }) {
   const currentTitle = pathTitles[location.pathname] || 'Procurement Portal';
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#001529', padding: '0 24px' }}>
+    <Layout className="app-bg">
+      <Header className="header-gradient" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {showBack && (
             <Button type="text" icon={<ArrowLeftOutlined />} onClick={handleBack} style={{ color: '#fff' }}>
@@ -51,7 +51,7 @@ export default function AppLayout({ children, showBack = false }) {
           </Button>
         </Space>
       </Header>
-      <Content style={{ padding: '24px', background: '#f0f2f5' }}>
+      <Content className="content-wrapper">
         {children}
       </Content>
     </Layout>
