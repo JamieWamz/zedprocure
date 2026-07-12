@@ -21,17 +21,17 @@ export default function UnifiedLogin() {
   };
 
   return (
-    <div style={{ display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#f0f2f5' }}>
-      <Form name="login" onFinish={onFinish} style={{ width:350, padding:24, background:'#fff', borderRadius:8 }}>
-        <h2 style={{ textAlign:'center', marginBottom:24 }}>Sign in to Freshstart Procurement Portal</h2>
+    <div className="login-container">
+      <Form name="login" onFinish={onFinish} className="login-card">
+        <h2>Sign in to Freshstart Procurement Portal</h2>
         <Form.Item name="email" rules={[{ required:true, message:'Email required' }]}>
-          <Input placeholder="Email" />
+          <Input placeholder="Email" size="large" />
         </Form.Item>
         <Form.Item name="password" rules={[{ required:true, message:'Password required' }]}>
-          <Input.Password placeholder="Password" />
+          <Input.Password placeholder="Password" size="large" />
         </Form.Item>
         <Form.Item>
-          <Button type="primary" htmlType="submit" loading={loading} block>
+          <Button type="primary" htmlType="submit" loading={loading} block size="large">
             Sign In
           </Button>
         </Form.Item>
