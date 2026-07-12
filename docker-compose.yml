@@ -20,8 +20,12 @@ services:
       dockerfile: Dockerfile.backend
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/zambia_procurement
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-      PORT: 4000
+      JWT_SECRET: ${JWT_SECRET}
+      NODE_ENV: production
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SYSTEM_ADMIN_PASSWORD: ${SYSTEM_ADMIN_PASSWORD:-}
+      BUSINESS_ADMIN_PASSWORD: ${BUSINESS_ADMIN_PASSWORD:-}
     ports:
       - "4000:4000"
     depends_on:

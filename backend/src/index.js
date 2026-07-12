@@ -2,13 +2,33 @@ require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
+const compression = require('compression');
+const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const { authenticate } = require('./middleware/authMiddleware');
+const { TOKEN_COOKIE } = require('./config/auth');
 
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet());
-app.use(cors());
+app.use(compression());
+app.use(cookieParser());
+
+// Restrict CORS to known origins so third-party sites cannot call the API from a user's browser.
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow non-browser tools (no Origin header) and listed origins.
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
+
 app.use(express.json({ limit: '10mb' }));
 
 // Global rate limiter for all API routes
@@ -39,7 +59,14 @@ app.get('/api/me', authenticate, async (req, res) => {
     else route = '/customer';
   } else if (req.user.user_type === 'supplier_user') route = '/supplier';
 
-  res.json({ dashboardRoute: route, tenantId, role: req.user.role });
+  res.json({
+    dashboardRoute: route,
+    tenantId,
+    role: req.user.role,
+    user_type: req.user.user_type,
+    email: req.user.email,
+    full_name: req.user.full_name,
+  });
 });
 
 // Global error handler for unhandled promise rejections and errors

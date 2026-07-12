@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const { authenticate } = require('../middleware/authMiddleware');
+const { validatePassword } = require('../utils/validation');
 const router = express.Router();
 
 // Get bids - business_admin sees all, tenant_admin/business_admin with tenant_id sees their own
@@ -101,6 +102,9 @@ router.post('/admin/tenant-users', authenticate, async (req, res) => {
     return res.status(400).json({ error: 'Role must be tenant_admin or customer' });
   }
 
+  const pwErr = validatePassword(password);
+  if (pwErr) return res.status(400).json({ error: pwErr });
+
   // Business admin acting on behalf: ensure they can access this tenant
   if (req.user.role === 'tenant_admin' && req.user.tenant_id !== tenant_id) {
     return res.status(403).json({ error: 'You can only create users for your own tenant' });
@@ -181,6 +185,8 @@ router.post('/admin/suppliers', authenticate, async (req, res) => {
   if (!company_name || !email || !password || !full_name) {
     return res.status(400).json({ error: 'company_name, email, password, and full_name are required' });
   }
+  const pwErr = validatePassword(password);
+  if (pwErr) return res.status(400).json({ error: pwErr });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

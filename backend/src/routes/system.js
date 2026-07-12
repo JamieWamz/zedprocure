@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
+const { validatePassword } = require('../utils/validation');
 const os = require('os');
 const router = express.Router();
 
@@ -107,6 +108,11 @@ router.put('/system/admins/:id', authenticate, requireRole('system_admin'), asyn
     if (role !== undefined) { updates.push(`role = $${paramIdx++}`); values.push(role); }
     if (is_active !== undefined) { updates.push(`is_active = $${paramIdx++}`); values.push(is_active); }
     if (password) {
+      const pwErr = validatePassword(password);
+      if (pwErr) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: pwErr });
+      }
       const hash = await bcrypt.hash(password, 12);
       updates.push(`password_hash = $${paramIdx++}`);
       values.push(hash);
@@ -160,10 +166,6 @@ router.post('/system/console', authenticate, requireRole('system_admin'), async 
         await pool.query('SELECT 1');
         output = 'Database connection OK';
         break;
-      case 'db version':
-        const { rows: [version] } = await pool.query('SELECT version()');
-        output = version.version;
-        break;
       case 'active users':
         const { rows: [active] } = await pool.query(
           'SELECT COUNT(*)::int AS cnt FROM platform_admins WHERE is_active = true AND email != $1',
@@ -175,7 +177,7 @@ router.post('/system/console', authenticate, requireRole('system_admin'), async 
         output = `Free memory: ${os.freemem()} bytes / Total: ${os.totalmem()} bytes`;
         break;
       default:
-        output = 'Unknown command. Available: uptime, memory, load, db status, db version, active users, free';
+        output = 'Unknown command. Available: uptime, memory, load, db status, active users, free';
     }
     res.json({ output });
   } catch (err) {

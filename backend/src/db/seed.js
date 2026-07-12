@@ -1,150 +1,127 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../config/db');
 
+// Generates a password that satisfies the platform's validation policy.
+function generateStrongPassword() {
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const num = '23456789';
+  const special = '!@#$%&*?';
+  const all = lower + upper + num + special;
+  const pick = (set, n) => Array.from({ length: n }, () => set[Math.floor(Math.random() * set.length)]).join('');
+  const raw = pick(lower, 3) + pick(upper, 3) + pick(num, 2) + pick(special, 2) + pick(all, 4);
+  return raw.split('').sort(() => Math.random() - 0.5).join('');
+}
+
+// Resolves a password: explicit env var wins, otherwise a strong random one is generated
+// and recorded so it can be shown to the operator (applies only when the row is created).
+function resolvePassword(envVar, log) {
+  const fromEnv = process.env[envVar];
+  if (fromEnv && fromEnv.length >= 10) return fromEnv;
+  const generated = generateStrongPassword();
+  log.push(`${envVar || '(generated)'}: ${generated}`);
+  return generated;
+}
+
 async function seed() {
   const client = await pool.connect();
+  const generatedLog = [];
   try {
     await client.query('BEGIN');
 
-    // System Admin – Mundia Wamuyuwa (immutable)
-    const sysPwd = await bcrypt.hash('wamu@2003!', 12);
-    await client.query(
-      `INSERT INTO platform_admins (email, password_hash, full_name, role)
-       VALUES ('wamuyuwamundia@gmail.com', $1, 'Mundia J Wamuyuwa', 'system_admin')
-       ON CONFLICT (email) DO UPDATE
-       SET password_hash = EXCLUDED.password_hash,
-           full_name = EXCLUDED.full_name,
-           role = EXCLUDED.role,
-           is_active = true,
-           updated_at = now()`,
-      [sysPwd]
-    );
+    // System Admin – Mundia Wamuyuwa (immutable). Email is fixed; password from env or generated.
+    const { rows: [sysAdmin] } = await client.query('SELECT 1 FROM platform_admins WHERE email=$1', ['wamuyuwamundia@gmail.com']);
+    if (!sysAdmin) {
+      const sysPwd = await bcrypt.hash(resolvePassword('SYSTEM_ADMIN_PASSWORD', generatedLog), 12);
+      await client.query(
+        `INSERT INTO platform_admins (email, password_hash, full_name, role)
+         VALUES ('wamuyuwamundia@gmail.com', $1, 'Mundia J Wamuyuwa', 'system_admin')`,
+        [sysPwd]
+      );
+    }
 
     // Business Admin – the sole admin for procurement + platform
-    const bizPwd = await bcrypt.hash('Test@123', 12);
-    await client.query(
-      `INSERT INTO platform_admins (email, password_hash, full_name, role)
-       VALUES ('brightilunga6@gmail.com', $1, 'Bright Ilunga', 'business_admin')
-       ON CONFLICT (email) DO UPDATE
-       SET password_hash = EXCLUDED.password_hash,
-           full_name = EXCLUDED.full_name,
-           role = EXCLUDED.role,
-           is_active = true,
-           updated_at = now()`,
-      [bizPwd]
-    );
+    const { rows: [bizAdmin] } = await client.query('SELECT 1 FROM platform_admins WHERE email=$1', ['brightilunga6@gmail.com']);
+    if (!bizAdmin) {
+      const bizPwd = await bcrypt.hash(resolvePassword('BUSINESS_ADMIN_PASSWORD', generatedLog), 12);
+      await client.query(
+        `INSERT INTO platform_admins (email, password_hash, full_name, role)
+         VALUES ('brightilunga6@gmail.com', $1, 'Bright Ilunga', 'business_admin')`,
+        [bizPwd]
+      );
+    }
 
     // Tenant (Ministry of Works) – the default procuring entity
     const { rows: [tenant] } = await client.query(
       `INSERT INTO tenants (id, name, registration_number)
        VALUES ($1, 'Ministry of Works and Supply', 'MW/001')
-       ON CONFLICT (registration_number) DO UPDATE
-       SET name = EXCLUDED.name,
-           is_active = true
+       ON CONFLICT (registration_number) DO NOTHING
        RETURNING id`,
       [uuidv4()]
     );
-    const tenantId = tenant.id;
+    const tenantId = tenant
+      ? tenant.id
+      : (await client.query('SELECT id FROM tenants WHERE registration_number = $1', ['MW/001'])).rows[0].id;
 
     // Tenant admin
-    await client.query(
-      `INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role)
-       VALUES ($1, $2, 'tenantadmin@works.gov.zm', $3, 'Tenant Admin', 'tenant_admin')
-       ON CONFLICT (tenant_id, email) DO UPDATE
-       SET password_hash = EXCLUDED.password_hash,
-           full_name = EXCLUDED.full_name,
-           role = EXCLUDED.role,
-           is_active = true`,
-      [uuidv4(), tenantId, await bcrypt.hash('Test@123', 12)]
+    const { rows: [existingTenantAdmin] } = await client.query(
+      'SELECT 1 FROM tenant_users WHERE tenant_id=$1 AND email=$2', [tenantId, 'tenantadmin@works.gov.zm']
     );
+    if (!existingTenantAdmin) {
+      const pwd = await bcrypt.hash(resolvePassword('TENANT_ADMIN_PASSWORD', generatedLog), 12);
+      await client.query(
+        `INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role)
+         VALUES ($1, $2, 'tenantadmin@works.gov.zm', $3, 'Tenant Admin', 'tenant_admin')`,
+        [uuidv4(), tenantId, pwd]
+      );
+    }
 
     // Customer
-    await client.query(
-      `INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role)
-       VALUES ($1, $2, 'customer@works.gov.zm', $3, 'John Customer', 'customer')
-       ON CONFLICT (tenant_id, email) DO UPDATE
-       SET password_hash = EXCLUDED.password_hash,
-           full_name = EXCLUDED.full_name,
-           role = EXCLUDED.role,
-           is_active = true`,
-      [uuidv4(), tenantId, await bcrypt.hash('Test@123', 12)]
+    const { rows: [existingCustomer] } = await client.query(
+      'SELECT 1 FROM tenant_users WHERE tenant_id=$1 AND email=$2', [tenantId, 'customer@works.gov.zm']
     );
+    if (!existingCustomer) {
+      const pwd = await bcrypt.hash(resolvePassword('CUSTOMER_PASSWORD', generatedLog), 12);
+      await client.query(
+        `INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role)
+         VALUES ($1, $2, 'customer@works.gov.zm', $3, 'John Customer', 'customer')`,
+        [uuidv4(), tenantId, pwd]
+      );
+    }
 
     // Verified suppliers (3 for competitive bidding)
-    const { rows: [supplierOne] } = await client.query(
-      `INSERT INTO suppliers (id, company_name, registration_number, verification_status, is_active)
-       VALUES ($1, 'Zambia Builders Ltd', 'ZB/2023', 'verified', true)
-       ON CONFLICT (registration_number) DO UPDATE
-       SET company_name = EXCLUDED.company_name,
-           verification_status = 'verified',
-           is_active = true
-       RETURNING id`,
-      [uuidv4()]
-    );
-    const supplier1 = supplierOne.id;
-    await client.query(
-      `INSERT INTO supplier_users (id, supplier_id, email, password_hash, full_name)
-       VALUES ($1, $2, 'supplier1@builders.zm', $3, 'Supplier One')
-       ON CONFLICT (email) DO UPDATE
-       SET supplier_id = EXCLUDED.supplier_id,
-           password_hash = EXCLUDED.password_hash,
-           full_name = EXCLUDED.full_name,
-           is_active = true`,
-      [uuidv4(), supplier1, await bcrypt.hash('Test@123', 12)]
-    );
+    const suppliers = [
+      { company: 'Zambia Builders Ltd', reg: 'ZB/2023', email: 'supplier1@builders.zm', name: 'Supplier One' },
+      { company: 'Lusaka Engineering Co.', reg: 'LE/2022', email: 'supplier2@engineering.zm', name: 'Supplier Two' },
+      { company: 'Copperbelt Traders', reg: 'CT/2023', email: 'supplier3@traders.zm', name: 'Supplier Three' },
+    ];
 
-    const { rows: [supplierTwo] } = await client.query(
-      `INSERT INTO suppliers (id, company_name, registration_number, verification_status, is_active)
-       VALUES ($1, 'Lusaka Engineering Co.', 'LE/2022', 'verified', true)
-       ON CONFLICT (registration_number) DO UPDATE
-       SET company_name = EXCLUDED.company_name,
-           verification_status = 'verified',
-           is_active = true
-       RETURNING id`,
-      [uuidv4()]
-    );
-    const supplier2 = supplierTwo.id;
-    await client.query(
-      `INSERT INTO supplier_users (id, supplier_id, email, password_hash, full_name)
-       VALUES ($1, $2, 'supplier2@engineering.zm', $3, 'Supplier Two')
-       ON CONFLICT (email) DO UPDATE
-       SET supplier_id = EXCLUDED.supplier_id,
-           password_hash = EXCLUDED.password_hash,
-           full_name = EXCLUDED.full_name,
-           is_active = true`,
-      [uuidv4(), supplier2, await bcrypt.hash('Test@123', 12)]
-    );
-
-    const { rows: [supplierThree] } = await client.query(
-      `INSERT INTO suppliers (id, company_name, registration_number, verification_status, is_active)
-       VALUES ($1, 'Copperbelt Traders', 'CT/2023', 'verified', true)
-       ON CONFLICT (registration_number) DO UPDATE
-       SET company_name = EXCLUDED.company_name,
-           verification_status = 'verified',
-           is_active = true
-       RETURNING id`,
-      [uuidv4()]
-    );
-    const supplier3 = supplierThree.id;
-    await client.query(
-      `INSERT INTO supplier_users (id, supplier_id, email, password_hash, full_name)
-       VALUES ($1, $2, 'supplier3@traders.zm', $3, 'Supplier Three')
-       ON CONFLICT (email) DO UPDATE
-       SET supplier_id = EXCLUDED.supplier_id,
-           password_hash = EXCLUDED.password_hash,
-           full_name = EXCLUDED.full_name,
-           is_active = true`,
-      [uuidv4(), supplier3, await bcrypt.hash('Test@123', 12)]
-    );
+    for (const s of suppliers) {
+      const { rows: [existingSupplier] } = await client.query('SELECT 1 FROM suppliers WHERE registration_number=$1', [s.reg]);
+      if (existingSupplier) continue;
+      const { rows: [supplier] } = await client.query(
+        `INSERT INTO suppliers (id, company_name, registration_number, verification_status, is_active)
+         VALUES ($1, $2, $3, 'verified', true)
+         RETURNING id`,
+        [uuidv4(), s.company, s.reg]
+      );
+      const pwd = await bcrypt.hash(resolvePassword(`SUPPLIER_PASSWORD_${s.reg}`, generatedLog), 12);
+      await client.query(
+        `INSERT INTO supplier_users (id, supplier_id, email, password_hash, full_name)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [uuidv4(), supplier.id, s.email, pwd, s.name]
+      );
+    }
 
     // Chart of accounts
     const accounts = [
-      ['CASH_BANK','Cash at Bank','asset'],
-      ['ESCROW_CASH','Escrow Cash','asset'],
-      ['PLATFORM_REVENUE','Platform Revenue','revenue'],
-      ['CUSTOMER_FUNDING','Customer Funding Clearing','liability'],
-      ['SUPPLIER_PAYABLE','Supplier Payable','liability']
+      ['CASH_BANK', 'Cash at Bank', 'asset'],
+      ['ESCROW_CASH', 'Escrow Cash', 'asset'],
+      ['PLATFORM_REVENUE', 'Platform Revenue', 'revenue'],
+      ['CUSTOMER_FUNDING', 'Customer Funding Clearing', 'liability'],
+      ['SUPPLIER_PAYABLE', 'Supplier Payable', 'liability']
     ];
     for (const [code, name, type] of accounts) {
       await client.query(
@@ -155,6 +132,13 @@ async function seed() {
 
     await client.query('COMMIT');
     console.log('Seed complete.');
+    if (generatedLog.length) {
+      console.log('\n=== GENERATED CREDENTIALS (first run only; store these securely) ===');
+      generatedLog.forEach(line => console.log(`  ${line}`));
+      console.log('=====================================================================\n');
+    } else {
+      console.log('All seed accounts already present — no credentials changed.');
+    }
   } catch (e) {
     await client.query('ROLLBACK');
     console.error(e);

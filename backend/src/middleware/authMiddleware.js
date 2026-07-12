@@ -1,14 +1,21 @@
 const jwt = require('jsonwebtoken');
-const { jwtSecret } = require('../config/auth');
+const { jwtSecret, TOKEN_COOKIE } = require('../config/auth');
 const pool = require('../config/db');
 
-function authenticate(req, res, next) {
+function extractToken(req) {
+  // Prefer the httpOnly cookie (set on login); fall back to Bearer header for API clients.
+  if (req.cookies && req.cookies[TOKEN_COOKIE]) return req.cookies[TOKEN_COOKIE];
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (authHeader && authHeader.startsWith('Bearer ')) return authHeader.split(' ')[1];
+  return null;
+}
+
+function authenticate(req, res, next) {
+  const token = extractToken(req);
+  if (!token) {
     return res.status(401).json({ error: 'Authentication required' });
   }
   try {
-    const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, jwtSecret);
 
     // Verify user still exists and is active in the database

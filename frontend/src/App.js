@@ -11,9 +11,9 @@ import PublicNoticeboard from './components/PublicNoticeboard';
 import AppLayout from './components/AppLayout';
 
 function PrivateRoute({ children, requiredRoute }) {
-  const { token, dashboardRoute, loading } = useAuth();
+  const { user, dashboardRoute, loading } = useAuth();
   if (loading) return <div style={{ display:'flex', justifyContent:'center', alignItems:'center', height:'100vh' }}>Loading...</div>;
-  if (!token) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace />;
 
   // Check if the required route is compatible with the user's dashboard route
   // Use prefix matching so /admin/* routes work when dashboardRoute is /admin

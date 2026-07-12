@@ -1,8 +1,15 @@
+# Build/dependency caches
+node_modules
 **/node_modules
-**/.env
-**/.env.*
-**/build
-**/coverage
-.git
-.gitignore
-uploads
+
+# Local environment / secrets — never bake into images or commit
+.env
+.env.*
+backend/.env
+frontend/.env
+
+# Logs
+*.log
+
+# OS / editor noise
+.DS_Store

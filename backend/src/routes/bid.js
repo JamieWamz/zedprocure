@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const crypto = require('crypto');
 const pool = require('../config/db');
 const { authenticate } = require('../middleware/authMiddleware');
 const stripBudgetForSupplier = require('../middleware/priceIsolation');
@@ -12,9 +13,11 @@ const responseStorage = multer.diskStorage({
     cb(null, path.join(__dirname, '../../uploads'));
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, `response-${uniqueSuffix}${ext}`);
+    const ext = path.extname(file.originalname).toLowerCase();
+    crypto.randomBytes(16, (err, buf) => {
+      if (err) return cb(err);
+      cb(null, `response-${buf.toString('hex')}${ext}`);
+    });
   }
 });
 

@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
+const { validatePassword } = require('../utils/validation');
 const router = express.Router();
 const IMMUTABLE_EMAIL = 'wamuyuwamundia@gmail.com';
 
@@ -19,6 +20,8 @@ router.post('/admins', authenticate, requireRole('system_admin'), async (req, re
   if (!['system_admin', 'business_admin'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
   }
+  const pwErr = validatePassword(password);
+  if (pwErr) return res.status(400).json({ error: pwErr });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

@@ -8,7 +8,7 @@ const { Header, Content } = Layout;
 const { Text } = Typography;
 
 export default function AppLayout({ children, showBack = false }) {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -45,7 +45,7 @@ export default function AppLayout({ children, showBack = false }) {
           <Text strong style={{ color: '#fff', fontSize: 18 }}>Freshstart Procurement Portal</Text>
         </div>
         <Space>
-          <Text style={{ color: '#fff' }}>{localStorage.getItem('email') || 'User'}</Text>
+          <Text style={{ color: '#fff' }}>{user?.email || 'User'}</Text>
           <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} style={{ color: '#fff' }}>
             Logout
           </Button>

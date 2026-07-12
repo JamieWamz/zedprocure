@@ -59,14 +59,14 @@ router.post('/payments/confirm', authenticate, async (req, res) => {
         ['completed', transaction_ref]
       );
 
-      // If bidding fee, record ledger entry
+      // If bidding fee, record ledger entry (same transaction for atomicity)
       if (tx.type === 'bidding_fee') {
         const { bid_id } = req.body;
         if (!bid_id) {
           await client.query('ROLLBACK');
           return res.status(400).json({ error: 'bid_id is required for bid_fee payment confirmation' });
         }
-        await recordBiddingFee(bid_id, tx.from_user_id, tx.amount, transaction_ref);
+        await recordBiddingFee(bid_id, tx.from_user_id, tx.amount, transaction_ref, client);
       }
 
       await client.query('COMMIT');

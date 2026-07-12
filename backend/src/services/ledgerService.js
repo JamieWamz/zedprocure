@@ -13,16 +13,18 @@ async function getAccountId(client, code) {
   return rows[0].id;
 }
 
-async function createJournalEntry({ referenceType, referenceId, description, createdBy, lines }) {
+async function createJournalEntry({ referenceType, referenceId, description, createdBy, lines }, client) {
   const totalDebit = lines.reduce((sum, line) => sum + Number(line.debit || 0), 0);
   const totalCredit = lines.reduce((sum, line) => sum + Number(line.credit || 0), 0);
   if (totalDebit <= 0 || Math.abs(totalDebit - totalCredit) > 0.005) {
     throw new Error('Journal entry must have equal positive debits and credits');
   }
 
-  const client = await pool.connect();
+  // If a client is provided, the caller owns the transaction (used for atomic escrow/payment flows).
+  const own = !client;
+  if (own) client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    if (own) await client.query('BEGIN');
     const entryRes = await client.query(
       `INSERT INTO journal_entries (reference_type, reference_id, description, created_by)
        VALUES ($1,$2,$3,$4) RETURNING id`,
@@ -37,17 +39,17 @@ async function createJournalEntry({ referenceType, referenceId, description, cre
         [entryId, accountId, line.debit || 0, line.credit || 0]
       );
     }
-    await client.query('COMMIT');
+    if (own) await client.query('COMMIT');
     return entryId;
   } catch (e) {
-    await client.query('ROLLBACK');
+    if (own) await client.query('ROLLBACK');
     throw e;
   } finally {
-    client.release();
+    if (own) client.release();
   }
 }
 
-async function recordBiddingFee(bidId, userId, amount, paymentRef) {
+async function recordBiddingFee(bidId, userId, amount, paymentRef, client) {
   return createJournalEntry({
     referenceType: 'bid_fee',
     referenceId: bidId,
@@ -57,10 +59,10 @@ async function recordBiddingFee(bidId, userId, amount, paymentRef) {
       { accountCode: LEDGER_ACCOUNTS.CASH, debit: amount, credit: 0 },
       { accountCode: LEDGER_ACCOUNTS.PLATFORM_REVENUE, debit: 0, credit: amount }
     ]
-  });
+  }, client);
 }
 
-async function recordEscrowFunding(orderId, userId, amount) {
+async function recordEscrowFunding(orderId, userId, amount, client) {
   return createJournalEntry({
     referenceType: 'escrow_funding',
     referenceId: orderId,
@@ -70,10 +72,10 @@ async function recordEscrowFunding(orderId, userId, amount) {
       { accountCode: LEDGER_ACCOUNTS.ESCROW, debit: amount, credit: 0 },
       { accountCode: LEDGER_ACCOUNTS.CUSTOMER_FUNDING, debit: 0, credit: amount }
     ]
-  });
+  }, client);
 }
 
-async function recordEscrowRelease(orderId, adminUserId, amount) {
+async function recordEscrowRelease(orderId, adminUserId, amount, client) {
   await createJournalEntry({
     referenceType: 'escrow_release',
     referenceId: orderId,
@@ -83,7 +85,7 @@ async function recordEscrowRelease(orderId, adminUserId, amount) {
       { accountCode: LEDGER_ACCOUNTS.CUSTOMER_FUNDING, debit: amount, credit: 0 },
       { accountCode: LEDGER_ACCOUNTS.SUPPLIER_PAYABLE, debit: 0, credit: amount }
     ]
-  });
+  }, client);
   await createJournalEntry({
     referenceType: 'payout',
     referenceId: orderId,
@@ -93,7 +95,7 @@ async function recordEscrowRelease(orderId, adminUserId, amount) {
       { accountCode: LEDGER_ACCOUNTS.SUPPLIER_PAYABLE, debit: amount, credit: 0 },
       { accountCode: LEDGER_ACCOUNTS.ESCROW, debit: 0, credit: amount }
     ]
-  });
+  }, client);
 }
 
 module.exports = { recordBiddingFee, recordEscrowFunding, recordEscrowRelease, createJournalEntry };

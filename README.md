@@ -19,7 +19,7 @@ B2B SaaS procurement platform tailored to the Zambian Public Procurement Act. En
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 18, Ant Design 5, Axios, React Router 6 |
-| Backend | Node.js, Express, JWT auth, Multer uploads |
+| Backend | Node.js, Express, httpOnly-cookie JWT auth, Multer uploads |
 | Database | PostgreSQL 15 with `uuid-ossp` |
 | Infrastructure | Docker Compose, Nginx |
 
@@ -52,13 +52,24 @@ brew services start postgresql
 
 ### 3. Configure environment variables
 
-Create `backend/.env`:
+Copy `.env.example` to `.env` (backend and root) and fill in real values. Generate a strong secret:
+
+```bash
+openssl rand -hex 32
+```
+
+`backend/.env` (used for local non-Docker dev):
 
 ```env
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/zambia_procurement
-JWT_SECRET=your-secure-jwt-secret-change-in-production
+JWT_SECRET=<generated-secret>
 PORT=4000
+NODE_ENV=development
+CORS_ORIGINS=http://localhost:3000,http://localhost
+COOKIE_SECURE=false
 ```
+
+Never commit `.env` files — they are gitignored.
 
 ### 4. Install dependencies
 
@@ -92,7 +103,7 @@ cd frontend
 npm start
 ```
 
-Frontend runs at `http://localhost:3001`.
+Frontend runs at `http://localhost:3000`.
 
 ## Docker
 
@@ -103,21 +114,47 @@ docker-compose up --build
 - Frontend: `http://localhost`
 - Backend: `http://localhost:4000`
 
-The backend container runs `npm run seed` on startup to initialize the database.
+Requires `JWT_SECRET` to be set in the root `.env` (Docker Compose substitutes it). The backend container runs the seed on startup to initialize the database. Generate one with `openssl rand -hex 32` and place it in `.env`.
 
-## Default Credentials
+## Accessing From Another PC (LAN)
 
-| Role | Email | Password |
-|------|-------|----------|
-| System Admin | `wamuyuwamundia@gmail.com` | `wamu@2003!` |
-| Business Admin | `brightilunga6@gmail.com` | `Test@123` |
-| Tenant Admin | `tenantadmin@works.gov.zm` | `Test@123` |
-| Customer | `customer@works.gov.zm` | `Test@123` |
-| Supplier 1 | `supplier1@builders.zm` | `Test@123` |
-| Supplier 2 | `supplier2@engineering.zm` | `Test@123` |
-| Supplier 3 | `supplier3@traders.zm` | `Test@123` |
+The app is ready to run on your machine and be reached from another computer on the same network.
 
-> Change these passwords in production.
+**Docker (recommended):**
+The compose stack already exposes the frontend on port `80` and the backend on `4000`. From the other PC, open `http://<this-machine-ip>` (nginx proxies `/api` to the backend, so no extra setup is needed). Find your IP with `hostname -I` (Linux) or `ipconfig` (Windows).
+
+**Dev servers (CRA + Node):**
+1. Set the frontend to bind on all interfaces: `frontend/.env` already contains `HOST=0.0.0.0`.
+2. Start the backend (`npm run dev`) and frontend (`npm start`) as usual.
+3. On the other PC open `http://<this-machine-ip>:3000`. The CRA dev server proxies `/api` → `localhost:4000` automatically.
+
+Ensure the host firewall allows the relevant ports (`80`/`4000` for Docker, `3000`/`4000` for dev).
+
+> LAN access runs over plain HTTP. Do **not** expose this setup to the public internet without TLS — see Security below.
+
+## Security Notes
+
+- Auth uses **httpOnly, SameSite cookies** (not `localStorage`), which removes the XSS token-theft vector.
+- `JWT_SECRET` must be set and unique per environment; the backend refuses to start in `NODE_ENV=production` without it.
+- CORS is restricted to `CORS_ORIGINS`; the previous open `*` policy is gone.
+- Escrow funding/release and bidding-fee confirmation run inside serializable DB transactions (`SELECT … FOR UPDATE`) to prevent double-spend races.
+- All password creation/update enforces a strength policy (≥10 chars, mixed case, number, symbol).
+- File uploads are validated by extension **and** MIME type, with cryptographically random filenames.
+- **Before any internet exposure:** terminate TLS (the cookie is only `Secure` when `COOKIE_SECURE=true`) and use real secrets, not the LAN defaults.
+
+## Default Accounts
+
+The seed creates the following accounts. **Passwords are no longer hardcoded.** On first seed, a strong random password is generated for each and printed to the server log — copy and store them securely. Alternatively, set `SYSTEM_ADMIN_PASSWORD` / `BUSINESS_ADMIN_PASSWORD` (Docker) before seeding to choose them.
+
+| Role | Email |
+|------|-------|
+| System Admin (immutable) | `wamuyuwamundia@gmail.com` |
+| Business Admin | `brightilunga6@gmail.com` |
+| Tenant Admin | `tenantadmin@works.gov.zm` |
+| Customer | `customer@works.gov.zm` |
+| Supplier 1–3 | `supplier1@builders.zm`, `supplier2@engineering.zm`, `supplier3@traders.zm` |
+
+> Set your own System Admin password via `SYSTEM_ADMIN_PASSWORD` and sign in with that email.
 
 ## Project Structure
 
@@ -171,8 +208,10 @@ zambia-procurement/
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/api/auth/login` | No | Login, returns JWT |
-| GET | `/api/me` | Yes | Current user profile + dashboard route |
+| POST | `/api/auth/login` | No | Login, sets httpOnly auth cookies |
+| POST | `/api/auth/refresh` | Cookie | Rotate expired access token |
+| POST | `/api/auth/logout` | Cookie | Clear auth cookies |
+| GET | `/api/me` | Cookie | Current user profile + dashboard route |
 | GET | `/api/admin/health` | System Admin | Database health check |
 | POST | `/api/admin/admins` | System Admin | Create admin user |
 | PUT | `/api/system/admins/:id` | System Admin | Update admin |
@@ -203,8 +242,13 @@ zambia-procurement/
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | - | PostgreSQL connection string |
-| `JWT_SECRET` | Yes | - | JWT signing secret |
+| `JWT_SECRET` | Yes | - | JWT signing secret (generate with `openssl rand -hex 32`) |
 | `PORT` | No | `4000` | Backend port |
+| `NODE_ENV` | No | `development` | Set `production` to enforce required secrets |
+| `CORS_ORIGINS` | No | `http://localhost:3000,http://localhost` | Comma-separated allowed browser origins |
+| `COOKIE_SECURE` | No | `false` | Set `true` only when serving over HTTPS |
+| `SYSTEM_ADMIN_PASSWORD` | No | generated | System Admin password on first seed |
+| `BUSINESS_ADMIN_PASSWORD` | No | generated | Business Admin password on first seed |
 
 ## Scripts
 
