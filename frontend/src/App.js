@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import SplashScreen from './components/SplashScreen';
 import UnifiedLogin from './components/UnifiedLogin';
 import SystemHealthPortal from './components/SystemHealthPortal';
 import AdminPortal from './components/AdminPortal';
@@ -23,11 +24,16 @@ function PrivateRoute({ children, requiredRoute }) {
   return <AppLayout>{children}</AppLayout>;
 }
 
-export default function App() {
+function AppContent() {
+  const [splashDone, setSplashDone] = useState(false);
+  const handleSplashFinish = useCallback(() => setSplashDone(true), []);
+
+  if (!splashDone) {
+    return <SplashScreen onFinish={handleSplashFinish} />;
+  }
+
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
+    <Routes>
           <Route path="/login" element={<UnifiedLogin />} />
           <Route path="/system-health" element={
             <PrivateRoute requiredRoute="/system-health"><SystemHealthPortal /></PrivateRoute>
@@ -46,7 +52,15 @@ export default function App() {
           } />
           <Route path="/public/bids" element={<PublicNoticeboard />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <AppContent />
       </BrowserRouter>
     </AuthProvider>
   );
