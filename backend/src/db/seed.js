@@ -150,7 +150,11 @@ async function seed() {
     const accounts = [
       ['CASH_BANK', 'Cash at Bank', 'asset'],
       ['ESCROW_CASH', 'Escrow Cash', 'asset'],
+      ['ACCOUNTS_RECEIVABLE', 'Accounts Receivable', 'asset'],
+      ['ACCOUNTS_PAYABLE', 'Accounts Payable', 'liability'],
       ['PLATFORM_REVENUE', 'Platform Revenue', 'revenue'],
+      ['SERVICE_REVENUE', 'Service Revenue', 'revenue'],
+      ['SUPPLIER_EXPENSE', 'Supplier Expense', 'expense'],
       ['CUSTOMER_FUNDING', 'Customer Funding Clearing', 'liability'],
       ['SUPPLIER_PAYABLE', 'Supplier Payable', 'liability']
     ];

@@ -2,10 +2,7 @@ import React, { useState } from 'react';
 import { Form, Input, Button, message } from 'antd';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-
-// Desaturated, minimalist architecture image (Unsplash CDN w/ optimization params).
-const HERO_IMAGE =
-  'https://images.unsplash.com/photo-1497366754035-f200968a6e3b?auto=format&fit=crop&w=1600&q=75';
+import { cdnImages } from '../cdnAssets';
 
 export default function UnifiedLogin() {
   const { login } = useAuth();
@@ -27,7 +24,7 @@ export default function UnifiedLogin() {
   return (
     <div className="login-split">
       <div className="login-hero" aria-hidden="true">
-        <img className="login-hero-img" src={HERO_IMAGE} alt="" loading="eager" />
+        <img className="login-hero-img" src={cdnImages.loginHero} alt="" loading="eager" />
         <div className="login-hero-overlay" />
         <div className="login-hero-content">
           <div className="login-hero-brand">

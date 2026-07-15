@@ -36,6 +36,7 @@ const globalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200 });
 app.use('/api', globalLimiter);
 
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api', require('./routes/registration'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api', require('./routes/supplier'));
 app.use('/api', require('./routes/bid'));
@@ -44,9 +45,11 @@ app.use('/api', require('./routes/order'));
 app.use('/api', require('./routes/payment'));
 app.use('/api', require('./routes/escrow'));
 app.use('/api/ledger', require('./routes/ledger'));
+app.use('/api/invoices', require('./routes/invoices'));
 app.use('/api', require('./routes/supplierList'));
 app.use('/api', require('./routes/tenant'));
 app.use('/api', require('./routes/system'));
+app.use('/api', require('./routes/dashboard'));
 
 app.get('/api/me', authenticate, async (req, res) => {
   let route = '/login';
@@ -54,10 +57,8 @@ app.get('/api/me', authenticate, async (req, res) => {
 
   if (req.user.user_type === 'platform_admin' && req.user.role === 'system_admin') route = '/system-health';
   else if (req.user.user_type === 'platform_admin') route = '/admin';
-  else if (req.user.user_type === 'tenant_user') {
-    if (req.user.role === 'tenant_admin') route = '/admin';
-    else route = '/customer';
-  } else if (req.user.user_type === 'supplier_user') route = '/supplier';
+  else if (req.user.user_type === 'tenant_user') route = '/customer';
+  else if (req.user.user_type === 'supplier_user') route = '/supplier';
 
   res.json({
     dashboardRoute: route,

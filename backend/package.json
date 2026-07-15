@@ -21,6 +21,7 @@
     "morgan": "^1.11.0",
     "multer": "^2.2.0",
     "node-pg-migrate": "^8.0.4",
+    "nodemailer": "^9.0.3",
     "pg": "^8.11.3",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^9.0.0",

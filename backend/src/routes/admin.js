@@ -5,6 +5,10 @@ const { authenticate, requireRole } = require('../middleware/authMiddleware');
 const { validatePassword } = require('../utils/validation');
 const router = express.Router();
 const IMMUTABLE_EMAIL = 'wamuyuwamundia@gmail.com';
+const ADMIN_ROLE_LABELS = {
+  system_admin: 'System Admin',
+  business_admin: 'Business Admin',
+};
 
 router.get('/health', authenticate, requireRole('system_admin'), async (req, res) => {
   try {
@@ -20,19 +24,22 @@ router.post('/admins', authenticate, requireRole('system_admin'), async (req, re
   if (!['system_admin', 'business_admin'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
   }
+  if (role === 'system_admin' && email !== IMMUTABLE_EMAIL) {
+    return res.status(403).json({ error: 'The system admin seat is reserved for the primary administrator.' });
+  }
   const pwErr = validatePassword(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('LOCK TABLE platform_admins IN EXCLUSIVE MODE');
-    const { rows } = await client.query(
-      'SELECT COUNT(*) as cnt FROM platform_admins WHERE is_active = true AND email != $1',
-      [IMMUTABLE_EMAIL]
+    const { rows: [roleSeat] } = await client.query(
+      'SELECT id, email FROM platform_admins WHERE role = $1 AND is_active = true',
+      [role]
     );
-    if (parseInt(rows[0].cnt) >= 3) {
+    if (roleSeat) {
       await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'Maximum 3 additional active administrators allowed.' });
+      return res.status(403).json({ error: `${ADMIN_ROLE_LABELS[role]} already has an active administrator.` });
     }
     const hash = await bcrypt.hash(password, 12);
     const newAdmin = await client.query(

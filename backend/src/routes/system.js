@@ -7,28 +7,132 @@ const os = require('os');
 const router = express.Router();
 
 const IMMUTABLE_EMAIL = 'wamuyuwamundia@gmail.com';
+const ADMIN_ROLE_LABELS = {
+  system_admin: 'System Admin',
+  business_admin: 'Business Admin',
+};
 
 // ─── System Stats ───────────────────────────────────────────
 router.get('/system/stats', authenticate, requireRole('system_admin'), async (req, res) => {
   try {
-    const { rows: [bids] } = await pool.query('SELECT COUNT(*)::int AS total FROM bids');
-    const { rows: [tenants] } = await pool.query('SELECT COUNT(*)::int AS total FROM tenants');
-    const { rows: [suppliers] } = await pool.query('SELECT COUNT(*)::int AS total FROM suppliers');
-    const { rows: [users] } = await pool.query(
-      'SELECT (SELECT COUNT(*) FROM tenant_users) + (SELECT COUNT(*) FROM supplier_users) + (SELECT COUNT(*) FROM platform_admins) AS total'
-    );
-    const { rows: [cash] } = await pool.query(
-      `SELECT COALESCE(SUM(jl.debit) - SUM(jl.credit), 0) AS balance
-       FROM journal_lines jl JOIN accounts a ON a.id = jl.account_id
-       WHERE a.account_code IN ('CASH_BANK','ESCROW_CASH')`
-    );
+    const [
+      bidsRes,
+      tenantsRes,
+      suppliersRes,
+      usersRes,
+      cashRes,
+      ordersRes,
+      invoicesRes,
+      adminsRes,
+      journalRes,
+      auditRes,
+    ] = await Promise.all([
+      pool.query(`SELECT COUNT(*)::int AS total,
+                         COUNT(*) FILTER (WHERE status IN ('open','evaluation'))::int AS active,
+                         COUNT(*) FILTER (WHERE status='awarded')::int AS awarded
+                  FROM bids`),
+      pool.query(`SELECT COUNT(*)::int AS total,
+                         COUNT(*) FILTER (WHERE is_active=true)::int AS active
+                  FROM tenants`),
+      pool.query(`SELECT COUNT(*)::int AS total,
+                         COUNT(*) FILTER (WHERE verification_status='verified')::int AS verified,
+                         COUNT(*) FILTER (WHERE verification_status IN ('pending','documents_submitted'))::int AS pending
+                  FROM suppliers`),
+      pool.query(`SELECT
+                    (SELECT COUNT(*) FROM tenant_users) + (SELECT COUNT(*) FROM supplier_users) + (SELECT COUNT(*) FROM platform_admins) AS total,
+                    (SELECT COUNT(*) FROM tenant_users WHERE is_active=true) + (SELECT COUNT(*) FROM supplier_users WHERE is_active=true) + (SELECT COUNT(*) FROM platform_admins WHERE is_active=true) AS active`),
+      pool.query(
+        `SELECT COALESCE(SUM(CASE WHEN a.account_code='CASH_BANK' THEN jl.debit - jl.credit ELSE 0 END), 0) AS cash_bank,
+                COALESCE(SUM(CASE WHEN a.account_code='ESCROW_CASH' THEN jl.debit - jl.credit ELSE 0 END), 0) AS escrow_cash
+         FROM journal_entries je
+         JOIN journal_lines jl ON jl.journal_entry_id = je.id
+         JOIN accounts a ON a.id = jl.account_id
+         WHERE je.approved = true`
+      ),
+      pool.query(`SELECT COUNT(*)::int AS total,
+                         COUNT(*) FILTER (WHERE status IN ('pending_acceptance','accepted','delivery_in_progress','delivered','disputed'))::int AS active,
+                         COUNT(*) FILTER (WHERE status='disputed')::int AS disputed
+                  FROM orders`),
+      pool.query(`SELECT
+                    COALESCE(SUM(total_amount - paid_amount) FILTER (WHERE type='AR' AND status IN ('sent','partially_paid')), 0) AS ar_open,
+                    COALESCE(SUM(total_amount - paid_amount) FILTER (WHERE type='AR' AND due_date < CURRENT_DATE AND status IN ('sent','partially_paid')), 0) AS ar_overdue,
+                    COALESCE(SUM(total_amount - paid_amount) FILTER (WHERE type='AP' AND status IN ('sent','partially_paid')), 0) AS ap_open,
+                    COUNT(*) FILTER (WHERE status IN ('sent','partially_paid'))::int AS open_count,
+                    COUNT(*) FILTER (WHERE due_date < CURRENT_DATE AND status IN ('sent','partially_paid'))::int AS overdue_count
+                  FROM invoices`),
+      pool.query(`SELECT COUNT(*)::int AS total,
+                         COUNT(*) FILTER (WHERE is_active=true)::int AS active,
+                         COUNT(*) FILTER (WHERE role='system_admin' AND is_active=true)::int AS system_admins,
+                         COUNT(*) FILTER (WHERE role='business_admin' AND is_active=true)::int AS business_admins
+                  FROM platform_admins`),
+      pool.query(`SELECT COUNT(*)::int AS entries,
+                         COALESCE(SUM(jl.debit), 0) AS total_debit,
+                         COALESCE(SUM(jl.credit), 0) AS total_credit
+                  FROM journal_entries je
+                  JOIN journal_lines jl ON jl.journal_entry_id = je.id
+                  WHERE je.approved = true`),
+      pool.query(`SELECT COUNT(*)::int AS total,
+                         COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours')::int AS last_24h
+                  FROM audit_log`),
+    ]);
+
+    const bids = bidsRes.rows[0];
+    const tenants = tenantsRes.rows[0];
+    const suppliers = suppliersRes.rows[0];
+    const users = usersRes.rows[0];
+    const cash = cashRes.rows[0];
+    const orders = ordersRes.rows[0];
+    const invoices = invoicesRes.rows[0];
+    const admins = adminsRes.rows[0];
+    const journal = journalRes.rows[0];
+    const audit = auditRes.rows[0];
+    const cashBank = parseFloat(cash.cash_bank || 0);
+    const escrowCash = parseFloat(cash.escrow_cash || 0);
+    const journalDebit = parseFloat(journal.total_debit || 0);
+    const journalCredit = parseFloat(journal.total_credit || 0);
 
     res.json({
       totalBids: bids.total,
+      activeBids: bids.active,
+      awardedBids: bids.awarded,
       totalTenants: tenants.total,
+      activeTenants: tenants.active,
       totalSuppliers: suppliers.total,
-      totalUsers: users.total,
-      totalCashOnPlatform: parseFloat(cash.balance),
+      verifiedSuppliers: suppliers.verified,
+      pendingSuppliers: suppliers.pending,
+      totalUsers: parseInt(users.total || 0, 10),
+      activeUsers: parseInt(users.active || 0, 10),
+      totalCashOnPlatform: cashBank + escrowCash,
+      cashBank,
+      escrowCash,
+      orders: {
+        total: orders.total,
+        active: orders.active,
+        disputed: orders.disputed,
+      },
+      invoices: {
+        arOpen: parseFloat(invoices.ar_open || 0),
+        arOverdue: parseFloat(invoices.ar_overdue || 0),
+        apOpen: parseFloat(invoices.ap_open || 0),
+        openCount: parseInt(invoices.open_count || 0, 10),
+        overdueCount: parseInt(invoices.overdue_count || 0, 10),
+      },
+      admins: {
+        total: admins.total,
+        active: admins.active,
+        systemAdmins: admins.system_admins,
+        businessAdmins: admins.business_admins,
+      },
+      ledger: {
+        entries: journal.entries,
+        totalDebit: journalDebit,
+        totalCredit: journalCredit,
+        balanced: Math.abs(journalDebit - journalCredit) < 0.005,
+      },
+      audit: {
+        total: audit.total,
+        last24h: audit.last_24h,
+      },
       systemUptime: os.uptime(),
       memory: {
         rss: process.memoryUsage().rss,
@@ -87,15 +191,21 @@ router.put('/system/admins/:id', authenticate, requireRole('system_admin'), asyn
       // Allow password and name changes only
     }
 
-    // If trying to activate, enforce max 3 additional active admins (excluding immutable)
-    if (is_active === true) {
-      const { rows: [count] } = await client.query(
-        'SELECT COUNT(*)::int AS cnt FROM platform_admins WHERE is_active = true AND id != $1 AND email != $2',
-        [id, IMMUTABLE_EMAIL]
+    const nextRole = role || existing.role;
+    const nextActive = is_active !== undefined ? is_active : existing.is_active;
+    if (nextRole === 'system_admin' && existing.email !== IMMUTABLE_EMAIL) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'The system admin seat is reserved for the primary administrator.' });
+    }
+
+    if (nextActive === true) {
+      const { rows: [seat] } = await client.query(
+        'SELECT id, email FROM platform_admins WHERE role = $1 AND is_active = true AND id != $2',
+        [nextRole, id]
       );
-      if (count.cnt >= 3) {
+      if (seat) {
         await client.query('ROLLBACK');
-        return res.status(403).json({ error: 'Maximum 3 additional active administrators allowed.' });
+        return res.status(403).json({ error: `${ADMIN_ROLE_LABELS[nextRole]} already has an active administrator.` });
       }
     }
 
@@ -167,11 +277,14 @@ router.post('/system/console', authenticate, requireRole('system_admin'), async 
         output = 'Database connection OK';
         break;
       case 'active users':
-        const { rows: [active] } = await pool.query(
-          'SELECT COUNT(*)::int AS cnt FROM platform_admins WHERE is_active = true AND email != $1',
-          [IMMUTABLE_EMAIL]
+        const { rows: activeSeats } = await pool.query(
+          `SELECT role, COUNT(*)::int AS cnt
+           FROM platform_admins
+           WHERE is_active = true
+           GROUP BY role
+           ORDER BY role`
         );
-        output = `Additional active admins: ${active.cnt} (immutable admin excluded)`;
+        output = `Active admin seats:\n${activeSeats.map(row => `${row.role}: ${row.cnt}`).join('\n') || 'none'}`;
         break;
       case 'free':
         output = `Free memory: ${os.freemem()} bytes / Total: ${os.totalmem()} bytes`;

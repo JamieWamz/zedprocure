@@ -4,12 +4,13 @@
   "private": true,
   "proxy": "http://localhost:4000",
   "dependencies": {
+    "@ant-design/icons": "^5.2.6",
+    "antd": "^5.12.0",
+    "axios": "^1.6.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.0",
-    "axios": "^1.6.2",
-    "antd": "^5.12.0",
-    "@ant-design/icons": "^5.2.6"
+    "recharts": "^3.9.2"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -19,7 +20,15 @@
     "react-scripts": "5.0.1"
   },
   "browserslist": {
-    "production": [">0.2%", "not dead", "not op_mini all"],
-    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   }
 }

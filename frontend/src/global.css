@@ -236,6 +236,74 @@ html, body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
+.page-media-banner {
+  position: relative;
+  z-index: 1;
+  min-height: 132px;
+  margin-bottom: 18px;
+  padding: 22px 24px;
+  border-radius: 8px;
+  overflow: hidden;
+  color: #fff;
+  background-color: #102033;
+  background-position: center;
+  background-size: cover;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.page-media-banner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(8, 20, 36, 0.88), rgba(8, 20, 36, 0.55) 54%, rgba(8, 20, 36, 0.22));
+}
+
+.page-media-banner > * {
+  position: relative;
+  z-index: 1;
+}
+
+.page-media-banner h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 23px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.page-media-banner p {
+  margin: 5px 0 0;
+  color: rgba(255, 255, 255, 0.82);
+  max-width: 680px;
+}
+
+.page-media-banner .ant-btn {
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+}
+
+.page-media-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 720px) {
+  .page-media-banner {
+    align-items: flex-start;
+    flex-direction: column;
+    min-height: 150px;
+    padding: 18px;
+  }
+
+  .page-media-actions {
+    justify-content: flex-start;
+  }
+}
+
 .ant-table-thead > tr > th {
   background: #fafafa !important;
   font-weight: 600;

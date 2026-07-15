@@ -1,16 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-
-/**
- * CDN background images (Unsplash) that preload when the app starts.
- * These are used as a rotating background on the splash screen.
- */
-const BG_IMAGES = [
-  'https://images.unsplash.com/photo-1497366754035-f200968a6e3b?auto=format&fit=crop&w=1920&q=75',
-  'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1920&q=75',
-  'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1920&q=75',
-  'https://images.unsplash.com/photo-1497215842964-222b430dc094?auto=format&fit=crop&w=1920&q=75',
-  'https://images.unsplash.com/photo-1559136555-9303baea8ebd?auto=format&fit=crop&w=1920&q=75',
-];
+import { cdnImages } from '../cdnAssets';
 
 const MIN_SPLASH_MS = 2000; // minimum time to show splash
 
@@ -25,9 +14,9 @@ export default function SplashScreen({ onFinish }) {
   // Preload all background images
   useEffect(() => {
     let cancelled = false;
-    const total = BG_IMAGES.length;
+    const total = cdnImages.splash.length;
 
-    BG_IMAGES.forEach((url, idx) => {
+    cdnImages.splash.forEach((url, idx) => {
       const img = new Image();
       img.onload = () => {
         if (cancelled) return;
@@ -51,7 +40,7 @@ export default function SplashScreen({ onFinish }) {
   // When all images loaded + minimum time elapsed, trigger fade-out
   useEffect(() => {
     if (readyRef.current) return;
-    if (loadedRef.current < BG_IMAGES.length) return;
+    if (loadedRef.current < cdnImages.splash.length) return;
 
     const elapsed = Date.now() - startTime.current;
     const remaining = Math.max(0, MIN_SPLASH_MS - elapsed);
@@ -71,7 +60,7 @@ export default function SplashScreen({ onFinish }) {
       {/* Rotating background image */}
       <div
         className="splash-bg"
-        style={{ backgroundImage: `url(${BG_IMAGES[currentBg]})` }}
+        style={{ backgroundImage: `url(${cdnImages.splash[currentBg]})` }}
       />
 
       {/* Overlay */}

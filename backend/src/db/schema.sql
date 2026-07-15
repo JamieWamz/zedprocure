@@ -139,6 +139,7 @@ CREATE TABLE journal_entries (
     reference_id UUID,
     description TEXT,
     created_by UUID NOT NULL,
+    approved BOOLEAN NOT NULL DEFAULT true,
     is_reversal BOOLEAN NOT NULL DEFAULT false,
     reversed_entry_id UUID REFERENCES journal_entries(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -191,3 +192,82 @@ CREATE TABLE payment_transactions (
     gateway_response JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ─── In-app Wallet ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS wallets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    user_type VARCHAR(32) NOT NULL,
+    balance DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK (balance >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, user_type)
+);
+
+CREATE TABLE IF NOT EXISTS wallet_transactions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    wallet_id UUID NOT NULL REFERENCES wallets(id),
+    type VARCHAR(32) NOT NULL CHECK (type IN ('deposit','withdrawal','transfer_in','transfer_out','payment','refund')),
+    amount DECIMAL(14,2) NOT NULL,
+    balance_before DECIMAL(14,2) NOT NULL,
+    balance_after DECIMAL(14,2) NOT NULL,
+    reference VARCHAR(128),
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ─── Invoicing (AR / AP) ──────────────────────────────────────────────────────
+CREATE TABLE invoices (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    invoice_no VARCHAR(40) UNIQUE NOT NULL,
+    type VARCHAR(4) NOT NULL CHECK (type IN ('AR','AP')),
+    party_type VARCHAR(20) NOT NULL DEFAULT 'external'
+        CHECK (party_type IN ('customer','supplier','external')),
+    party_id UUID,
+    party_name VARCHAR(255) NOT NULL,
+    party_email VARCHAR(255),
+    order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+    bid_id UUID REFERENCES bids(id) ON DELETE SET NULL,
+    issue_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    due_date DATE NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft','sent','partially_paid','paid','overdue','cancelled')),
+    subtotal DECIMAL(15,2) NOT NULL DEFAULT 0,
+    tax_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+    total_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+    paid_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+    currency VARCHAR(10) NOT NULL DEFAULT 'ZMW',
+    notes TEXT,
+    created_by UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE invoice_lines (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+    description TEXT NOT NULL,
+    quantity DECIMAL(12,2) NOT NULL DEFAULT 1,
+    unit_price DECIMAL(15,2) NOT NULL DEFAULT 0,
+    tax_rate DECIMAL(5,2) NOT NULL DEFAULT 0,
+    amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+    line_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE invoice_payments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+    amount DECIMAL(15,2) NOT NULL,
+    payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    method VARCHAR(20) NOT NULL DEFAULT 'bank_transfer'
+        CHECK (method IN ('mobile_money','bank_transfer','wallet','cash')),
+    reference VARCHAR(128),
+    created_by UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_invoices_party ON invoices(party_type, party_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_invoices_type ON invoices(type);
+CREATE INDEX IF NOT EXISTS idx_invoice_lines_invoice ON invoice_lines(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice ON invoice_payments(invoice_id);

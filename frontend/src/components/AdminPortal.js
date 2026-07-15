@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Layout, Menu } from 'antd';
 import {
+  DashboardOutlined,
   FileTextOutlined,
   PlusOutlined,
   CheckCircleOutlined,
@@ -11,11 +12,13 @@ import {
 } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
+import BusinessAdminDashboard from './BusinessAdminDashboard';
 import TenantBidsList from './TenantBidsList';
 import CreateBidWizard from './CreateBidWizard';
 import BidDetail from './BidDetail';
 import SupplierVerification from './SupplierVerification';
 import FinancialLedger from './FinancialLedger';
+import FinanceInvoices from './FinanceInvoices';
 import OrdersList from './OrdersList';
 import UserManagement from './UserManagement';
 import TenantManagement from './TenantManagement';
@@ -29,25 +32,23 @@ export default function AdminPortal() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const menuItems = [];
-  if (role === 'business_admin') {
-    menuItems.push(
+  const menuItems = useMemo(() => {
+    const items = [];
+    if (role === 'business_admin') {
+      items.push(
+      { key: '/admin', icon: <DashboardOutlined />, label: 'Dashboard' },
       { key: '/admin/bids', icon: <FileTextOutlined />, label: 'Bids' },
       { key: '/admin/bids/new', icon: <PlusOutlined />, label: 'Create Bid' },
       { key: '/admin/orders', icon: <CheckCircleOutlined />, label: 'Orders' },
+      { key: '/admin/invoices', icon: <FileTextOutlined />, label: 'Invoices' },
       { key: '/admin/verification', icon: <ShopOutlined />, label: 'Supplier Verification' },
       { key: '/admin/ledger', icon: <DollarOutlined />, label: 'Financial Ledger' },
       { key: '/admin/users', icon: <UserOutlined />, label: 'User Accounts' },
       { key: '/admin/tenants', icon: <BankOutlined />, label: 'Organizations' },
-    );
-  } else if (role === 'tenant_admin') {
-    menuItems.push(
-      { key: '/admin/bids', icon: <FileTextOutlined />, label: 'Bids' },
-      { key: '/admin/bids/new', icon: <PlusOutlined />, label: 'Create Bid' },
-      { key: '/admin/orders', icon: <CheckCircleOutlined />, label: 'Orders' },
-      { key: '/admin/users', icon: <UserOutlined />, label: 'User Accounts' },
-    );
-  }
+      );
+    }
+    return items;
+  }, [role]);
 
   useEffect(() => {
     if (location.pathname === '/admin' && menuItems.length > 0) {
@@ -57,20 +58,33 @@ export default function AdminPortal() {
 
   const renderContent = () => {
     const path = location.pathname;
+    if (path === '/admin' || path === '/admin/') {
+      return <BusinessAdminDashboard />;
+    }
     if (path === '/admin/bids') return <TenantBidsList />;
     if (path === '/admin/bids/new') return <CreateBidWizard />;
     if (path.startsWith('/admin/bids/') && path.split('/').length === 4) return <BidDetail />;
     if (path === '/admin/orders') return <OrdersList />;
+    if (path === '/admin/invoices') return <FinanceInvoices />;
     if (path === '/admin/verification') return <SupplierVerification />;
     if (path === '/admin/ledger') return <FinancialLedger />;
     if (path === '/admin/users') return <UserManagement />;
     if (path === '/admin/tenants') return <TenantManagement />;
-    return null;
+    return <BusinessAdminDashboard />;
   };
 
   if (!user) {
     return <div style={{ padding: 24, textAlign: 'center' }}>Loading admin...</div>;
   }
+
+  if (role !== 'business_admin') {
+    return <div style={{ padding: 24, textAlign: 'center' }}>Business admin access is required.</div>;
+  }
+
+  const selectedKey = menuItems.find(item => (
+    item.key === location.pathname ||
+    (item.key !== '/admin' && location.pathname.startsWith(`${item.key}/`))
+  ))?.key || '/admin';
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -80,7 +94,7 @@ export default function AdminPortal() {
         </div>
         <Menu
           mode="inline"
-          selectedKeys={[location.pathname]}
+          selectedKeys={[selectedKey]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
           style={{ background: 'transparent', color: '#fff', borderRight: 0 }}

@@ -5,6 +5,10 @@ const LEDGER_ACCOUNTS = {
   PLATFORM_REVENUE: 'PLATFORM_REVENUE',
   CUSTOMER_FUNDING: 'CUSTOMER_FUNDING',
   SUPPLIER_PAYABLE: 'SUPPLIER_PAYABLE',
+  ACCOUNTS_RECEIVABLE: 'ACCOUNTS_RECEIVABLE',
+  ACCOUNTS_PAYABLE: 'ACCOUNTS_PAYABLE',
+  SERVICE_REVENUE: 'SERVICE_REVENUE',
+  SUPPLIER_EXPENSE: 'SUPPLIER_EXPENSE',
 };
 
 async function getAccountId(client, code) {
@@ -98,4 +102,64 @@ async function recordEscrowRelease(orderId, adminUserId, amount, client) {
   }, client);
 }
 
-module.exports = { recordBiddingFee, recordEscrowFunding, recordEscrowRelease, createJournalEntry };
+// ─── Invoice recognition ─────────────────────────────────────────────────────
+// When an AR invoice is issued we recognise a receivable (Dr AR, Cr Revenue).
+// When an AP invoice is issued we recognise the cost (Dr Expense, Cr AP).
+async function recordInvoiceIssue(invoice, userId, client) {
+  const amount = Number(invoice.total_amount);
+  if (invoice.type === 'AR') {
+    return createJournalEntry({
+      referenceType: 'invoice_issue',
+      referenceId: invoice.id,
+      description: `Invoice ${invoice.invoice_no} issued to ${invoice.party_name}`,
+      createdBy: userId,
+      lines: [
+        { accountCode: LEDGER_ACCOUNTS.ACCOUNTS_RECEIVABLE, debit: amount, credit: 0 },
+        { accountCode: LEDGER_ACCOUNTS.SERVICE_REVENUE, debit: 0, credit: amount }
+      ]
+    }, client);
+  }
+  return createJournalEntry({
+    referenceType: 'invoice_issue',
+    referenceId: invoice.id,
+    description: `Invoice ${invoice.invoice_no} received from ${invoice.party_name}`,
+    createdBy: userId,
+    lines: [
+      { accountCode: LEDGER_ACCOUNTS.SUPPLIER_EXPENSE, debit: amount, credit: 0 },
+      { accountCode: LEDGER_ACCOUNTS.ACCOUNTS_PAYABLE, debit: 0, credit: amount }
+    ]
+  }, client);
+}
+
+// ─── Invoice payment clearing ─────────────────────────────────────────────────
+// AR payment: cash in (Dr Cash, Cr AR). AP payment: cash out (Dr AP, Cr Cash).
+async function recordInvoicePayment(invoice, amount, userId, client) {
+  const amt = Number(amount);
+  if (invoice.type === 'AR') {
+    return createJournalEntry({
+      referenceType: 'invoice_payment',
+      referenceId: invoice.id,
+      description: `Payment received for invoice ${invoice.invoice_no}`,
+      createdBy: userId,
+      lines: [
+        { accountCode: LEDGER_ACCOUNTS.CASH, debit: amt, credit: 0 },
+        { accountCode: LEDGER_ACCOUNTS.ACCOUNTS_RECEIVABLE, debit: 0, credit: amt }
+      ]
+    }, client);
+  }
+  return createJournalEntry({
+    referenceType: 'invoice_payment',
+    referenceId: invoice.id,
+    description: `Payment made for invoice ${invoice.invoice_no}`,
+    createdBy: userId,
+    lines: [
+      { accountCode: LEDGER_ACCOUNTS.ACCOUNTS_PAYABLE, debit: amt, credit: 0 },
+      { accountCode: LEDGER_ACCOUNTS.CASH, debit: 0, credit: amt }
+    ]
+  }, client);
+}
+
+module.exports = {
+  recordBiddingFee, recordEscrowFunding, recordEscrowRelease,
+  recordInvoiceIssue, recordInvoicePayment, createJournalEntry,
+};
