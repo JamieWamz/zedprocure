@@ -144,7 +144,6 @@ async function seed() {
     console.error(e);
   } finally {
     client.release();
-    await pool.end();
   }
 }
 seed();
