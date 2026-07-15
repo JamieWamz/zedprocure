@@ -1,5 +1,9 @@
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
+const SYSTEM_ADMIN_EMAIL = process.env.SYSTEM_ADMIN_EMAIL || 'system.admin@freshstart.local';
+const BUSINESS_ADMIN_EMAIL = process.env.BUSINESS_ADMIN_EMAIL || 'business.admin@freshstart.local';
+const SYSTEM_ADMIN_NAME = process.env.SYSTEM_ADMIN_NAME || 'System Administrator';
+const BUSINESS_ADMIN_NAME = process.env.BUSINESS_ADMIN_NAME || 'Business Administrator';
 
 // Generates a password that satisfies the platform's validation policy.
 function generateStrongPassword() {
@@ -29,37 +33,37 @@ async function seed() {
   try {
     await client.query('BEGIN');
 
-    // System Admin – Mundia Wamuyuwa (immutable). Email is fixed; password from env or generated.
+    // System Admin (immutable). Email/password come from environment or safe placeholders.
     const sysPwd = await bcrypt.hash(resolvePassword('SYSTEM_ADMIN_PASSWORD', generatedLog), 12);
-    const { rows: [sysAdmin] } = await client.query('SELECT 1 FROM platform_admins WHERE email=$1', ['wamuyuwamundia@gmail.com']);
+    const { rows: [sysAdmin] } = await client.query('SELECT 1 FROM platform_admins WHERE email=$1', [SYSTEM_ADMIN_EMAIL]);
     if (!sysAdmin) {
       await client.query(
         `INSERT INTO platform_admins (email, password_hash, full_name, role)
-         VALUES ('wamuyuwamundia@gmail.com', $1, 'Mundia J Wamuyuwa', 'system_admin')`,
-        [sysPwd]
+         VALUES ($1, $2, $3, 'system_admin')`,
+        [SYSTEM_ADMIN_EMAIL, sysPwd, SYSTEM_ADMIN_NAME]
       );
     } else if (process.env.SYSTEM_ADMIN_PASSWORD) {
       // Update password hash on re-run if env var is set
       await client.query(
-        `UPDATE platform_admins SET password_hash=$1 WHERE email='wamuyuwamundia@gmail.com'`,
-        [sysPwd]
+        `UPDATE platform_admins SET password_hash=$1 WHERE email=$2`,
+        [sysPwd, SYSTEM_ADMIN_EMAIL]
       );
     }
 
-    // Business Admin – the sole admin for procurement + platform
+    // Business Admin – the sole admin for procurement + accounting operations.
     const bizPwd = await bcrypt.hash(resolvePassword('BUSINESS_ADMIN_PASSWORD', generatedLog), 12);
-    const { rows: [bizAdmin] } = await client.query('SELECT 1 FROM platform_admins WHERE email=$1', ['brightilunga6@gmail.com']);
+    const { rows: [bizAdmin] } = await client.query('SELECT 1 FROM platform_admins WHERE email=$1', [BUSINESS_ADMIN_EMAIL]);
     if (!bizAdmin) {
       await client.query(
         `INSERT INTO platform_admins (email, password_hash, full_name, role)
-         VALUES ('brightilunga6@gmail.com', $1, 'Bright Ilunga', 'business_admin')`,
-        [bizPwd]
+         VALUES ($1, $2, $3, 'business_admin')`,
+        [BUSINESS_ADMIN_EMAIL, bizPwd, BUSINESS_ADMIN_NAME]
       );
     } else if (process.env.BUSINESS_ADMIN_PASSWORD) {
       // Update password hash on re-run if env var is set
       await client.query(
-        `UPDATE platform_admins SET password_hash=$1 WHERE email='brightilunga6@gmail.com'`,
-        [bizPwd]
+        `UPDATE platform_admins SET password_hash=$1 WHERE email=$2`,
+        [bizPwd, BUSINESS_ADMIN_EMAIL]
       );
     }
 

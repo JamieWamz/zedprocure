@@ -6,7 +6,7 @@ const { validatePassword } = require('../utils/validation');
 const os = require('os');
 const router = express.Router();
 
-const IMMUTABLE_EMAIL = 'wamuyuwamundia@gmail.com';
+const IMMUTABLE_EMAIL = process.env.SYSTEM_ADMIN_EMAIL || 'system.admin@freshstart.local';
 const ADMIN_ROLE_LABELS = {
   system_admin: 'System Admin',
   business_admin: 'Business Admin',

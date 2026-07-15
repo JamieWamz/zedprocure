@@ -10,10 +10,26 @@ import SupplierDashboard from './components/SupplierDashboard';
 import BidDetail from './components/BidDetail';
 import PublicNoticeboard from './components/PublicNoticeboard';
 import AppLayout from './components/AppLayout';
+import { cdnImages } from './cdnAssets';
+
+function LoadingExperience() {
+  return (
+    <div className="route-loading">
+      <div className="route-loading-bg" style={{ backgroundImage: `url(${cdnImages.loginHero})` }} />
+      <div className="route-loading-overlay" />
+      <div className="route-loading-content">
+        <div className="route-loading-mark" />
+        <h1>Freshstart Procurement</h1>
+        <p>Preparing your workspace</p>
+        <div className="route-loading-dots"><span /><span /><span /></div>
+      </div>
+    </div>
+  );
+}
 
 function PrivateRoute({ children, requiredRoute }) {
   const { user, dashboardRoute, loading } = useAuth();
-  if (loading) return <div style={{ display:'flex', justifyContent:'center', alignItems:'center', height:'100vh' }}>Loading...</div>;
+  if (loading) return <LoadingExperience />;
   if (!user) return <Navigate to="/login" replace />;
 
   // Check if the required route is compatible with the user's dashboard route

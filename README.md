@@ -47,6 +47,8 @@ This application is intended to run as containers.
 JWT_SECRET=<generate-with-openssl-rand-hex-32>
 CORS_ORIGINS=http://localhost,http://your-domain.example
 COOKIE_SECURE=false
+SYSTEM_ADMIN_EMAIL=system.admin@freshstart.local
+BUSINESS_ADMIN_EMAIL=business.admin@freshstart.local
 SYSTEM_ADMIN_PASSWORD=<strong-password>
 BUSINESS_ADMIN_PASSWORD=<strong-password>
 ```
@@ -73,14 +75,14 @@ The backend container runs `node src/db/seed.js` before starting the API. Seed c
 
 ## Platform Admin Access
 
-Seeded platform admin emails:
+Seeded platform admin emails are configured through environment variables:
 
 | Seat | Email |
 | --- | --- |
-| System Admin | `wamuyuwamundia@gmail.com` |
-| Business Admin | `brightilunga6@gmail.com` |
+| System Admin | `SYSTEM_ADMIN_EMAIL` |
+| Business Admin | `BUSINESS_ADMIN_EMAIL` |
 
-Passwords are never hardcoded. Set `SYSTEM_ADMIN_PASSWORD` and `BUSINESS_ADMIN_PASSWORD` before first startup. If omitted, strong random passwords are generated and printed once in the backend logs; store them securely.
+Emails and passwords are never hardcoded. Set `SYSTEM_ADMIN_EMAIL`, `BUSINESS_ADMIN_EMAIL`, `SYSTEM_ADMIN_PASSWORD`, and `BUSINESS_ADMIN_PASSWORD` before first startup. If passwords are omitted, strong random passwords are generated and printed once in the backend logs; store them securely.
 
 ## Organic Onboarding
 

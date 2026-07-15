@@ -22,8 +22,12 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       NODE_ENV: production
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost}
-      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SYSTEM_ADMIN_EMAIL: ${SYSTEM_ADMIN_EMAIL:-system.admin@freshstart.local}
+      SYSTEM_ADMIN_NAME: ${SYSTEM_ADMIN_NAME:-System Administrator}
       SYSTEM_ADMIN_PASSWORD: ${SYSTEM_ADMIN_PASSWORD:-}
+      BUSINESS_ADMIN_EMAIL: ${BUSINESS_ADMIN_EMAIL:-business.admin@freshstart.local}
+      BUSINESS_ADMIN_NAME: ${BUSINESS_ADMIN_NAME:-Business Administrator}
       BUSINESS_ADMIN_PASSWORD: ${BUSINESS_ADMIN_PASSWORD:-}
     ports:
       - "4000:4000"

@@ -13,7 +13,6 @@ import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
 
 const { Text } = Typography;
-const IMMUTABLE_EMAIL = 'wamuyuwamundia@gmail.com';
 
 function money(value) {
   return `ZMW ${Number(value || 0).toLocaleString(undefined, {
@@ -123,8 +122,8 @@ export default function SystemHealthPortal() {
   };
 
   const toggleAdminActive = async (record, checked) => {
-    if (record.email === IMMUTABLE_EMAIL) {
-      message.error('Cannot deactivate the immutable admin');
+    if (record.role === 'system_admin') {
+      message.error('Cannot deactivate the primary system admin');
       return;
     }
     try {
@@ -202,12 +201,12 @@ export default function SystemHealthPortal() {
 
   const adminColumns = [
     { title: 'Name', dataIndex: 'full_name' },
-    { title: 'Email', dataIndex: 'email', render: (value, record) => record.email === IMMUTABLE_EMAIL ? <Space><Text>{value}</Text><Tag color="gold">Primary</Tag></Space> : value },
+    { title: 'Email', dataIndex: 'email', render: (value, record) => record.role === 'system_admin' ? <Space><Text>{value}</Text><Tag color="gold">Primary</Tag></Space> : value },
     { title: 'Role', dataIndex: 'role', render: value => <Tag color={value === 'system_admin' ? 'purple' : 'blue'}>{value.replace('_', ' ')}</Tag> },
     {
       title: 'Active',
       dataIndex: 'is_active',
-      render: (value, record) => record.email === IMMUTABLE_EMAIL
+      render: (value, record) => record.role === 'system_admin'
         ? <Switch checked disabled />
         : <Switch checked={value} onChange={checked => toggleAdminActive(record, checked)} />,
     },
@@ -217,7 +216,7 @@ export default function SystemHealthPortal() {
       render: (_, record) => (
         <Space>
           <Button size="small" onClick={() => openEditAdmin(record)}>Edit</Button>
-          {record.email === IMMUTABLE_EMAIL ? (
+          {record.role === 'system_admin' ? (
             <Text type="secondary">Immutable</Text>
           ) : (
             <Popconfirm title="Deactivate this admin?" onConfirm={() => deactivateAdmin(record.id)}>
@@ -455,7 +454,7 @@ export default function SystemHealthPortal() {
           <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}><Input /></Form.Item>
           <Form.Item name="role" label="Role" rules={[{ required: true }]}>
             <Select
-              disabled={selectedAdmin?.email === IMMUTABLE_EMAIL}
+              disabled={selectedAdmin?.role === 'system_admin'}
               options={[
                 { value: 'system_admin', label: 'System Admin', disabled: selectedAdmin?.role !== 'system_admin' && hasSystemAdmin },
                 { value: 'business_admin', label: 'Business Admin', disabled: selectedAdmin?.role !== 'business_admin' && hasBusinessAdmin },
