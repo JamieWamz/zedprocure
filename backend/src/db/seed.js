@@ -32,23 +32,35 @@ async function seed() {
     await client.query('BEGIN');
 
     // System Admin – Mundia Wamuyuwa (immutable). Email is fixed; password from env or generated.
+    const sysPwd = await bcrypt.hash(resolvePassword('SYSTEM_ADMIN_PASSWORD', generatedLog), 12);
     const { rows: [sysAdmin] } = await client.query('SELECT 1 FROM platform_admins WHERE email=$1', ['wamuyuwamundia@gmail.com']);
     if (!sysAdmin) {
-      const sysPwd = await bcrypt.hash(resolvePassword('SYSTEM_ADMIN_PASSWORD', generatedLog), 12);
       await client.query(
         `INSERT INTO platform_admins (email, password_hash, full_name, role)
          VALUES ('wamuyuwamundia@gmail.com', $1, 'Mundia J Wamuyuwa', 'system_admin')`,
         [sysPwd]
       );
+    } else if (process.env.SYSTEM_ADMIN_PASSWORD) {
+      // Update password hash on re-run if env var is set
+      await client.query(
+        `UPDATE platform_admins SET password_hash=$1 WHERE email='wamuyuwamundia@gmail.com'`,
+        [sysPwd]
+      );
     }
 
     // Business Admin – the sole admin for procurement + platform
+    const bizPwd = await bcrypt.hash(resolvePassword('BUSINESS_ADMIN_PASSWORD', generatedLog), 12);
     const { rows: [bizAdmin] } = await client.query('SELECT 1 FROM platform_admins WHERE email=$1', ['brightilunga6@gmail.com']);
     if (!bizAdmin) {
-      const bizPwd = await bcrypt.hash(resolvePassword('BUSINESS_ADMIN_PASSWORD', generatedLog), 12);
       await client.query(
         `INSERT INTO platform_admins (email, password_hash, full_name, role)
          VALUES ('brightilunga6@gmail.com', $1, 'Bright Ilunga', 'business_admin')`,
+        [bizPwd]
+      );
+    } else if (process.env.BUSINESS_ADMIN_PASSWORD) {
+      // Update password hash on re-run if env var is set
+      await client.query(
+        `UPDATE platform_admins SET password_hash=$1 WHERE email='brightilunga6@gmail.com'`,
         [bizPwd]
       );
     }
