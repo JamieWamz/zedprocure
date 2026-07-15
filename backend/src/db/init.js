@@ -1,14 +1,43 @@
 /**
  * Database initialization script for production.
  * Updates platform admin passwords from environment variables on startup.
+ * Runs database migrations.
  * This runs before the server starts in production.
  */
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
+const fs = require('fs');
+const path = require('path');
 
 async function init() {
   const client = await pool.connect();
   try {
+    // Run pending migrations
+    const migrationsDir = path.join(__dirname);
+    const migrationFiles = [
+      'migration_002_production.sql',
+      'migration_003_verification.sql',
+      'migration_004_manual_verification.sql',
+    ];
+
+    for (const file of migrationFiles) {
+      const filePath = path.join(migrationsDir, file);
+      if (fs.existsSync(filePath)) {
+        const sql = fs.readFileSync(filePath, 'utf8');
+        try {
+          await client.query(sql);
+          console.log(`Migration applied: ${file}`);
+        } catch (err) {
+          // If tables already exist, that's OK — migration is idempotent
+          if (err.code === '42P07' || err.message.includes('already exists')) {
+            console.log(`Migration ${file} already applied (skipping).`);
+          } else {
+            console.error(`Migration ${file} error:`, err.message);
+          }
+        }
+      }
+    }
+
     // Update System Admin password if provided
     if (process.env.SYSTEM_ADMIN_PASSWORD && process.env.SYSTEM_ADMIN_PASSWORD.length >= 10) {
       const sysHash = await bcrypt.hash(process.env.SYSTEM_ADMIN_PASSWORD, 12);
@@ -51,7 +80,10 @@ async function init() {
     console.log('Database initialization complete.');
   } catch (e) {
     console.error('Database initialization error:', e);
-    process.exit(1);
+    // Don't exit on migration errors, they may be idempotent
+    if (!e.message.includes('already exists') && e.code !== '42P07' && e.code !== '42710') {
+      process.exit(1);
+    }
   } finally {
     client.release();
   }

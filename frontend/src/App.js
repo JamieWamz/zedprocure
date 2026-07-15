@@ -7,6 +7,7 @@ import SystemHealthPortal from './components/SystemHealthPortal';
 import AdminPortal from './components/AdminPortal';
 import CustomerDashboard from './components/CustomerDashboard';
 import SupplierDashboard from './components/SupplierDashboard';
+import SupplierRegistration from './components/SupplierRegistration';
 import BidDetail from './components/BidDetail';
 import PublicNoticeboard from './components/PublicNoticeboard';
 import AppLayout from './components/AppLayout';
@@ -51,6 +52,7 @@ function AppContent() {
   return (
     <Routes>
           <Route path="/login" element={<UnifiedLogin />} />
+          <Route path="/register/supplier" element={<SupplierRegistration />} />
           <Route path="/system-health" element={
             <PrivateRoute requiredRoute="/system-health"><SystemHealthPortal /></PrivateRoute>
           } />

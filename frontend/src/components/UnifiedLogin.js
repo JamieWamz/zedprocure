@@ -112,10 +112,20 @@ export default function UnifiedLogin() {
                           ]}
                         />
                       </Form.Item>
-                      {accountType === 'supplier' && (
-                        <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Supplier accounts start pending. Business Admin verifies suppliers before they can bid." />
-                      )}
-                      <Form.Item name="full_name" label="Full Name" rules={[{ required: true }]}>
+                         {accountType === 'supplier' && (
+                           <Alert 
+                             type="info" 
+                             showIcon 
+                             style={{ marginBottom: 12 }} 
+                             message={
+                               <span>
+                                 Supplier accounts require document upload. 
+                                 <a href="/register/supplier" style={{ marginLeft: 8 }}>Register with documents</a>
+                               </span>
+                             } 
+                           />
+                         )}
+                         <Form.Item name="full_name" label="Full Name" rules={[{ required: true }]}>
                         <Input size="large" />
                       </Form.Item>
                       <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>

@@ -17,7 +17,8 @@
     "build": "react-scripts build"
   },
   "devDependencies": {
-    "react-scripts": "5.0.1"
+    "react-scripts": "5.0.1",
+    "yaml": "^2.9.0"
   },
   "browserslist": {
     "production": [

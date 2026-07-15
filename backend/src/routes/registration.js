@@ -5,13 +5,174 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const multer = require('multer');
+const path = require('path');
 const pool = require('../config/db');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
 const { validatePassword } = require('../utils/validation');
 const { sendPasswordReset, sendWelcome, sendInvitation } = require('../services/emailService');
 const router = express.Router();
 
+// Configure multer for document uploads during registration
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(__dirname, '../../uploads'));
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    crypto.randomBytes(16, (err, buf) => {
+      if (err) return cb(err);
+      cb(null, `reg-doc-${buf.toString('hex')}${ext}`);
+    });
+  }
+});
+
+const ALLOWED_EXT = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'];
+const ALLOWED_MIME = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png',
+];
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ALLOWED_EXT.includes(ext) && ALLOWED_MIME.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Allowed: PDF, DOC, DOCX, JPG, PNG'));
+    }
+  }
+});
+
+// Required document types for Zambian suppliers
+const REQUIRED_DOCUMENT_TYPES = [
+  'pacra_certificate',
+  'zra_tpin',
+  'zra_tax_clearance',
+  'business_license',
+  'directors_id',
+  'bank_reference'
+];
+
+// ─── Get Required Document Types ─────────────────────────────────────────────
+router.get('/required-documents', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT document_type, display_name, description FROM required_document_types 
+       WHERE is_active = true ORDER BY sort_order`,
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error('Error fetching required documents:', e);
+    res.status(500).json({ error: 'Failed to fetch required document types' });
+  }
+});
+
+// ─── Supplier Registration with Document Upload ───────────────────────────────
+// This endpoint handles multipart form data for document uploads
+router.post('/register-supplier', upload.fields([
+  { name: 'pacra_certificate', maxCount: 1 },
+  { name: 'zra_tpin', maxCount: 1 },
+  { name: 'zra_tax_clearance', maxCount: 1 },
+  { name: 'business_license', maxCount: 1 },
+  { name: 'directors_id', maxCount: 1 },
+  { name: 'bank_reference', maxCount: 1 }
+]), async (req, res) => {
+  const { email, password, full_name, company_name, registration_number } = req.body;
+  
+  // Validate required fields
+  if (!email || !password || !full_name || !company_name) {
+    return res.status(400).json({ error: 'Email, password, full name, and company name are required' });
+  }
+  
+  const pwErr = validatePassword(password);
+  if (pwErr) return res.status(400).json({ error: pwErr });
+
+  // Check if all required documents are uploaded
+  const uploadedDocs = req.files || {};
+  const missingRequired = REQUIRED_DOCUMENT_TYPES.filter(
+    docType => !uploadedDocs[docType]
+  );
+  
+  if (missingRequired.length > 0) {
+    return res.status(400).json({ 
+      error: `Missing required documents: ${missingRequired.join(', ')}` 
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Check if email already exists
+    const { rows: existing } = await client.query(
+      `SELECT email FROM (
+        SELECT email FROM platform_admins UNION ALL
+        SELECT email FROM tenant_users UNION ALL
+        SELECT email FROM supplier_users
+      ) u WHERE email=$1 LIMIT 1`,
+      [email]
+    );
+    if (existing.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
+
+    const hash = await bcrypt.hash(password, 12);
+    const supplierId = crypto.randomUUID();
+
+    // Create supplier with documents_submitted status
+    const { rows: [supplier] } = await client.query(
+      `INSERT INTO suppliers (id, company_name, registration_number, verification_status, is_active, verification_method)
+       VALUES ($1, $2, $3, 'documents_submitted', false, 'manual')
+       RETURNING id, company_name, verification_status`,
+      [supplierId, company_name, registration_number || null]
+    );
+
+    // Create supplier user
+    const { rows: [supplierUser] } = await client.query(
+      `INSERT INTO supplier_users (id, supplier_id, email, password_hash, full_name)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, email, full_name`,
+      [crypto.randomUUID(), supplier.id, email, hash, full_name]
+    );
+
+    // Insert all uploaded documents
+    for (const [docType, files] of Object.entries(uploadedDocs)) {
+      const file = files[0];
+      await client.query(
+        `INSERT INTO supplier_documents (supplier_id, document_type, file_path, document_category)
+         VALUES ($1, $2, $3, 'required')`,
+        [supplierId, docType, file.path]
+      );
+    }
+
+    await client.query('COMMIT');
+    await sendWelcome(email, full_name);
+    
+    res.status(201).json({
+      message: 'Supplier account created with documents. Business Admin will review and verify.',
+      email: supplierUser.email,
+      full_name: supplierUser.full_name,
+      supplier_status: supplier.verification_status,
+      documents_uploaded: Object.keys(uploadedDocs).length,
+    });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('Supplier registration error:', e);
+    res.status(500).json({ error: 'Registration failed: ' + e.message });
+  } finally {
+    client.release();
+  }
+});
+
 // ─── Self-Registration (customer / supplier) ────────────────────────────────
+// Legacy endpoint - kept for customer registration
 router.post('/register', async (req, res) => {
   const {
     email, password, full_name, organization, registration_number,
@@ -47,9 +208,11 @@ router.post('/register', async (req, res) => {
     const hash = await bcrypt.hash(password, 12);
 
     if (type === 'supplier') {
+      // For backward compatibility, create supplier without documents
+      // They will need to upload documents via the dashboard
       const { rows: [supplier] } = await client.query(
-        `INSERT INTO suppliers (id, company_name, registration_number, verification_status, is_active)
-         VALUES ($1, $2, $3, 'pending', false)
+        `INSERT INTO suppliers (id, company_name, registration_number, verification_status, is_active, verification_method)
+         VALUES ($1, $2, $3, 'pending', false, 'manual')
          RETURNING id, company_name, verification_status`,
         [crypto.randomUUID(), company_name || organization, registration_number || null]
       );
@@ -62,7 +225,7 @@ router.post('/register', async (req, res) => {
       await client.query('COMMIT');
       await sendWelcome(email, full_name);
       return res.status(201).json({
-        message: 'Supplier account created. Business Admin will verify the supplier before bidding access is enabled.',
+        message: 'Supplier account created. Please upload required documents via the dashboard for verification.',
         email: supplierUser.email,
         full_name: supplierUser.full_name,
         supplier_status: supplier.verification_status,

@@ -43,17 +43,41 @@ const upload = multer({
   }
 });
 
+// All valid document types for Zambian suppliers
+const VALID_DOCUMENT_TYPES = [
+  'pacra_certificate',
+  'zra_tpin',
+  'zra_tax_clearance',
+  'business_license',
+  'directors_id',
+  'bank_reference',
+  'certificate_of_incorporation',
+  'tax_clearance',
+  'vat_certificate',
+  'tpin_certificate',
+  'directors_list',
+  'audited_accounts',
+  'insurance_certificate',
+  'nppa_registration',
+  'company_profile',
+  'procurement_history'
+];
+
 router.post('/supplier/documents', authenticate, upload.single('file'), async (req, res) => {
   if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
   try {
     const { document_type } = req.body;
     if (!document_type) return res.status(400).json({ error: 'document_type is required' });
+    if (!VALID_DOCUMENT_TYPES.includes(document_type)) {
+      return res.status(400).json({ error: `Invalid document type. Valid types: ${VALID_DOCUMENT_TYPES.join(', ')}` });
+    }
     if (!req.file) return res.status(400).json({ error: 'File is required' });
 
     const file_path = req.file.path;
     const { rows } = await pool.query(
-      `INSERT INTO supplier_documents (supplier_id, document_type, file_path)
-       SELECT supplier_id, $1, $2 FROM supplier_users WHERE id = $3 RETURNING *`,
+      `INSERT INTO supplier_documents (supplier_id, document_type, file_path, document_category)
+       SELECT supplier_id, $1, $2, 'required' FROM supplier_users WHERE id = $3 
+       RETURNING *`,
       [document_type, file_path, req.user.user_id]
     );
     await pool.query(
@@ -64,6 +88,26 @@ router.post('/supplier/documents', authenticate, upload.single('file'), async (r
   } catch (e) {
     console.error('Error uploading document:', e);
     res.status(500).json({ error: 'Failed to upload document: ' + e.message });
+  }
+});
+
+// ─── Get all valid document types ───────────────────────────────────────────
+router.get('/supplier/document-types', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT document_type, display_name, description FROM required_document_types 
+       WHERE is_active = true ORDER BY sort_order`,
+    );
+    // Also include any document types that might not be in the table
+    const allTypes = [...rows];
+    const extraTypes = VALID_DOCUMENT_TYPES.filter(t => !rows.find(r => r.document_type === t));
+    for (const type of extraTypes) {
+      allTypes.push({ document_type: type, display_name: type.replace(/_/g, ' ') });
+    }
+    res.json(allTypes);
+  } catch (e) {
+    console.error('Error fetching document types:', e);
+    res.status(500).json({ error: 'Failed to fetch document types' });
   }
 });
 
@@ -93,6 +137,7 @@ router.get('/supplier/profile', authenticate, async (req, res) => {
   }
 });
 
+// ─── Get pending suppliers (backward compatibility) ───────────────────────────
 router.get('/admin/suppliers/pending', authenticate, requireRole('business_admin'), async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -105,21 +150,6 @@ router.get('/admin/suppliers/pending', authenticate, requireRole('business_admin
   } catch (e) {
     console.error('Error fetching pending suppliers:', e);
     res.status(500).json({ error: 'Failed to fetch pending suppliers' });
-  }
-});
-
-router.put('/admin/suppliers/:id/verify', authenticate, requireRole('business_admin'), async (req, res) => {
-  try {
-    const { status } = req.body;
-    if (!['verified','rejected'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
-    await pool.query(
-      `UPDATE suppliers SET verification_status = $1, is_active = $2 WHERE id = $3`,
-      [status, status === 'verified', req.params.id]
-    );
-    res.json({ success: true });
-  } catch (e) {
-    console.error('Error verifying supplier:', e);
-    res.status(500).json({ error: 'Failed to verify supplier' });
   }
 });
 

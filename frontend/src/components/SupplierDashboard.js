@@ -39,27 +39,40 @@ export default function SupplierDashboard() {
   const [profile, setProfile] = useState(null);
   const [summary, setSummary] = useState(null);
   const [docFile, setDocFile] = useState(null);
-  const [docType, setDocType] = useState('tax_clearance');
+  const [docType, setDocType] = useState('pacra_certificate');
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [signingInvoice, setSigningInvoice] = useState(null);
   const [signingOrder, setSigningOrder] = useState(null);
+  const [documentTypes, setDocumentTypes] = useState([]);
+
+  // Required document types for Zambian suppliers
+  const REQUIRED_DOCUMENTS = [
+    { type: 'pacra_certificate', label: 'PACRA Certificate' },
+    { type: 'zra_tpin', label: 'ZRA TPIN Certificate' },
+    { type: 'zra_tax_clearance', label: 'ZRA Tax Clearance' },
+    { type: 'business_license', label: 'Business License' },
+    { type: 'directors_id', label: 'Directors ID Copies' },
+    { type: 'bank_reference', label: 'Bank Reference Letter' }
+  ];
 
   const fetchPortal = useCallback(async () => {
     setLoading(true);
     try {
-      const [bidRes, invoiceRes, summaryRes, orderRes, profileRes] = await Promise.all([
+      const [bidRes, invoiceRes, summaryRes, orderRes, profileRes, docTypesRes] = await Promise.all([
         axios.get('/api/supplier/bids'),
         axios.get('/api/invoices?type=AP').catch(() => ({ data: [] })),
         axios.get('/api/invoices/summary').catch(() => ({ data: null })),
         axios.get('/api/orders').catch(() => ({ data: [] })),
         axios.get('/api/supplier/profile').catch(() => ({ data: null })),
+        axios.get('/api/supplier/document-types').catch(() => ({ data: [] })),
       ]);
       setInvitations(bidRes.data);
       setInvoices(invoiceRes.data);
       setSummary(summaryRes.data);
       setOrders(orderRes.data);
       setProfile(profileRes.data);
+      setDocumentTypes(docTypesRes.data || []);
     } catch {
       message.error('Failed to load supplier workspace');
     } finally {
@@ -188,16 +201,48 @@ export default function SupplierDashboard() {
             )}
           </Card>
 
-          <Card title="Compliance Documents" className="table-card" style={{ marginBottom: 16 }}>
+          <Card title="Required Documents Checklist" className="table-card" style={{ marginBottom: 16 }}>
+            <List
+              size="small"
+              dataSource={REQUIRED_DOCUMENTS}
+              locale={{ emptyText: 'No required documents defined' }}
+              renderItem={doc => {
+                const uploaded = profile?.documents?.find(d => d.document_type === doc.type);
+                return (
+                  <List.Item
+                    actions={[
+                      uploaded ? 
+                        <Tag color={uploaded.verification_status === 'verified' ? 'success' : 'processing'}>
+                          {uploaded.verification_status === 'verified' ? 'Verified' : 'Pending Review'}
+                        </Tag> :
+                        <Tag color="warning">Not Uploaded</Tag>
+                    ]}
+                  >
+                    <List.Item.Meta 
+                      title={doc.label} 
+                      description={uploaded ? `Uploaded: ${new Date(uploaded.upload_date).toLocaleDateString()}` : 'Required for verification'}
+                    />
+                  </List.Item>
+                );
+              }}
+            />
+          </Card>
+
+          <Card title="Upload Additional Document" className="table-card" style={{ marginBottom: 16 }}>
             <Space wrap>
-              <Select value={docType} onChange={setDocType} style={{ width: 220 }}>
-                <Select.Option value="tax_clearance">Tax Clearance</Select.Option>
-                <Select.Option value="ppda_registration">PPDA Registration</Select.Option>
-                <Select.Option value="company_certificate">Company Certificate</Select.Option>
+              <Select value={docType} onChange={setDocType} style={{ width: 260 }}>
+                {documentTypes.map(dt => (
+                  <Select.Option key={dt.document_type} value={dt.document_type}>
+                    {dt.display_name || dt.document_type.replace(/_/g, ' ')}
+                  </Select.Option>
+                ))}
               </Select>
               <input type="file" onChange={e => setDocFile(e.target.files[0])} />
               <Button icon={<UploadOutlined />} onClick={handleUploadDoc} loading={uploading}>Submit</Button>
             </Space>
+          </Card>
+
+          <Card title="All Documents" className="table-card" style={{ marginBottom: 16 }}>
             <List
               size="small"
               style={{ marginTop: 12 }}
@@ -205,8 +250,14 @@ export default function SupplierDashboard() {
               locale={{ emptyText: 'No compliance documents uploaded yet' }}
               renderItem={doc => (
                 <List.Item>
-                  <List.Item.Meta title={doc.document_type.replaceAll('_', ' ')} description={new Date(doc.upload_date).toLocaleString()} />
-                  <Tag>{doc.verification_status}</Tag>
+                  <List.Item.Meta 
+                    title={doc.document_type.replaceAll('_', ' ')} 
+                    description={new Date(doc.upload_date).toLocaleString()} 
+                  />
+                  <Tag color={doc.verification_status === 'verified' ? 'success' : 
+                               doc.verification_status === 'rejected' ? 'error' : 'processing'}>
+                    {doc.verification_status}
+                  </Tag>
                 </List.Item>
               )}
             />

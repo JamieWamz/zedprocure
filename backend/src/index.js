@@ -52,6 +52,7 @@ app.use('/api', require('./routes/supplierList'));
 app.use('/api', require('./routes/tenant'));
 app.use('/api', require('./routes/system'));
 app.use('/api', require('./routes/dashboard'));
+app.use('/api', require('./routes/verification'));
 
 app.get('/api/me', authenticate, async (req, res) => {
   let route = '/login';
