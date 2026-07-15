@@ -64,6 +64,22 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Tenant admins have been retired. Business Admin owns organization/customer operations.
+UPDATE tenant_users SET role = 'customer' WHERE role = 'tenant_admin';
+
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE table_name = 'tenant_users' AND constraint_name = 'tenant_users_role_check'
+  ) THEN
+    ALTER TABLE tenant_users DROP CONSTRAINT tenant_users_role_check;
+  END IF;
+END $$;
+
+ALTER TABLE tenant_users ALTER COLUMN role SET DEFAULT 'customer';
+ALTER TABLE tenant_users ADD CONSTRAINT tenant_users_role_check CHECK (role IN ('customer')) NOT VALID;
+ALTER TABLE tenant_users VALIDATE CONSTRAINT tenant_users_role_check;
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_invitations_token ON invitations(token);
@@ -133,3 +149,25 @@ CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
 CREATE INDEX IF NOT EXISTS idx_invoices_type ON invoices(type);
 CREATE INDEX IF NOT EXISTS idx_invoice_lines_invoice ON invoice_lines(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice ON invoice_payments(invoice_id);
+
+-- ─── Digital signatures: paperless invoice/order approvals ─────────────────
+CREATE TABLE IF NOT EXISTS digital_signatures (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    document_type VARCHAR(30) NOT NULL CHECK (document_type IN ('invoice','order','bid')),
+    document_id UUID NOT NULL,
+    signer_user_id UUID NOT NULL,
+    signer_user_type VARCHAR(32) NOT NULL,
+    signer_role VARCHAR(32),
+    signer_email VARCHAR(255),
+    signer_name VARCHAR(150) NOT NULL,
+    signer_title VARCHAR(120),
+    signature_hash VARCHAR(128) UNIQUE NOT NULL,
+    consent_text TEXT NOT NULL,
+    ip_address INET,
+    user_agent TEXT,
+    signed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (document_type, document_id, signer_user_id, signer_user_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_digital_signatures_document
+  ON digital_signatures(document_type, document_id);

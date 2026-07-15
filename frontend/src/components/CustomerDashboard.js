@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Button, Card, Col, Empty, Form, Input, InputNumber, Row, Statistic,
-  Table, Tag, Typography, message,
+  Alert, Button, Card, Col, Empty, Form, Input, InputNumber, Modal, Row, Select,
+  Space, Statistic, Table, Tag, Typography, message,
 } from 'antd';
 import {
-  ClockCircleOutlined, FileTextOutlined, ReloadOutlined, SendOutlined,
+  AuditOutlined, BankOutlined, ClockCircleOutlined, FileTextOutlined, ReloadOutlined,
+  SendOutlined, ShoppingCartOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
+import DigitalSignatureModal from './DigitalSignatureModal';
 
 const { Text } = Typography;
 
@@ -34,25 +36,32 @@ export default function CustomerDashboard() {
   const [loading, setLoading] = useState(false);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoices, setInvoices] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [signingInvoice, setSigningInvoice] = useState(null);
+  const [signingOrder, setSigningOrder] = useState(null);
+  const [fundingOrder, setFundingOrder] = useState(null);
+  const [fundForm] = Form.useForm();
 
-  const loadInvoices = useCallback(async () => {
+  const loadPortal = useCallback(async () => {
     setInvoiceLoading(true);
     try {
-      const [invoiceRes, summaryRes] = await Promise.all([
+      const [invoiceRes, summaryRes, orderRes] = await Promise.all([
         axios.get('/api/invoices?type=AR'),
         axios.get('/api/invoices/summary'),
+        axios.get('/api/orders').catch(() => ({ data: [] })),
       ]);
       setInvoices(invoiceRes.data);
       setSummary(summaryRes.data);
+      setOrders(orderRes.data);
     } catch (e) {
-      message.error(e.response?.data?.error || 'Failed to load invoices');
+      message.error(e.response?.data?.error || 'Failed to load customer workspace');
     } finally {
       setInvoiceLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadInvoices(); }, [loadInvoices]);
+  useEffect(() => { loadPortal(); }, [loadPortal]);
 
   const onFinish = async (values) => {
     setLoading(true);
@@ -66,6 +75,25 @@ export default function CustomerDashboard() {
     }
   };
 
+  const submitEscrowFunding = async () => {
+    if (!fundingOrder) return;
+    try {
+      const values = await fundForm.validateFields();
+      await axios.post('/api/escrow/fund', {
+        order_id: fundingOrder.id,
+        amount: values.amount,
+        payment_method: values.payment_method,
+        transaction_ref: values.transaction_ref || `ESC-${Date.now()}-${fundingOrder.id.slice(0, 6)}`,
+      });
+      message.success('Escrow funded');
+      setFundingOrder(null);
+      fundForm.resetFields();
+      loadPortal();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Failed to fund escrow');
+    }
+  };
+
   const columns = [
     { title: 'Invoice #', dataIndex: 'invoice_no', render: value => <Text code>{value}</Text> },
     { title: 'Due', dataIndex: 'due_date', render: (value, row) => <Text type={row.overdue ? 'danger' : undefined}>{value}</Text> },
@@ -73,6 +101,32 @@ export default function CustomerDashboard() {
     { title: 'Paid', dataIndex: 'paid_amount', render: value => money(value) },
     { title: 'Balance', render: (_, row) => money(Number(row.total_amount) - Number(row.paid_amount)) },
     { title: 'Status', render: (_, row) => statusTag(row) },
+    { title: 'Action', render: (_, row) => <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningInvoice(row)}>Sign</Button> },
+  ];
+
+  const orderColumns = [
+    { title: 'Order', dataIndex: 'id', render: value => <Text code>{value.slice(0, 8)}</Text> },
+    { title: 'Supplier', dataIndex: 'supplier_name', render: value => value || '-' },
+    { title: 'Total', dataIndex: 'total_amount', render: value => money(value) },
+    { title: 'Status', dataIndex: 'status', render: value => <Tag>{String(value).replaceAll('_', ' ')}</Tag> },
+    {
+      title: 'Escrow',
+      render: (_, row) => <Tag color={row.escrow_status === 'funded' || row.escrow_status === 'released' ? 'success' : 'warning'}>{row.escrow_status || 'not funded'}</Tag>,
+    },
+    {
+      title: 'Actions',
+      render: (_, row) => (
+        <Space>
+          <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningOrder(row)}>Sign</Button>
+          {row.escrow_status !== 'funded' && row.escrow_status !== 'released' && (
+            <Button size="small" type="primary" icon={<BankOutlined />} onClick={() => {
+              fundForm.setFieldsValue({ amount: Number(row.total_amount), payment_method: 'bank_transfer' });
+              setFundingOrder(row);
+            }}>Fund Escrow</Button>
+          )}
+        </Space>
+      ),
+    },
   ];
 
   return (
@@ -83,7 +137,7 @@ export default function CustomerDashboard() {
           <p>Submit procurement requirements and track invoices, balances and due dates in one workspace.</p>
         </div>
         <div className="page-media-actions">
-          <Button icon={<ReloadOutlined />} onClick={loadInvoices} loading={invoiceLoading}>Refresh Invoices</Button>
+          <Button icon={<ReloadOutlined />} onClick={loadPortal} loading={invoiceLoading}>Refresh</Button>
         </div>
       </div>
 
@@ -101,6 +155,11 @@ export default function CustomerDashboard() {
         <Col xs={24} md={8}>
           <Card>
             <Statistic title="Paid This Month" value={money(summary?.paidThisMonth)} valueStyle={{ color: '#389e0d' }} />
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card>
+            <Statistic title="Orders" value={orders.length} prefix={<ShoppingCartOutlined />} valueStyle={{ color: '#1677ff' }} />
           </Card>
         </Col>
       </Row>
@@ -130,6 +189,17 @@ export default function CustomerDashboard() {
           </Card>
         </Col>
         <Col xs={24} lg={14}>
+          <Card title="Orders & Escrow" className="table-card" style={{ marginBottom: 16 }}>
+            <Table
+              rowKey="id"
+              loading={invoiceLoading}
+              dataSource={orders}
+              columns={orderColumns}
+              pagination={{ pageSize: 5 }}
+              scroll={{ x: 820 }}
+              locale={{ emptyText: <Empty description="No orders yet" /> }}
+            />
+          </Card>
           <Card title="My Invoices" className="table-card">
             <Table
               rowKey="id"
@@ -143,6 +213,39 @@ export default function CustomerDashboard() {
           </Card>
         </Col>
       </Row>
+      <DigitalSignatureModal
+        open={!!signingInvoice}
+        onClose={() => setSigningInvoice(null)}
+        documentType="invoice"
+        documentId={signingInvoice?.id}
+        documentLabel={signingInvoice ? `Invoice ${signingInvoice.invoice_no}` : ''}
+      />
+      <DigitalSignatureModal
+        open={!!signingOrder}
+        onClose={() => setSigningOrder(null)}
+        documentType="order"
+        documentId={signingOrder?.id}
+        documentLabel={signingOrder ? `Order ${signingOrder.id.slice(0, 8)} with ${signingOrder.supplier_name || 'supplier'}` : ''}
+      />
+      <Modal
+        title={fundingOrder ? `Fund Escrow for Order ${fundingOrder.id.slice(0, 8)}` : 'Fund Escrow'}
+        open={!!fundingOrder}
+        onCancel={() => setFundingOrder(null)}
+        onOk={submitEscrowFunding}
+      >
+        <Form form={fundForm} layout="vertical">
+          <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Funds are held in escrow until Business Admin releases payment after fulfillment." />
+          <Form.Item name="amount" label="Amount (ZMW)" rules={[{ required: true }]}>
+            <InputNumber min={0.01} step={0.01} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="payment_method" label="Payment Method" rules={[{ required: true }]}>
+            <Select options={[{ value: 'bank_transfer', label: 'Bank Transfer' }, { value: 'mobile_money', label: 'Mobile Money' }]} />
+          </Form.Item>
+          <Form.Item name="transaction_ref" label="Transaction Reference">
+            <Input placeholder="Optional bank/mobile money reference" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

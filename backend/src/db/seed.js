@@ -1,6 +1,4 @@
 const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
 const pool = require('../config/db');
 
 // Generates a password that satisfies the platform's validation policy.
@@ -65,86 +63,8 @@ async function seed() {
       );
     }
 
-    // Tenant (Ministry of Works) – the default procuring entity
-    const { rows: [tenant] } = await client.query(
-      `INSERT INTO tenants (id, name, registration_number)
-       VALUES ($1, 'Ministry of Works and Supply', 'MW/001')
-       ON CONFLICT (registration_number) DO NOTHING
-       RETURNING id`,
-      [uuidv4()]
-    );
-    const tenantId = tenant
-      ? tenant.id
-      : (await client.query('SELECT id FROM tenants WHERE registration_number = $1', ['MW/001'])).rows[0].id;
-
-    // Tenant admin
-    const taPwd = await bcrypt.hash(resolvePassword('TENANT_ADMIN_PASSWORD', generatedLog), 12);
-    const { rows: [existingTenantAdmin] } = await client.query(
-      'SELECT 1 FROM tenant_users WHERE tenant_id=$1 AND email=$2', [tenantId, 'tenantadmin@works.gov.zm']
-    );
-    if (!existingTenantAdmin) {
-      await client.query(
-        `INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role)
-         VALUES ($1, $2, 'tenantadmin@works.gov.zm', $3, 'Tenant Admin', 'tenant_admin')`,
-        [uuidv4(), tenantId, taPwd]
-      );
-    } else if (process.env.TENANT_ADMIN_PASSWORD) {
-      await client.query(
-        `UPDATE tenant_users SET password_hash=$1 WHERE tenant_id=$2 AND email='tenantadmin@works.gov.zm'`,
-        [taPwd, tenantId]
-      );
-    }
-
-    // Customer
-    const custPwd = await bcrypt.hash(resolvePassword('CUSTOMER_PASSWORD', generatedLog), 12);
-    const { rows: [existingCustomer] } = await client.query(
-      'SELECT 1 FROM tenant_users WHERE tenant_id=$1 AND email=$2', [tenantId, 'customer@works.gov.zm']
-    );
-    if (!existingCustomer) {
-      await client.query(
-        `INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role)
-         VALUES ($1, $2, 'customer@works.gov.zm', $3, 'John Customer', 'customer')`,
-        [uuidv4(), tenantId, custPwd]
-      );
-    } else if (process.env.CUSTOMER_PASSWORD) {
-      await client.query(
-        `UPDATE tenant_users SET password_hash=$1 WHERE tenant_id=$2 AND email='customer@works.gov.zm'`,
-        [custPwd, tenantId]
-      );
-    }
-
-    // Verified suppliers (3 for competitive bidding)
-    const suppliers = [
-      { company: 'Zambia Builders Ltd', reg: 'ZB/2023', email: 'supplier1@builders.zm', name: 'Supplier One' },
-      { company: 'Lusaka Engineering Co.', reg: 'LE/2022', email: 'supplier2@engineering.zm', name: 'Supplier Two' },
-      { company: 'Copperbelt Traders', reg: 'CT/2023', email: 'supplier3@traders.zm', name: 'Supplier Three' },
-    ];
-
-    for (const s of suppliers) {
-      const envVar = `SUPPLIER_PASSWORD_${s.reg.replace('/', '_')}`;
-      const pwd = await bcrypt.hash(resolvePassword(envVar, generatedLog), 12);
-
-      const { rows: [existingSupplier] } = await client.query('SELECT 1 FROM suppliers WHERE registration_number=$1', [s.reg]);
-      if (!existingSupplier) {
-        const { rows: [supplier] } = await client.query(
-          `INSERT INTO suppliers (id, company_name, registration_number, verification_status, is_active)
-           VALUES ($1, $2, $3, 'verified', true)
-           RETURNING id`,
-          [uuidv4(), s.company, s.reg]
-        );
-        await client.query(
-          `INSERT INTO supplier_users (id, supplier_id, email, password_hash, full_name)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [uuidv4(), supplier.id, s.email, pwd, s.name]
-        );
-      } else if (process.env[envVar]) {
-        // Update password hash on re-run if env var is set
-        await client.query(
-          `UPDATE supplier_users SET password_hash=$1 WHERE email=$2`,
-          [pwd, s.email]
-        );
-      }
-    }
+    // Customers and suppliers are intentionally not seeded.
+    // They register organically, then Business Admin verifies suppliers.
 
     // Chart of accounts
     const accounts = [

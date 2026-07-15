@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Button, Card, Col, Empty, List, Row, Select, Space, Statistic, Table, Tag,
+  Alert, Button, Card, Col, Empty, List, Row, Select, Space, Statistic, Table, Tag,
   Typography, message,
 } from 'antd';
 import {
-  CheckCircleOutlined, ClockCircleOutlined, FileTextOutlined, ReloadOutlined,
-  UploadOutlined,
+  AuditOutlined, CheckCircleOutlined, ClockCircleOutlined, FileTextOutlined, ReloadOutlined,
+  SafetyCertificateOutlined, ShoppingCartOutlined, UploadOutlined,
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
+import DigitalSignatureModal from './DigitalSignatureModal';
 
 const { Text } = Typography;
 
@@ -34,23 +35,31 @@ function invoiceStatus(inv) {
 export default function SupplierDashboard() {
   const [invitations, setInvitations] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [profile, setProfile] = useState(null);
   const [summary, setSummary] = useState(null);
   const [docFile, setDocFile] = useState(null);
   const [docType, setDocType] = useState('tax_clearance');
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [signingInvoice, setSigningInvoice] = useState(null);
+  const [signingOrder, setSigningOrder] = useState(null);
 
   const fetchPortal = useCallback(async () => {
     setLoading(true);
     try {
-      const [bidRes, invoiceRes, summaryRes] = await Promise.all([
+      const [bidRes, invoiceRes, summaryRes, orderRes, profileRes] = await Promise.all([
         axios.get('/api/supplier/bids'),
         axios.get('/api/invoices?type=AP').catch(() => ({ data: [] })),
         axios.get('/api/invoices/summary').catch(() => ({ data: null })),
+        axios.get('/api/orders').catch(() => ({ data: [] })),
+        axios.get('/api/supplier/profile').catch(() => ({ data: null })),
       ]);
       setInvitations(bidRes.data);
       setInvoices(invoiceRes.data);
       setSummary(summaryRes.data);
+      setOrders(orderRes.data);
+      setProfile(profileRes.data);
     } catch {
       message.error('Failed to load supplier workspace');
     } finally {
@@ -73,6 +82,7 @@ export default function SupplierDashboard() {
       });
       message.success('Document submitted for verification');
       setDocFile(null);
+      fetchPortal();
     } catch {
       message.error('Upload failed');
     } finally {
@@ -97,7 +107,26 @@ export default function SupplierDashboard() {
     { title: 'Paid', dataIndex: 'paid_amount', render: value => money(value) },
     { title: 'Balance', render: (_, row) => money(Number(row.total_amount) - Number(row.paid_amount)) },
     { title: 'Status', render: (_, row) => invoiceStatus(row) },
+    { title: 'Action', render: (_, row) => <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningInvoice(row)}>Sign</Button> },
   ];
+
+  const orderColumns = [
+    { title: 'Order', dataIndex: 'id', render: value => <Text code>{value.slice(0, 8)}</Text> },
+    { title: 'Buyer', dataIndex: 'tenant_name', render: value => value || '-' },
+    { title: 'Total', dataIndex: 'total_amount', render: value => money(value) },
+    { title: 'Status', dataIndex: 'status', render: value => <Tag>{String(value).replaceAll('_', ' ')}</Tag> },
+    {
+      title: 'Escrow',
+      render: (_, row) => <Tag color={row.escrow_status === 'released' ? 'success' : row.escrow_status === 'funded' ? 'processing' : 'warning'}>{row.escrow_status || 'awaiting funding'}</Tag>,
+    },
+    { title: 'Action', render: (_, row) => <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningOrder(row)}>Sign Contract</Button> },
+  ];
+
+  const verificationColor = profile?.verification_status === 'verified'
+    ? 'success'
+    : profile?.verification_status === 'rejected'
+      ? 'error'
+      : 'warning';
 
   return (
     <div>
@@ -127,10 +156,38 @@ export default function SupplierDashboard() {
             <Statistic title="Paid This Month" value={money(summary?.paidThisMonth)} prefix={<CheckCircleOutlined />} valueStyle={{ color: '#389e0d' }} />
           </Card>
         </Col>
+        <Col xs={24} md={8}>
+          <Card>
+            <Statistic title="Awarded Orders" value={orders.length} prefix={<ShoppingCartOutlined />} valueStyle={{ color: '#1677ff' }} />
+          </Card>
+        </Col>
       </Row>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={10}>
+          <Card title="Verification Status" className="table-card" style={{ marginBottom: 16 }}>
+            <Alert
+              type={verificationColor}
+              showIcon
+              message={profile ? String(profile.verification_status || 'pending').replaceAll('_', ' ') : 'Profile loading'}
+              description={profile?.verification_status === 'verified'
+                ? 'Your supplier account is verified and eligible for bid invitations.'
+                : 'Upload compliance documents so Business Admin can verify your supplier account.'}
+            />
+            {profile && (
+              <List
+                size="small"
+                style={{ marginTop: 12 }}
+                dataSource={[
+                  ['Company', profile.company_name],
+                  ['Registration', profile.registration_number || '-'],
+                  ['Account', profile.email],
+                ]}
+                renderItem={item => <List.Item><Text strong>{item[0]}</Text><Text>{item[1]}</Text></List.Item>}
+              />
+            )}
+          </Card>
+
           <Card title="Compliance Documents" className="table-card" style={{ marginBottom: 16 }}>
             <Space wrap>
               <Select value={docType} onChange={setDocType} style={{ width: 220 }}>
@@ -141,6 +198,18 @@ export default function SupplierDashboard() {
               <input type="file" onChange={e => setDocFile(e.target.files[0])} />
               <Button icon={<UploadOutlined />} onClick={handleUploadDoc} loading={uploading}>Submit</Button>
             </Space>
+            <List
+              size="small"
+              style={{ marginTop: 12 }}
+              dataSource={profile?.documents || []}
+              locale={{ emptyText: 'No compliance documents uploaded yet' }}
+              renderItem={doc => (
+                <List.Item>
+                  <List.Item.Meta title={doc.document_type.replaceAll('_', ' ')} description={new Date(doc.upload_date).toLocaleString()} />
+                  <Tag>{doc.verification_status}</Tag>
+                </List.Item>
+              )}
+            />
           </Card>
 
           <Card title="Open Invitations" className="table-card">
@@ -165,6 +234,17 @@ export default function SupplierDashboard() {
         </Col>
 
         <Col xs={24} lg={14}>
+          <Card title="Awarded Orders & Escrow" className="table-card" style={{ marginBottom: 16 }}>
+            <Table
+              rowKey="id"
+              loading={loading}
+              dataSource={orders}
+              columns={orderColumns}
+              pagination={{ pageSize: 5 }}
+              scroll={{ x: 820 }}
+              locale={{ emptyText: <Empty description="No awarded orders yet" /> }}
+            />
+          </Card>
           <Card title="Payment Visibility" className="table-card">
             <Table
               rowKey="id"
@@ -178,6 +258,20 @@ export default function SupplierDashboard() {
           </Card>
         </Col>
       </Row>
+      <DigitalSignatureModal
+        open={!!signingInvoice}
+        onClose={() => setSigningInvoice(null)}
+        documentType="invoice"
+        documentId={signingInvoice?.id}
+        documentLabel={signingInvoice ? `Invoice ${signingInvoice.invoice_no}` : ''}
+      />
+      <DigitalSignatureModal
+        open={!!signingOrder}
+        onClose={() => setSigningOrder(null)}
+        documentType="order"
+        documentId={signingOrder?.id}
+        documentLabel={signingOrder ? `Order ${signingOrder.id.slice(0, 8)} contract with ${signingOrder.tenant_name || 'buyer'}` : ''}
+      />
     </div>
   );
 }

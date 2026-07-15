@@ -26,7 +26,7 @@ CREATE TABLE tenant_users (
     email VARCHAR(255) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(150) NOT NULL,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('tenant_admin', 'customer')),
+    role VARCHAR(20) NOT NULL DEFAULT 'customer' CHECK (role IN ('customer')),
     is_active BOOLEAN NOT NULL DEFAULT true,
     last_login TIMESTAMPTZ,
     UNIQUE (tenant_id, email)
@@ -124,6 +124,26 @@ CREATE TABLE orders (
     contract_file_path VARCHAR(500),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE digital_signatures (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    document_type VARCHAR(30) NOT NULL CHECK (document_type IN ('invoice','order','bid')),
+    document_id UUID NOT NULL,
+    signer_user_id UUID NOT NULL,
+    signer_user_type VARCHAR(32) NOT NULL,
+    signer_role VARCHAR(32),
+    signer_email VARCHAR(255),
+    signer_name VARCHAR(150) NOT NULL,
+    signer_title VARCHAR(120),
+    signature_hash VARCHAR(128) UNIQUE NOT NULL,
+    consent_text TEXT NOT NULL,
+    ip_address INET,
+    user_agent TEXT,
+    signed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (document_type, document_id, signer_user_id, signer_user_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_digital_signatures_document ON digital_signatures(document_type, document_id);
 
 CREATE TABLE accounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

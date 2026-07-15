@@ -30,9 +30,9 @@ const uploadResponse = multer({
 // This MUST be before any /bids routes to ensure budget_amount is stripped
 router.use('/bids', authenticate, stripBudgetForSupplier);
 
-// Create bid – min 3 verified suppliers, works for both business_admin and tenant_admin
+// Create bid – min 3 verified suppliers, owned by Business Admin.
 router.post('/tenants/:tid/bids', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin' && req.user.role !== 'tenant_admin') {
+  if (req.user.role !== 'business_admin') {
     return res.status(403).json({ error: 'Forbidden' });
   }
 

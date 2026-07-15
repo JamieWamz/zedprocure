@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, message } from 'antd';
+import { Alert, Form, Input, Button, Select, Tabs, message } from 'antd';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
 
 export default function UnifiedLogin() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [registerForm] = Form.useForm();
+  const accountType = Form.useWatch('account_type', registerForm);
 
   const onFinish = async (values) => {
     setLoading(true);
@@ -18,6 +22,20 @@ export default function UnifiedLogin() {
       message.error('Login failed. Check your credentials.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const onRegister = async (values) => {
+    setRegistering(true);
+    try {
+      await axios.post('/api/register', values);
+      message.success(values.account_type === 'supplier'
+        ? 'Supplier account created. Business Admin will verify it before bidding access is enabled.'
+        : 'Customer account created. You can sign in now.');
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Registration failed');
+    } finally {
+      setRegistering(false);
     }
   };
 
@@ -45,28 +63,82 @@ export default function UnifiedLogin() {
 
       <div className="login-form-pane">
         <div className="login-card">
-          <h2>Sign in to your account</h2>
-          <Form name="login" onFinish={onFinish} layout="vertical">
-            <Form.Item
-              name="email"
-              label="Email"
-              rules={[{ required: true, message: 'Email required' }, { type: 'email', message: 'Enter a valid email' }]}
-            >
-              <Input placeholder="you@organization.zm" size="large" autoComplete="username" />
-            </Form.Item>
-            <Form.Item
-              name="password"
-              label="Password"
-              rules={[{ required: true, message: 'Password required' }]}
-            >
-              <Input.Password placeholder="••••••••" size="large" autoComplete="current-password" />
-            </Form.Item>
-            <Form.Item>
-              <Button type="primary" htmlType="submit" loading={loading} block size="large">
-                Sign In
-              </Button>
-            </Form.Item>
-          </Form>
+          <Tabs
+            defaultActiveKey="login"
+            items={[
+              {
+                key: 'login',
+                label: 'Sign In',
+                children: (
+                  <>
+                    <h2>Sign in to your account</h2>
+                    <Form name="login" onFinish={onFinish} layout="vertical">
+                      <Form.Item
+                        name="email"
+                        label="Email"
+                        rules={[{ required: true, message: 'Email required' }, { type: 'email', message: 'Enter a valid email' }]}
+                      >
+                        <Input placeholder="you@organization.zm" size="large" autoComplete="username" />
+                      </Form.Item>
+                      <Form.Item
+                        name="password"
+                        label="Password"
+                        rules={[{ required: true, message: 'Password required' }]}
+                      >
+                        <Input.Password placeholder="Password" size="large" autoComplete="current-password" />
+                      </Form.Item>
+                      <Form.Item>
+                        <Button type="primary" htmlType="submit" loading={loading} block size="large">
+                          Sign In
+                        </Button>
+                      </Form.Item>
+                    </Form>
+                  </>
+                ),
+              },
+              {
+                key: 'register',
+                label: 'Create Account',
+                children: (
+                  <>
+                    <h2>Create your account</h2>
+                    <Form form={registerForm} name="register" onFinish={onRegister} layout="vertical" initialValues={{ account_type: 'customer' }}>
+                      <Form.Item name="account_type" label="Account Type" rules={[{ required: true }]}>
+                        <Select
+                          size="large"
+                          options={[
+                            { value: 'customer', label: 'Customer / Buyer' },
+                            { value: 'supplier', label: 'Supplier' },
+                          ]}
+                        />
+                      </Form.Item>
+                      {accountType === 'supplier' && (
+                        <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Supplier accounts start pending. Business Admin verifies suppliers before they can bid." />
+                      )}
+                      <Form.Item name="full_name" label="Full Name" rules={[{ required: true }]}>
+                        <Input size="large" />
+                      </Form.Item>
+                      <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
+                        <Input size="large" autoComplete="username" />
+                      </Form.Item>
+                      <Form.Item name="organization" label={accountType === 'supplier' ? 'Company Name' : 'Organization / Buyer Name'} rules={[{ required: true }]}>
+                        <Input size="large" />
+                      </Form.Item>
+                      <Form.Item name="registration_number" label="Registration Number">
+                        <Input size="large" />
+                      </Form.Item>
+                      <Form.Item name="password" label="Password" rules={[{ required: true, min: 10 }]}>
+                        <Input.Password size="large" autoComplete="new-password" />
+                      </Form.Item>
+                      <Button type="primary" htmlType="submit" loading={registering} block size="large">
+                        Create Account
+                      </Button>
+                    </Form>
+                  </>
+                ),
+              },
+            ]}
+          />
         </div>
       </div>
     </div>

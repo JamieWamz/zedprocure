@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, message, Tag, Switch } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
 
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
@@ -10,8 +9,6 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
-  const { user } = useAuth();
-  const isTenantAdmin = user?.role === 'tenant_admin';
 
   const fetchUsers = async () => {
     try {
@@ -23,7 +20,6 @@ export default function UserManagement() {
   };
 
   const fetchTenants = async () => {
-    if (isTenantAdmin) return;
     try {
       const { data } = await axios.get('/api/admin/tenants');
       setTenants(data);
@@ -71,11 +67,7 @@ export default function UserManagement() {
       title: 'Active',
       dataIndex: 'is_active',
       render: (val, record) => (
-        !isTenantAdmin ? (
-          <Switch checked={val} onChange={() => handleToggleActive(record.id)} />
-        ) : (
-          <Tag color={val ? 'green' : 'red'}>{val ? 'Active' : 'Inactive'}</Tag>
-        )
+        <Switch checked={val} onChange={() => handleToggleActive(record.id)} />
       ),
     },
     { title: 'Created', dataIndex: 'created_at', render: val => new Date(val).toLocaleDateString() },
@@ -100,15 +92,13 @@ export default function UserManagement() {
         confirmLoading={loading}
       >
         <Form form={form} layout="vertical" onFinish={handleCreate}>
-          {!isTenantAdmin && (
-            <Form.Item name="tenant_id" label="Tenant" rules={[{ required: true }]}>
-              <Select placeholder="Select tenant">
-                {tenants.map(t => (
-                  <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-          )}
+          <Form.Item name="tenant_id" label="Organization" rules={[{ required: true }]}>
+            <Select placeholder="Select organization">
+              {tenants.map(t => (
+                <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
           <Form.Item name="full_name" label="Full Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -118,11 +108,8 @@ export default function UserManagement() {
           <Form.Item name="password" label="Password" rules={[{ required: true, min: 6 }]}>
             <Input.Password />
           </Form.Item>
-          <Form.Item name="role" label="Role" rules={[{ required: true }]}>
-            <Select>
-              <Select.Option value="tenant_admin">Tenant Admin</Select.Option>
-              <Select.Option value="customer">Customer</Select.Option>
-            </Select>
+          <Form.Item label="Role">
+            <Tag color="blue">Customer</Tag>
           </Form.Item>
         </Form>
       </Modal>

@@ -11,18 +11,27 @@ const { validatePassword } = require('../utils/validation');
 const { sendPasswordReset, sendWelcome, sendInvitation } = require('../services/emailService');
 const router = express.Router();
 
-// ─── Self-Registration (tenant_user / customer) ──────────────────────────────
+// ─── Self-Registration (customer / supplier) ────────────────────────────────
 router.post('/register', async (req, res) => {
-  const { email, password, full_name, organization, role } = req.body;
+  const {
+    email, password, full_name, organization, registration_number,
+    account_type, company_name,
+  } = req.body;
   if (!email || !password || !full_name) {
     return res.status(400).json({ error: 'Email, password, and full name required' });
+  }
+  const type = account_type === 'supplier' ? 'supplier' : 'customer';
+  if (type === 'supplier' && !company_name && !organization) {
+    return res.status(400).json({ error: 'Supplier company name is required' });
   }
   const pwErr = validatePassword(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
 
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
     // Check if email already exists across all user tables
-    const { rows: existing } = await pool.query(
+    const { rows: existing } = await client.query(
       `SELECT email FROM (
         SELECT email FROM platform_admins UNION ALL
         SELECT email FROM tenant_users UNION ALL
@@ -30,31 +39,61 @@ router.post('/register', async (req, res) => {
       ) u WHERE email=$1 LIMIT 1`,
       [email]
     );
-    if (existing.length) return res.status(409).json({ error: 'An account with this email already exists' });
-
-    // Find or create default tenant (for customer role)
-    let tenantId = req.body.tenant_id;
-    if (!tenantId) {
-      const { rows: [defaultTenant] } = await pool.query(
-        `SELECT id FROM tenants ORDER BY created_at ASC LIMIT 1`
-      );
-      if (defaultTenant) tenantId = defaultTenant.id;
+    if (existing.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'An account with this email already exists' });
     }
 
     const hash = await bcrypt.hash(password, 12);
-    const targetRole = role === 'tenant_admin' ? 'tenant_admin' : 'customer';
-    const { rows: [user] } = await pool.query(
+
+    if (type === 'supplier') {
+      const { rows: [supplier] } = await client.query(
+        `INSERT INTO suppliers (id, company_name, registration_number, verification_status, is_active)
+         VALUES ($1, $2, $3, 'pending', false)
+         RETURNING id, company_name, verification_status`,
+        [crypto.randomUUID(), company_name || organization, registration_number || null]
+      );
+      const { rows: [supplierUser] } = await client.query(
+        `INSERT INTO supplier_users (id, supplier_id, email, password_hash, full_name)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, email, full_name`,
+        [crypto.randomUUID(), supplier.id, email, hash, full_name]
+      );
+      await client.query('COMMIT');
+      await sendWelcome(email, full_name);
+      return res.status(201).json({
+        message: 'Supplier account created. Business Admin will verify the supplier before bidding access is enabled.',
+        email: supplierUser.email,
+        full_name: supplierUser.full_name,
+        supplier_status: supplier.verification_status,
+      });
+    }
+
+    const organizationName = organization || `${full_name} Buyer Account`;
+    const { rows: [tenant] } = await client.query(
+      `INSERT INTO tenants (id, name, registration_number)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (registration_number) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id`,
+      [crypto.randomUUID(), organizationName, registration_number || null]
+    );
+
+    const { rows: [user] } = await client.query(
       `INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, email, full_name, role`,
-      [crypto.randomUUID(), tenantId || '00000000-0000-0000-0000-000000000000', email, hash, full_name, targetRole]
+      [crypto.randomUUID(), tenant.id, email, hash, full_name, 'customer']
     );
 
+    await client.query('COMMIT');
     await sendWelcome(email, full_name);
     res.status(201).json({ message: 'Account created', email: user.email, full_name: user.full_name });
   } catch (e) {
+    await client.query('ROLLBACK');
     console.error('Registration error:', e);
     res.status(500).json({ error: 'Registration failed: ' + e.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -132,7 +171,7 @@ router.post('/reset-password', async (req, res) => {
 
 // ─── Admin Invitation ────────────────────────────────────────────────────────
 router.post('/invite', authenticate, async (req, res) => {
-  const validRoles = ['tenant_admin', 'customer', 'supplier_user'];
+  const validRoles = ['customer', 'supplier_user'];
   const { email, role, tenant_id, supplier_id } = req.body;
   if (!email || !role) return res.status(400).json({ error: 'Email and role required' });
   if (!validRoles.includes(role)) return res.status(400).json({ error: 'Invalid role' });
@@ -182,7 +221,7 @@ router.post('/accept-invite', async (req, res) => {
       await pool.query(
         `INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [userId, invite.tenant_id, invite.email, hash, full_name, invite.role]
+        [userId, invite.tenant_id, invite.email, hash, full_name, 'customer']
       );
     }
 

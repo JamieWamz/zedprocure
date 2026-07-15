@@ -488,7 +488,7 @@ export default function SystemHealthPortal() {
           <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}><Input /></Form.Item>
           <Form.Item name="password" label="Password" rules={[{ required: true, min: 10 }]}><Input.Password /></Form.Item>
           <Form.Item name="role" label="Role" rules={[{ required: true }]}>
-            <Select options={[{ value: 'tenant_admin', label: 'Tenant Admin' }, { value: 'customer', label: 'Customer' }]} />
+            <Select options={[{ value: 'customer', label: 'Customer' }]} />
           </Form.Item>
         </Form>
       </Modal>

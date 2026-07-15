@@ -67,6 +67,32 @@ router.post('/supplier/documents', authenticate, upload.single('file'), async (r
   }
 });
 
+router.get('/supplier/profile', authenticate, async (req, res) => {
+  if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { rows: [profile] } = await pool.query(
+      `SELECT s.id, s.company_name, s.registration_number, s.verification_status, s.is_active, s.created_at,
+              su.email, su.full_name
+       FROM supplier_users su
+       JOIN suppliers s ON s.id = su.supplier_id
+       WHERE su.id = $1`,
+      [req.user.user_id]
+    );
+    if (!profile) return res.status(404).json({ error: 'Supplier profile not found' });
+    const { rows: documents } = await pool.query(
+      `SELECT id, document_type, verification_status, upload_date
+       FROM supplier_documents
+       WHERE supplier_id = $1
+       ORDER BY upload_date DESC`,
+      [profile.id]
+    );
+    res.json({ ...profile, documents });
+  } catch (e) {
+    console.error('Error loading supplier profile:', e);
+    res.status(500).json({ error: 'Failed to load supplier profile' });
+  }
+});
+
 router.get('/admin/suppliers/pending', authenticate, requireRole('business_admin'), async (req, res) => {
   try {
     const { rows } = await pool.query(

@@ -6,11 +6,12 @@ import {
 } from 'antd';
 import {
   PlusOutlined, EyeOutlined, SendOutlined, StopOutlined, DollarOutlined,
-  FileTextOutlined, ReloadOutlined, DownloadOutlined, BellOutlined,
+  FileTextOutlined, ReloadOutlined, DownloadOutlined, BellOutlined, AuditOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
 import { cdnImages } from '../cdnAssets';
+import DigitalSignatureModal from './DigitalSignatureModal';
 
 const { Text } = Typography;
 
@@ -69,6 +70,7 @@ export default function FinanceInvoices() {
 
   const [view, setView] = useState(null);        // invoice being viewed (drawer)
   const [payOpen, setPayOpen] = useState(false);
+  const [signOpen, setSignOpen] = useState(false);
   const [payForm] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const partyType = Form.useWatch('party_type', createForm);
@@ -493,6 +495,7 @@ export default function FinanceInvoices() {
               {OPEN_STATUSES.includes(view.status) && view.party_email && (
                 <Button size="small" icon={<BellOutlined />} loading={saving} onClick={sendReminder}>Send Reminder</Button>
               )}
+              <Button size="small" icon={<AuditOutlined />} onClick={() => setSignOpen(true)}>Sign Digitally</Button>
             </Space>
 
             <Card size="small" title="Line Items" style={{ marginBottom: 12 }}>
@@ -543,6 +546,14 @@ export default function FinanceInvoices() {
           </Form>
         )}
       </Modal>
+
+      <DigitalSignatureModal
+        open={signOpen}
+        onClose={() => setSignOpen(false)}
+        documentType="invoice"
+        documentId={view?.id}
+        documentLabel={view ? `Invoice ${view.invoice_no} for ${view.party_name}` : ''}
+      />
     </div>
   );
 }

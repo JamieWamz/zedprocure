@@ -5,9 +5,9 @@ const { authenticate } = require('../middleware/authMiddleware');
 const { validatePassword } = require('../utils/validation');
 const router = express.Router();
 
-// Get bids - business_admin sees all, tenant_admin/business_admin with tenant_id sees their own
+// Get bids - business_admin sees all; customers see their own organization's bids.
 router.get('/tenant/bids', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin' && req.user.role !== 'tenant_admin') {
+  if (req.user.role !== 'business_admin' && req.user.role !== 'customer') {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -37,7 +37,7 @@ router.get('/tenant/bids', authenticate, async (req, res) => {
 
 // Get all tenants (for business_admin to select context)
 router.get('/tenant/list', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin' && req.user.role !== 'tenant_admin') {
+  if (req.user.role !== 'business_admin') {
     return res.status(403).json({ error: 'Forbidden' });
   }
   try {
@@ -91,24 +91,16 @@ router.get('/admin/tenants', authenticate, async (req, res) => {
 
 // Admin: Create a tenant user (client account)
 router.post('/admin/tenant-users', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin' && req.user.role !== 'system_admin' && req.user.role !== 'tenant_admin') {
+  if (req.user.role !== 'business_admin' && req.user.role !== 'system_admin') {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  const { tenant_id, email, password, full_name, role } = req.body;
-  if (!tenant_id || !email || !password || !full_name || !role) {
-    return res.status(400).json({ error: 'tenant_id, email, password, full_name, and role are required' });
-  }
-  if (!['tenant_admin', 'customer'].includes(role)) {
-    return res.status(400).json({ error: 'Role must be tenant_admin or customer' });
+  const { tenant_id, email, password, full_name } = req.body;
+  if (!tenant_id || !email || !password || !full_name) {
+    return res.status(400).json({ error: 'tenant_id, email, password, and full_name are required' });
   }
 
   const pwErr = validatePassword(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
-
-  // Business admin acting on behalf: ensure they can access this tenant
-  if (req.user.role === 'tenant_admin' && req.user.tenant_id !== tenant_id) {
-    return res.status(403).json({ error: 'You can only create users for your own tenant' });
-  }
 
   try {
     const hash = await bcrypt.hash(password, 12);
@@ -116,7 +108,7 @@ router.post('/admin/tenant-users', authenticate, async (req, res) => {
       `INSERT INTO tenant_users (tenant_id, email, password_hash, full_name, role)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, tenant_id, email, full_name, role, is_active`,
-      [tenant_id, email, hash, full_name, role]
+      [tenant_id, email, hash, full_name, 'customer']
     );
     res.status(201).json(rows[0]);
   } catch (e) {
@@ -130,26 +122,16 @@ router.post('/admin/tenant-users', authenticate, async (req, res) => {
 
 // Admin: List tenant users (with optional tenant_id filter)
 router.get('/admin/tenant-users', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin' && req.user.role !== 'system_admin' && req.user.role !== 'tenant_admin') {
+  if (req.user.role !== 'business_admin' && req.user.role !== 'system_admin') {
     return res.status(403).json({ error: 'Forbidden' });
   }
   try {
     let query, params;
-    if (req.user.role === 'tenant_admin') {
-      // Tenant admin sees only their own tenant's users
-      query = `SELECT tu.id, tu.tenant_id, tu.email, tu.full_name, tu.role, tu.is_active, tu.last_login,
-                      t.name AS tenant_name
-               FROM tenant_users tu JOIN tenants t ON t.id = tu.tenant_id
-               WHERE tu.tenant_id = $1 ORDER BY tu.last_login DESC NULLS LAST`;
-      params = [req.user.tenant_id];
-    } else {
-      // Business admin sees all
-      query = `SELECT tu.id, tu.tenant_id, tu.email, tu.full_name, tu.role, tu.is_active, tu.last_login,
-                      t.name AS tenant_name
-               FROM tenant_users tu JOIN tenants t ON t.id = tu.tenant_id
-               ORDER BY t.name ASC, tu.last_login DESC NULLS LAST`;
-      params = [];
-    }
+    query = `SELECT tu.id, tu.tenant_id, tu.email, tu.full_name, tu.role, tu.is_active, tu.last_login,
+                    t.name AS tenant_name
+             FROM tenant_users tu JOIN tenants t ON t.id = tu.tenant_id
+             ORDER BY t.name ASC, tu.last_login DESC NULLS LAST`;
+    params = [];
     const { rows } = await pool.query(query, params);
     res.json(rows);
   } catch (e) {
@@ -235,7 +217,7 @@ router.get('/admin/suppliers', authenticate, async (req, res) => {
 
 // Audit log: record admin actions
 router.post('/admin/audit-log', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin' && req.user.role !== 'system_admin' && req.user.role !== 'tenant_admin') {
+  if (req.user.role !== 'business_admin' && req.user.role !== 'system_admin') {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const { action, target_type, target_id, details } = req.body;

@@ -5,7 +5,7 @@ const router = express.Router();
 
 // Award bid (create order)
 router.post('/bids/:bidId/award', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin' && req.user.role !== 'tenant_admin') {
+  if (req.user.role !== 'business_admin') {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const { bidId } = req.params;
@@ -56,21 +56,66 @@ router.post('/bids/:bidId/award', authenticate, async (req, res) => {
 
 // List all orders (with tenant isolation)
 router.get('/orders', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin' && req.user.role !== 'tenant_admin') {
+  if (req.user.role !== 'business_admin' && req.user.role !== 'customer' && req.user.user_type !== 'supplier_user') {
     return res.status(403).json({ error: 'Forbidden' });
   }
   try {
     let query, params;
     if (req.user.tenant_id) {
       // Tenant-scoped query
-      query = `SELECT o.* FROM orders o
+      query = `SELECT o.*, s.company_name AS supplier_name, t.name AS tenant_name,
+                      COUNT(ds.id)::int AS signature_count,
+                      MAX(ds.signed_at) AS last_signed_at,
+                      ea.status AS escrow_status,
+                      ea.amount AS escrow_amount,
+                      ea.funded_at,
+                      ea.released_at
+               FROM orders o
                JOIN bids b ON b.id = o.bid_id
+               JOIN tenants t ON t.id = b.tenant_id
+               JOIN suppliers s ON s.id = o.awarded_supplier_id
+               LEFT JOIN escrow_accounts ea ON ea.order_id = o.id
+               LEFT JOIN digital_signatures ds ON ds.document_type = 'order' AND ds.document_id = o.id
                WHERE b.tenant_id = $1
+               GROUP BY o.id, s.company_name, t.name, ea.status, ea.amount, ea.funded_at, ea.released_at
                ORDER BY o.created_at DESC`;
       params = [req.user.tenant_id];
+    } else if (req.user.user_type === 'supplier_user') {
+      query = `SELECT o.*, s.company_name AS supplier_name, t.name AS tenant_name,
+                      COUNT(ds.id)::int AS signature_count,
+                      MAX(ds.signed_at) AS last_signed_at,
+                      ea.status AS escrow_status,
+                      ea.amount AS escrow_amount,
+                      ea.funded_at,
+                      ea.released_at
+               FROM orders o
+               JOIN bids b ON b.id = o.bid_id
+               JOIN tenants t ON t.id = b.tenant_id
+               JOIN suppliers s ON s.id = o.awarded_supplier_id
+               JOIN supplier_users su ON su.supplier_id = s.id
+               LEFT JOIN escrow_accounts ea ON ea.order_id = o.id
+               LEFT JOIN digital_signatures ds ON ds.document_type = 'order' AND ds.document_id = o.id
+               WHERE su.id = $1
+               GROUP BY o.id, s.company_name, t.name, ea.status, ea.amount, ea.funded_at, ea.released_at
+               ORDER BY o.created_at DESC`;
+      params = [req.user.user_id];
     } else {
       // Business admin sees all
-      query = 'SELECT * FROM orders ORDER BY created_at DESC';
+      query = `SELECT o.*, s.company_name AS supplier_name, t.name AS tenant_name,
+                      COUNT(ds.id)::int AS signature_count,
+                      MAX(ds.signed_at) AS last_signed_at,
+                      ea.status AS escrow_status,
+                      ea.amount AS escrow_amount,
+                      ea.funded_at,
+                      ea.released_at
+               FROM orders o
+               JOIN bids b ON b.id = o.bid_id
+               JOIN tenants t ON t.id = b.tenant_id
+               JOIN suppliers s ON s.id = o.awarded_supplier_id
+               LEFT JOIN escrow_accounts ea ON ea.order_id = o.id
+               LEFT JOIN digital_signatures ds ON ds.document_type = 'order' AND ds.document_id = o.id
+               GROUP BY o.id, s.company_name, t.name, ea.status, ea.amount, ea.funded_at, ea.released_at
+               ORDER BY o.created_at DESC`;
       params = [];
     }
     const { rows } = await pool.query(query, params);

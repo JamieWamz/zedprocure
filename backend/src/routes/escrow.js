@@ -77,8 +77,8 @@ router.post('/escrow/fund', authenticate, async (req, res) => {
   }
 });
 
-// Admin releases escrow to supplier
-router.post('/escrow/release', authenticate, requireRole('tenant_admin'), async (req, res) => {
+// Business Admin releases escrow to supplier after fulfillment checks.
+router.post('/escrow/release', authenticate, requireRole('business_admin'), async (req, res) => {
   const { order_id } = req.body;
   if (!order_id) return res.status(400).json({ error: 'order_id is required' });
 
@@ -90,8 +90,8 @@ router.post('/escrow/release', authenticate, requireRole('tenant_admin'), async 
       `SELECT ea.* FROM escrow_accounts ea
        JOIN orders o ON o.id = ea.order_id
        JOIN bids b ON b.id = o.bid_id
-       WHERE ea.order_id = $1 AND b.tenant_id = $2 FOR UPDATE OF ea`,
-      [order_id, req.user.tenant_id]
+       WHERE ea.order_id = $1 FOR UPDATE OF ea`,
+      [order_id]
     );
     if (!escrow) {
       await client.query('ROLLBACK');

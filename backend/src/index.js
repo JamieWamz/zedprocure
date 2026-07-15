@@ -46,6 +46,7 @@ app.use('/api', require('./routes/payment'));
 app.use('/api', require('./routes/escrow'));
 app.use('/api/ledger', require('./routes/ledger'));
 app.use('/api/invoices', require('./routes/invoices'));
+app.use('/api/signatures', require('./routes/signatures'));
 app.use('/api', require('./routes/supplierList'));
 app.use('/api', require('./routes/tenant'));
 app.use('/api', require('./routes/system'));
