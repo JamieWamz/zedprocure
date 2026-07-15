@@ -19,4 +19,6 @@ export const cdnImages = {
   customer: envImage('CUSTOMER', `${UNSPLASH}/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=1600&q=75`),
   supplier: envImage('SUPPLIER', `${UNSPLASH}/photo-1552664730-d307ca884978?auto=format&fit=crop&w=1600&q=75`),
   system: envImage('SYSTEM', `${UNSPLASH}/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1600&q=75`),
+  registration: envImage('REGISTRATION', `${UNSPLASH}/photo-1507674442077-e1d70d22d0a6?auto=format&fit=crop&w=1600&q=75`),
+  verification: envImage('VERIFICATION', `${UNSPLASH}/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1600&q=75`),
 };

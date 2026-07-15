@@ -3,6 +3,7 @@ import { Form, Input, Button, Select, Upload, message, Alert, Steps, Card, List,
 import { UploadOutlined, FileTextOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { cdnImages } from '../cdnAssets';
 
 const { Step } = Steps;
 const { Text } = Typography;
@@ -130,8 +131,26 @@ export default function SupplierRegistration() {
   ];
 
   return (
-    <div style={{ maxWidth: 800, margin: '40px auto', padding: 24 }}>
-      <Card title="Supplier Registration - Zambia Procurement Portal">
+    <div 
+      style={{ 
+        maxWidth: 800, 
+        margin: '40px auto', 
+        padding: 24,
+        backgroundImage: `url(${cdnImages.registration})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        minHeight: '100vh',
+        borderRadius: 8
+      }}
+    >
+      <Card 
+        title="Supplier Registration - Zambia Procurement Portal"
+        style={{ 
+          background: 'rgba(255, 255, 255, 0.95)',
+          backdropFilter: 'blur(10px)'
+        }}
+      >
         <Steps current={currentStep} style={{ marginBottom: 24 }}>
           {steps.map(step => (
             <Step key={step.title} title={step.title} />

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Button, message, Modal, Form, Input, Select, Tag, Space, Card, List, Typography, Alert } from 'antd';
-import { CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, FileTextOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { cdnImages } from '../cdnAssets';
 
 const { Text } = Typography;
 
@@ -156,14 +157,24 @@ export default function SupplierVerification() {
 
   return (
     <div>
-      <h2>Supplier Verification</h2>
+      <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.verification})` }}>
+        <div>
+          <h2>Supplier Verification</h2>
+          <p>Review and verify supplier documents (PACRA, ZRA, etc.) before they can participate in bids.</p>
+        </div>
+        <div className="page-media-actions">
+          <Button icon={<ReloadOutlined />} onClick={fetchSuppliers} loading={loading}>Refresh</Button>
+        </div>
+      </div>
+
       <Alert
         type="info"
         showIcon
         message="Manual Verification Process"
         description="Review all required documents (PACRA, ZRA, etc.) and approve or reject suppliers. All documents must be verified before the supplier can participate in bids."
-        style={{ marginBottom: 16 }}
+        style={{ margin: '16px 0' }}
       />
+      
       <Table 
         dataSource={suppliers} 
         rowKey="id" 

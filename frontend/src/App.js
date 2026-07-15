@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import SplashScreen from './components/SplashScreen';
@@ -14,9 +14,24 @@ import AppLayout from './components/AppLayout';
 import { cdnImages } from './cdnAssets';
 
 function LoadingExperience() {
+  const [showImage, setShowImage] = useState(false);
+  
+  useEffect(() => {
+    // Small delay to ensure the background image is visible
+    const timer = setTimeout(() => setShowImage(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <div className="route-loading">
-      <div className="route-loading-bg" style={{ backgroundImage: `url(${cdnImages.loginHero})` }} />
+      <div 
+        className="route-loading-bg" 
+        style={{ 
+          backgroundImage: `url(${cdnImages.loginHero})`,
+          opacity: showImage ? 1 : 0,
+          transition: 'opacity 0.5s ease-in'
+        }} 
+      />
       <div className="route-loading-overlay" />
       <div className="route-loading-content">
         <div className="route-loading-mark" />
