@@ -135,6 +135,18 @@ Workflows live in `.github/workflows`.
 - Validate Docker Compose.
 - Build Docker images.
 
+`pages.yml` deploys the static React frontend to GitHub Pages:
+
+- Install frontend dependencies with `npm ci`.
+- Build the frontend.
+- Upload and deploy the `frontend/build` artifact to Pages.
+
+GitHub Pages cannot run the Express API or PostgreSQL database. If you use Pages for the frontend, configure a repository/environment variable named `REACT_APP_API_BASE_URL` with the public URL of the deployed backend, for example:
+
+```text
+https://api.your-domain.example
+```
+
 `cd.yml` is manual (`workflow_dispatch`) and deploys via SSH once you configure GitHub environment secrets:
 
 | Secret | Purpose |
