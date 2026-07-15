@@ -1,290 +1,218 @@
 # Freshstart Procurement Portal
 
-B2B SaaS procurement platform tailored to the Zambian Public Procurement Act. Enables tenant organizations to publish open bids, invite verified suppliers, collect responses, manage orders, and process payments through an escrow-backed workflow with immutable ledger accounting.
+Containerized procurement, accounting, invoicing, escrow, and supplier-management platform for Zambian procurement workflows.
 
-## Features
+The current system has two platform administrator seats:
 
-- Multi-tenant procurement with tenant-scoped bid creation
-- Supplier verification workflow with document uploads
-- Open bid invitation and supplier response collection
-- Order awarding and escrow funding/release
-- Bidding fee payments with idempotent confirmation
-- Double-entry immutable general ledger
-- Role-based access: system admin, business admin, tenant admin, customer, supplier
-- Price isolation: budget amounts hidden from suppliers
-- Audit logging for admin actions
+- System Admin: owns system health, platform oversight, users, organizations, suppliers, audit, and operational visibility.
+- Business Admin: owns procurement operations, accounting, invoices, supplier verification, bids, orders, escrow release, and customer/supplier support.
+
+There is no tenant-admin role. Customers and suppliers register organically. Suppliers remain pending until Business Admin verifies them.
+
+## Current Capabilities
+
+- Organic customer registration with buyer organization creation.
+- Organic supplier registration with pending verification.
+- Supplier compliance document upload and Business Admin verification.
+- Verified supplier invitation, bid response, and bidding-fee workflow.
+- Customer requirements capture with budget isolation from suppliers.
+- Bid creation, award, order tracking, escrow funding, and escrow release.
+- AR/AP invoicing, invoice aging, payment recording, reminders, and exports.
+- Double-entry ledger, chart of accounts, journal, trial balance, income statement, balance sheet, and cash-flow reporting.
+- Paperless digital signatures for invoices and orders with consent text, signer identity, hash, timestamp, IP/user-agent metadata, and audit log entries.
+- Customer portal for requirements, invoices, orders, escrow, and signatures.
+- Supplier portal for verification status, documents, invitations, awarded orders, invoices, escrow visibility, and signatures.
+- Business Admin portal for full procurement and accounting operations.
+- System Admin portal for estate-wide monitoring and governance.
+- CI/CD via GitHub Actions for syntax checks, frontend build, Docker Compose validation, Docker image build, and manual server deployment.
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
-| Frontend | React 18, Ant Design 5, Axios, React Router 6 |
-| Backend | Node.js, Express, httpOnly-cookie JWT auth, Multer uploads |
+| --- | --- |
+| Frontend | React 18, Ant Design 5, React Router, Axios, Recharts |
+| Backend | Node.js 22, Express, httpOnly cookie JWT auth, Multer uploads |
 | Database | PostgreSQL 15 with `uuid-ossp` |
-| Infrastructure | Docker Compose, Nginx |
+| Runtime | Docker Compose |
+| Web | Nginx reverse proxy for frontend and `/api` |
+| CI/CD | GitHub Actions |
 
-## Prerequisites
+## Container-First Deployment
 
-- Node.js >= 18
-- PostgreSQL 15
-- npm or yarn
+This application is intended to run as containers.
 
-## Quick Start
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/JamieWamz/zedprocure.git
-cd zambia-procurement
-```
-
-### 2. Start PostgreSQL
-
-Ensure PostgreSQL is running locally:
-
-```bash
-# Ubuntu/Debian
-sudo systemctl start postgresql
-
-# macOS (Homebrew)
-brew services start postgresql
-```
-
-### 3. Configure environment variables
-
-Copy `.env.example` to `.env` (backend and root) and fill in real values. Generate a strong secret:
-
-```bash
-openssl rand -hex 32
-```
-
-`backend/.env` (used for local non-Docker dev):
+1. Create a root `.env` file:
 
 ```env
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/zambia_procurement
-JWT_SECRET=<generated-secret>
-PORT=4000
-NODE_ENV=development
-CORS_ORIGINS=http://localhost:3000,http://localhost
+JWT_SECRET=<generate-with-openssl-rand-hex-32>
+CORS_ORIGINS=http://localhost,http://your-domain.example
 COOKIE_SECURE=false
+SYSTEM_ADMIN_PASSWORD=<strong-password>
+BUSINESS_ADMIN_PASSWORD=<strong-password>
 ```
 
-Never commit `.env` files — they are gitignored.
+For HTTPS production, set:
 
-### 4. Install dependencies
+```env
+COOKIE_SECURE=true
+CORS_ORIGINS=https://your-domain.example
+```
+
+2. Build and run:
 
 ```bash
-cd backend && npm install
-cd ../frontend && npm install
+docker compose up --build
 ```
 
-### 5. Initialize the database
+3. Open:
+
+- Frontend: `http://localhost`
+- Backend API: `http://localhost:4000`
+
+The backend container runs `node src/db/seed.js` before starting the API. Seed creates only the two platform admin seats and accounting defaults. It does not create customer accounts, supplier accounts, tenant admins, demo suppliers, or demo buyers.
+
+## Platform Admin Access
+
+Seeded platform admin emails:
+
+| Seat | Email |
+| --- | --- |
+| System Admin | `wamuyuwamundia@gmail.com` |
+| Business Admin | `brightilunga6@gmail.com` |
+
+Passwords are never hardcoded. Set `SYSTEM_ADMIN_PASSWORD` and `BUSINESS_ADMIN_PASSWORD` before first startup. If omitted, strong random passwords are generated and printed once in the backend logs; store them securely.
+
+## Organic Onboarding
+
+Customers:
+
+- Register from the login page as `Customer / Buyer`.
+- A buyer organization is created from the supplied organization details.
+- Customers can submit requirements, track invoices, fund escrow, view orders, and sign documents digitally.
+
+Suppliers:
+
+- Register from the login page as `Supplier`.
+- Supplier records start with `pending` verification and `is_active=false`.
+- Suppliers upload compliance documents from the supplier portal.
+- Business Admin verifies or rejects suppliers.
+- Only verified suppliers appear in bid invitation flows.
+
+## Security
+
+- Authentication uses httpOnly, SameSite cookies. Tokens are not stored in localStorage.
+- Production requires a strong `JWT_SECRET`.
+- CORS is restricted with `CORS_ORIGINS`.
+- Set `COOKIE_SECURE=true` only when serving over HTTPS.
+- Password validation requires at least 10 characters with uppercase, lowercase, number, and symbol.
+- Uploads are limited to approved document/image MIME types and extensions with random filenames.
+- Procurement budgets are hidden from supplier views.
+- Escrow funding/release and payment confirmation use database transactions and row locks.
+- Journal entries and journal lines are immutable by design.
+- Digital signatures record signer identity, consent, timestamp, hash, IP/user-agent metadata, and audit events.
+- Only one active System Admin seat and one active Business Admin seat are allowed.
+- Do not commit `.env`, private keys, database dumps, or uploaded files.
+
+Recommended production hardening:
+
+- Put Nginx or a cloud load balancer with TLS in front of the stack.
+- Use managed PostgreSQL or encrypted Docker volumes with backups.
+- Rotate `JWT_SECRET` and admin passwords per environment.
+- Configure SMTP credentials outside Git for invoice/reminder/reset emails.
+- Restrict SSH deployment keys to the deployment host and repository.
+- Run dependency and image scanning in your GitHub security settings.
+
+## CI/CD
+
+Workflows live in `.github/workflows`.
+
+`ci.yml` runs on pull requests and pushes to `main`:
+
+- Install backend dependencies with `npm ci`.
+- Run `node --check` across backend source.
+- Install frontend dependencies with `npm ci`.
+- Build the frontend.
+- Validate Docker Compose.
+- Build Docker images.
+
+`cd.yml` is manual (`workflow_dispatch`) and deploys via SSH once you configure GitHub environment secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `DEPLOY_HOST` | Server hostname or IP |
+| `DEPLOY_USER` | SSH user |
+| `DEPLOY_SSH_KEY` | Private SSH key for deploy |
+| `DEPLOY_PATH` | Existing repo path on the server |
+
+The CD command runs:
+
+```bash
+git pull --ff-only origin main
+docker compose up --build -d
+```
+
+## Local Development
+
+Containerized development is preferred, but local development is available.
+
+Backend:
 
 ```bash
 cd backend
+npm ci
 npm run seed
-```
-
-This creates the schema and seeds default users and verified suppliers.
-
-### 6. Start the backend
-
-```bash
-cd backend
 npm run dev
 ```
 
-Backend runs at `http://localhost:4000`.
-
-### 7. Start the frontend (new terminal)
+Frontend:
 
 ```bash
 cd frontend
+npm ci
 npm start
 ```
 
-Frontend runs at `http://localhost:3000`.
+Use Docker or a local PostgreSQL 15 database. For non-Docker backend development, provide `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, and `COOKIE_SECURE` in your local environment.
 
-## Docker
+## Key API Areas
 
-```bash
-docker-compose up --build
-```
+| Area | Endpoints |
+| --- | --- |
+| Auth | `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, `/api/me` |
+| Registration | `/api/register`, `/api/forgot-password`, `/api/reset-password` |
+| Business/System Admin | `/api/admin/*`, `/api/system/*` |
+| Suppliers | `/api/supplier/profile`, `/api/supplier/documents`, `/api/admin/suppliers/pending`, `/api/admin/suppliers/:id/verify` |
+| Bids | `/api/tenants/:tid/bids`, `/api/tenant/bids`, `/api/bids/:bidId`, `/api/public/bids` |
+| Orders | `/api/orders`, `/api/bids/:bidId/award` |
+| Escrow | `/api/escrow/fund`, `/api/escrow/release` |
+| Invoices | `/api/invoices`, `/api/invoices/summary`, `/api/invoices/aging`, `/api/invoices/:id/payments` |
+| Ledger | `/api/ledger/accounts`, `/api/ledger/journal`, `/api/ledger/trial-balance`, `/api/ledger/income-statement`, `/api/ledger/balance-sheet`, `/api/ledger/cash-flow` |
+| Signatures | `/api/signatures/:documentType/:documentId`, `/api/signatures` |
 
-- Frontend: `http://localhost`
-- Backend: `http://localhost:4000`
+## Repository Structure
 
-Requires `JWT_SECRET` to be set in the root `.env` (Docker Compose substitutes it). The backend container runs the seed on startup to initialize the database. Generate one with `openssl rand -hex 32` and place it in `.env`.
-
-## Accessing From Another PC (LAN)
-
-The app is ready to run on your machine and be reached from another computer on the same network.
-
-**Docker (recommended):**
-The compose stack already exposes the frontend on port `80` and the backend on `4000`. From the other PC, open `http://<this-machine-ip>` (nginx proxies `/api` to the backend, so no extra setup is needed). Find your IP with `hostname -I` (Linux) or `ipconfig` (Windows).
-
-**Dev servers (CRA + Node):**
-1. Set the frontend to bind on all interfaces: `frontend/.env` already contains `HOST=0.0.0.0`.
-2. Start the backend (`npm run dev`) and frontend (`npm start`) as usual.
-3. On the other PC open `http://<this-machine-ip>:3000`. The CRA dev server proxies `/api` → `localhost:4000` automatically.
-
-Ensure the host firewall allows the relevant ports (`80`/`4000` for Docker, `3000`/`4000` for dev).
-
-> LAN access runs over plain HTTP. Do **not** expose this setup to the public internet without TLS — see Security below.
-
-## Security Notes
-
-- Auth uses **httpOnly, SameSite cookies** (not `localStorage`), which removes the XSS token-theft vector.
-- `JWT_SECRET` must be set and unique per environment; the backend refuses to start in `NODE_ENV=production` without it.
-- CORS is restricted to `CORS_ORIGINS`; the previous open `*` policy is gone.
-- Escrow funding/release and bidding-fee confirmation run inside serializable DB transactions (`SELECT … FOR UPDATE`) to prevent double-spend races.
-- All password creation/update enforces a strength policy (≥10 chars, mixed case, number, symbol).
-- File uploads are validated by extension **and** MIME type, with cryptographically random filenames.
-- **Before any internet exposure:** terminate TLS (the cookie is only `Secure` when `COOKIE_SECURE=true`) and use real secrets, not the LAN defaults.
-
-## Default Accounts
-
-The seed creates the following accounts. **Passwords are no longer hardcoded.** On first seed, a strong random password is generated for each and printed to the server log — copy and store them securely. Alternatively, set `SYSTEM_ADMIN_PASSWORD` / `BUSINESS_ADMIN_PASSWORD` (Docker) before seeding to choose them.
-
-| Role | Email |
-|------|-------|
-| System Admin (immutable) | `wamuyuwamundia@gmail.com` |
-| Business Admin | `brightilunga6@gmail.com` |
-| Tenant Admin | `tenantadmin@works.gov.zm` |
-| Customer | `customer@works.gov.zm` |
-| Supplier 1–3 | `supplier1@builders.zm`, `supplier2@engineering.zm`, `supplier3@traders.zm` |
-
-> Set your own System Admin password via `SYSTEM_ADMIN_PASSWORD` and sign in with that email.
-
-## Project Structure
-
-```
+```text
 zambia-procurement/
 ├── backend/
-│   ├── src/
-│   │   ├── config/
-│   │   │   ├── auth.js           # JWT configuration
-│   │   │   └── db.js             # PostgreSQL connection pool
-│   │   ├── db/
-│   │   │   ├── schema.sql        # Full database schema
-│   │   │   └── seed.js           # Initial data seeding
-│   │   ├── middleware/
-│   │   │   ├── authMiddleware.js # JWT authentication + role checks
-│   │   │   └── priceIsolation.js # Strips budget from supplier responses
-│   │   ├── routes/
-│   │   │   ├── auth.js           # Login endpoint
-│   │   │   ├── admin.js          # Admin user management
-│   │   │   ├── system.js         # System admin + console
-│   │   │   ├── tenant.js         # Tenant CRUD + bid listing
-│   │   │   ├── bid.js            # Bid lifecycle + supplier responses
-│   │   │   ├── order.js          # Order awarding
-│   │   │   ├── payment.js        # Bidding fee payments
-│   │   │   ├── escrow.js         # Escrow funding and release
-│   │   │   ├── ledger.js         # General ledger reads
-│   │   │   ├── supplier.js       # Supplier verification + docs
-│   │   │   ├── supplierList.js   # Verified supplier listing
-│   │   │   ├── requirement.js    # Customer bid requirements
-│   │   │   └── tenant.js         # Tenant-scoped operations
-│   │   ├── services/
-│   │   │   └── ledgerService.js  # Journal entry creation
-│   │   └── index.js              # Express app entry point
-│   └── package.json
+│   └── src/
+│       ├── config/
+│       ├── db/
+│       ├── middleware/
+│       ├── routes/
+│       ├── services/
+│       └── utils/
 ├── frontend/
-│   ├── src/
-│   │   ├── components/           # Page-level React components
-│   │   ├── context/
-│   │   │   └── AuthContext.js    # Global auth state + axios interceptors
-│   │   ├── App.js                # Router and route guards
-│   │   └── index.js
-│   └── package.json
+│   └── src/
+│       ├── components/
+│       ├── context/
+│       ├── App.js
+│       └── index.js
+├── nginx/
+├── .github/workflows/
 ├── docker-compose.yml
 ├── Dockerfile.backend
-├── Dockerfile.frontend
-└── nginx/
-    └── nginx.conf                # Reverse proxy for frontend + API
+└── Dockerfile.frontend
 ```
-
-## API Overview
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/api/auth/login` | No | Login, sets httpOnly auth cookies |
-| POST | `/api/auth/refresh` | Cookie | Rotate expired access token |
-| POST | `/api/auth/logout` | Cookie | Clear auth cookies |
-| GET | `/api/me` | Cookie | Current user profile + dashboard route |
-| GET | `/api/admin/health` | System Admin | Database health check |
-| POST | `/api/admin/admins` | System Admin | Create admin user |
-| PUT | `/api/system/admins/:id` | System Admin | Update admin |
-| DELETE | `/api/system/admins/:id` | System Admin | Deactivate admin |
-| POST | `/api/admin/tenants` | Admin | Create tenant |
-| GET | `/api/admin/tenants` | Admin | List tenants |
-| POST | `/api/admin/tenant-users` | Admin | Create tenant user |
-| POST | `/api/admin/suppliers` | Admin | Create supplier |
-| PUT | `/api/admin/suppliers/:id/verify` | Admin | Verify/reject supplier |
-| POST | `/api/tenants/:tid/bids` | Admin | Create bid (min 3 suppliers) |
-| GET | `/api/tenant/bids` | Admin | List tenant bids |
-| GET | `/api/bids/:bidId` | Auth | Get bid details |
-| POST | `/api/bids/:bidId/requirements` | Customer | Submit requirements |
-| POST | `/api/bids/:bidId/award` | Admin | Award bid, create order |
-| GET | `/api/supplier/bids` | Supplier | List open invitations |
-| POST | `/api/supplier/bids/:id/respond` | Supplier | Accept/decline invitation |
-| POST | `/api/supplier/documents` | Supplier | Upload compliance docs |
-| POST | `/api/payments/bidding-fee` | Supplier | Initiate fee payment |
-| POST | `/api/payments/confirm` | Auth | Confirm payment |
-| POST | `/api/escrow/fund` | Customer | Fund escrow |
-| POST | `/api/escrow/release` | Admin | Release escrow |
-| GET | `/api/ledger/accounts` | Business Admin | Chart of accounts |
-| GET | `/api/ledger/journal` | Business Admin | Journal entries |
-| GET | `/api/public/bids` | No | Public bid noticeboard |
-
-## Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | - | PostgreSQL connection string |
-| `JWT_SECRET` | Yes | - | JWT signing secret (generate with `openssl rand -hex 32`) |
-| `PORT` | No | `4000` | Backend port |
-| `NODE_ENV` | No | `development` | Set `production` to enforce required secrets |
-| `CORS_ORIGINS` | No | `http://localhost:3000,http://localhost` | Comma-separated allowed browser origins |
-| `COOKIE_SECURE` | No | `false` | Set `true` only when serving over HTTPS |
-| `SYSTEM_ADMIN_PASSWORD` | No | generated | System Admin password on first seed |
-| `BUSINESS_ADMIN_PASSWORD` | No | generated | Business Admin password on first seed |
-
-## Scripts
-
-### Backend
-
-```bash
-npm run dev     # Start with nodemon
-npm start       # Production start
-npm run seed    # Seed database
-npx jest        # Run tests
-```
-
-### Frontend
-
-```bash
-npm start       # Development server
-npm run build   # Production build
-```
-
-## Database Schema
-
-Key tables:
-- `platform_admins` — System and business administrators
-- `tenants` — Procurement organizations
-- `tenant_users` — Admin and customer accounts
-- `suppliers` — Verified supplier records
-- `supplier_users` — Supplier login accounts
-- `bids` — Procurement opportunities
-- `bid_suppliers` — Invitations linking bids to suppliers
-- `bid_requirements` — Customer requirements/budgets
-- `supplier_responses` — Supplier technical proposals
-- `orders` — Awarded contracts
-- `escrow_accounts` — Escrow balances
-- `payment_transactions` — Payment records
-- `journal_entries` / `journal_lines` — Immutable general ledger
-- `audit_log` — Admin action audit trail
 
 ## License
 
