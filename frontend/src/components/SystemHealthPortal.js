@@ -13,6 +13,7 @@ import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
 
 const { Text } = Typography;
+const IMMUTABLE_EMAIL = 'wamuyuwamundia@gmail.com';
 
 function money(value) {
   return `ZMW ${Number(value || 0).toLocaleString(undefined, {
@@ -122,8 +123,8 @@ export default function SystemHealthPortal() {
   };
 
   const toggleAdminActive = async (record, checked) => {
-    if (record.role === 'system_admin') {
-      message.error('Cannot deactivate the primary system admin');
+    if (record.email === IMMUTABLE_EMAIL) {
+      message.error('Cannot deactivate the immutable admin');
       return;
     }
     try {

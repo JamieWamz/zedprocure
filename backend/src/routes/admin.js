@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
 const { validatePassword } = require('../utils/validation');
 const router = express.Router();
-const IMMUTABLE_EMAIL = process.env.SYSTEM_ADMIN_EMAIL || 'system.admin@freshstart.local';
+const IMMUTABLE_EMAIL = 'wamuyuwamundia@gmail.com';
 const ADMIN_ROLE_LABELS = {
   system_admin: 'System Admin',
   business_admin: 'Business Admin',

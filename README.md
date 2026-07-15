@@ -47,8 +47,6 @@ This application is intended to run as containers.
 JWT_SECRET=<generate-with-openssl-rand-hex-32>
 CORS_ORIGINS=http://localhost,http://your-domain.example
 COOKIE_SECURE=false
-SYSTEM_ADMIN_EMAIL=system.admin@freshstart.local
-BUSINESS_ADMIN_EMAIL=business.admin@freshstart.local
 SYSTEM_ADMIN_PASSWORD=<strong-password>
 BUSINESS_ADMIN_PASSWORD=<strong-password>
 ```
@@ -71,19 +69,18 @@ docker compose up --build
 - Frontend: `http://localhost`
 - Backend API: `http://localhost:4000`
 
-The backend container runs `node src/db/seed.js` before starting the API. Seed creates only the two platform admin seats and accounting defaults. It does not create customer accounts, supplier accounts, tenant admins, demo suppliers, or demo buyers.
+The backend container initializes the database on startup, updating admin passwords from environment variables and ensuring chart of accounts exist.
 
 ## Platform Admin Access
 
-Seeded platform admin emails are configured through environment variables:
+Seeded platform admin emails:
 
 | Seat | Email |
 | --- | --- |
-| System Admin | `SYSTEM_ADMIN_EMAIL` |
-| Business Admin | `BUSINESS_ADMIN_EMAIL` |
+| System Admin | `wamuyuwamundia@gmail.com` |
+| Business Admin | `brightilunga6@gmail.com` |
 
-Emails and passwords are never hardcoded. Set `SYSTEM_ADMIN_EMAIL`, `BUSINESS_ADMIN_EMAIL`, `SYSTEM_ADMIN_PASSWORD`, and `BUSINESS_ADMIN_PASSWORD` before first startup. If passwords are omitted, strong random passwords are generated and printed once in the backend logs; store them securely.
-
+Passwords are never hardcoded. Set `SYSTEM_ADMIN_PASSWORD` and `BUSINESS_ADMIN_PASSWORD` before first startup. If omitted, strong random passwords are generated and printed once in the backend logs; store them securely.
 ## Organic Onboarding
 
 Customers:
@@ -174,7 +171,6 @@ Backend:
 ```bash
 cd backend
 npm ci
-npm run seed
 npm run dev
 ```
 

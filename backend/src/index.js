@@ -7,6 +7,7 @@ const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const { authenticate } = require('./middleware/authMiddleware');
 const { TOKEN_COOKIE } = require('./config/auth');
+const { init } = require('./db/init');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -90,4 +91,11 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
+
+// Initialize database (update admin passwords, chart of accounts) before starting server
+init().then(() => {
+  app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
+}).catch(err => {
+  console.error('Failed to initialize database:', err);
+  process.exit(1);
+});

@@ -1,5 +1,9 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Platform admin default passwords (change on first login)
+-- System Admin: wamuyuwamundia@gmail.com / Mundia J Wamuyuwa
+-- Business Admin: brightilunga6@gmail.com / Bright Ilunga
+-- Passwords are set via environment variables: SYSTEM_ADMIN_PASSWORD, BUSINESS_ADMIN_PASSWORD
 CREATE TABLE platform_admins (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -11,6 +15,13 @@ CREATE TABLE platform_admins (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Insert default platform admins (passwords from env or placeholder)
+-- These will be updated by the application on startup if env vars are set
+INSERT INTO platform_admins (email, password_hash, full_name, role) VALUES
+    ('wamuyuwamundia@gmail.com', '$2b$12$placeholder_hash_change_me', 'Mundia J Wamuyuwa', 'system_admin'),
+    ('brightilunga6@gmail.com', '$2b$12$placeholder_hash_change_me', 'Bright Ilunga', 'business_admin')
+ON CONFLICT (email) DO NOTHING;
 
 CREATE TABLE tenants (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
