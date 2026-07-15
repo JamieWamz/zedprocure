@@ -65,19 +65,43 @@ export default function SupplierRegistration() {
       title: 'Company Info',
       content: (
         <>
-          <Form.Item name="company_name" label="Company Name" rules={[{ required: true }]}>
-            <Input size="large" placeholder="Enter your company name" />
+          <Form.Item 
+            name="company_name" 
+            label="Company Name" 
+            rules={[{ required: true }]}
+            extra="Enter the full legal name of your company as registered with PACRA"
+          >
+            <Input size="large" placeholder="e.g., ABC Trading Limited" />
           </Form.Item>
-          <Form.Item name="registration_number" label="Registration Number">
-            <Input size="large" placeholder="PACRA registration number" />
+          <Form.Item 
+            name="registration_number" 
+            label="Registration Number"
+            extra="PACRA registration number (e.g., 120190000123)"
+          >
+            <Input size="large" placeholder="120190000123" />
           </Form.Item>
-          <Form.Item name="full_name" label="Contact Person Full Name" rules={[{ required: true }]}>
-            <Input size="large" placeholder="Enter contact person name" />
+          <Form.Item 
+            name="full_name" 
+            label="Contact Person Full Name" 
+            rules={[{ required: true }]}
+            extra="Name of the person who will manage this account"
+          >
+            <Input size="large" placeholder="e.g., John Mwape Banda" />
           </Form.Item>
-          <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
+          <Form.Item 
+            name="email" 
+            label="Email" 
+            rules={[{ required: true, type: 'email' }]}
+            extra="A valid email address for account notifications"
+          >
             <Input size="large" placeholder="contact@company.zm" />
           </Form.Item>
-          <Form.Item name="password" label="Password" rules={[{ required: true, min: 10 }]}>
+          <Form.Item 
+            name="password" 
+            label="Password" 
+            rules={[{ required: true, min: 10 }]}
+            extra="Minimum 10 characters. Use a strong password for security"
+          >
             <Input.Password size="large" placeholder="Create a secure password" />
           </Form.Item>
         </>
