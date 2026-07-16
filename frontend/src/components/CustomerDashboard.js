@@ -94,6 +94,16 @@ export default function CustomerDashboard() {
     }
   };
 
+  const handleUpdateOrderStatus = async (orderId, targetStatus) => {
+    try {
+      await axios.patch(`/api/orders/${orderId}/status`, { status: targetStatus });
+      message.success(`Order status updated to ${targetStatus}`);
+      loadPortal();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Failed to update order status');
+    }
+  };
+
   const columns = [
     { title: 'Invoice #', dataIndex: 'invoice_no', render: value => <Text code>{value}</Text> },
     { title: 'Due', dataIndex: 'due_date', render: (value, row) => <Text type={row.overdue ? 'danger' : undefined}>{value}</Text> },
@@ -116,13 +126,19 @@ export default function CustomerDashboard() {
     {
       title: 'Actions',
       render: (_, row) => (
-        <Space>
+        <Space wrap>
           <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningOrder(row)}>Sign</Button>
           {row.escrow_status !== 'funded' && row.escrow_status !== 'released' && (
             <Button size="small" type="primary" icon={<BankOutlined />} onClick={() => {
               fundForm.setFieldsValue({ amount: Number(row.total_amount), payment_method: 'bank_transfer' });
               setFundingOrder(row);
             }}>Fund Escrow</Button>
+          )}
+          {['delivered', 'delivery_in_progress'].includes(row.status) && (
+            <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'completed')}>Complete Order</Button>
+          )}
+          {!['completed', 'pending_acceptance', 'disputed'].includes(row.status) && (
+            <Button size="small" danger onClick={() => handleUpdateOrderStatus(row.id, 'disputed')}>Dispute</Button>
           )}
         </Space>
       ),

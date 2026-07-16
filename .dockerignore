@@ -13,3 +13,34 @@ frontend/.env
 
 # OS / editor noise
 .DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Documentation
+README.md
+agents.md
+
+# Docker
+docker-compose.yml
+Dockerfile.backend
+Dockerfile.frontend
+
+# Render
+render.yaml
+
+# Build output
+frontend/build
+dist/

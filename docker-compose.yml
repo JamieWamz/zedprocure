@@ -8,9 +8,13 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -q"]
       interval: 5s
-      retries: 5
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - app-network
 
   backend:
     build:
@@ -30,8 +34,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: ["sh", "-c", "npm run migrate:up && node src/index.js"]
+    command: ["sh", "-c", "DATABASE_URL=$$DATABASE_URL npx node-pg-migrate --migrations-dir src/db/migrations up && node src/index.js"]
     restart: unless-stopped
+    networks:
+      - app-network
 
   frontend:
     build:
@@ -40,7 +46,14 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_started
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
   pgdata:

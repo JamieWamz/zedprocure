@@ -126,4 +126,111 @@ router.get('/orders', authenticate, async (req, res) => {
   }
 });
 
+// Update order status (accept, start delivery, mark delivered, complete, dispute)
+router.patch('/orders/:id/status', authenticate, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  const validStatuses = ['accepted', 'delivery_in_progress', 'delivered', 'completed', 'disputed'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ error: 'Invalid target status' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: [order] } = await client.query(
+      `SELECT o.*, b.tenant_id
+       FROM orders o
+       JOIN bids b ON b.id = o.bid_id
+       WHERE o.id = $1 FOR UPDATE`,
+      [id]
+    );
+
+    if (!order) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (req.user.user_type === 'supplier_user') {
+      // Find supplier_id for the current supplier user
+      const { rows: [supplierUser] } = await client.query(
+        'SELECT supplier_id FROM supplier_users WHERE id = $1',
+        [req.user.user_id]
+      );
+      if (!supplierUser || order.awarded_supplier_id !== supplierUser.supplier_id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Forbidden: You are not the awarded supplier for this order' });
+      }
+
+      // Check transitions
+      if (status === 'accepted' && order.status !== 'pending_acceptance') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Can only accept orders that are pending acceptance' });
+      }
+      if (status === 'delivery_in_progress' && order.status !== 'accepted') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Can only start delivery for accepted orders' });
+      }
+      if (status === 'delivered' && order.status !== 'delivery_in_progress') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Can only mark as delivered when delivery is in progress' });
+      }
+      if (!['accepted', 'delivery_in_progress', 'delivered'].includes(status)) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Forbidden: Suppliers cannot transition order to ' + status });
+      }
+    } else if (req.user.user_type === 'tenant_user' && req.user.role === 'customer') {
+      if (order.tenant_id !== req.user.tenant_id) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Forbidden: Order belongs to another tenant' });
+      }
+
+      if (status === 'completed' && !['delivered', 'delivery_in_progress'].includes(order.status)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Can only complete orders that are delivered or in progress' });
+      }
+      if (status === 'disputed' && ['completed', 'pending_acceptance'].includes(order.status)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Cannot dispute completed or unaccepted orders' });
+      }
+      if (!['completed', 'disputed'].includes(status)) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Forbidden: Customers cannot transition order to ' + status });
+      }
+    } else if (req.user.role === 'business_admin' || req.user.role === 'system_admin') {
+      // Admins can complete or dispute any order
+      if (status === 'completed' && !['delivered', 'delivery_in_progress'].includes(order.status)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Can only complete orders that are delivered or in progress' });
+      }
+    } else {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { rows: [updatedOrder] } = await client.query(
+      'UPDATE orders SET status = $1 WHERE id = $2 RETURNING *',
+      [status, id]
+    );
+
+    // Write audit log entry
+    await client.query(
+      `INSERT INTO audit_log (actor_id, actor_type, actor_email, action, target_type, target_id, details)
+       VALUES ($1, $2, $3, $4, 'order', $5, $6)`,
+      [req.user.user_id, req.user.user_type, req.user.email, 'update_order_status', id, JSON.stringify({ old_status: order.status, new_status: status })]
+    );
+
+    await client.query('COMMIT');
+    res.json(updatedOrder);
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('Error updating order status:', e);
+    res.status(500).json({ error: 'Failed to update order status: ' + e.message });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

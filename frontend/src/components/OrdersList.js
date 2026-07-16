@@ -32,6 +32,16 @@ export default function OrdersList() {
 
   useEffect(() => { load(); }, [load]);
 
+  const handleUpdateOrderStatus = async (orderId, targetStatus) => {
+    try {
+      await axios.patch(`/api/orders/${orderId}/status`, { status: targetStatus });
+      message.success(`Order status updated to ${targetStatus}`);
+      load();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Failed to update order status');
+    }
+  };
+
   const columns = [
     { title: 'Order', dataIndex: 'id', render: val => <Text code>{val.substring(0, 8)}</Text> },
     { title: 'Organization', dataIndex: 'tenant_name', render: value => value || '-' },
@@ -46,7 +56,15 @@ export default function OrdersList() {
     {
       title: 'Actions',
       render: (_, row) => (
-        <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningOrder(row)}>Sign Contract</Button>
+        <Space wrap>
+          <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningOrder(row)}>Sign Contract</Button>
+          {['delivered', 'delivery_in_progress'].includes(row.status) && (
+            <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'completed')}>Complete Order</Button>
+          )}
+          {!['completed', 'pending_acceptance', 'disputed'].includes(row.status) && (
+            <Button size="small" danger onClick={() => handleUpdateOrderStatus(row.id, 'disputed')}>Dispute</Button>
+          )}
+        </Space>
       ),
     },
   ];

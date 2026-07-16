@@ -101,3 +101,28 @@
 | `backend/uploads/.gitkeep` | Created to track directory in git |
 | `docker-compose.yml` | COOKIE_SECURE, JWT_SECRET fallback, APP_URL, migrate command |
 | `render.yaml` | Added frontend static service, APP_URL backend env var |
+
+---
+
+## Session 3: Final Infrastructure Fixes & Order Lifecycle Management
+
+### Bug Fixes
+- [x] **`backend/src/routes/ledger.js` — Parameter indexing bug in `/journal`**
+  - **Root cause:** The `search` filter used parameter `$i` twice, but only pushed once to the parameters array. This caused misaligned parameters downstream.
+  - **Fix:** Changed it to use `$i` and `$i + 1` placeholders, and pushed the search query pattern twice to ensure alignment.
+
+### New Features: Order Lifecycle Management
+- [x] **`backend/src/routes/order.js` — Expose PATCH `/orders/:id/status` endpoint**
+  - Implemented secure order status transitions (`accepted`, `delivery_in_progress`, `delivered`, `completed`, `disputed`) for suppliers, customers, and admins.
+  - Added transition verification checks and wrote audit logs for state transitions.
+- [x] **Supplier Dashboard Order Fulfillment Workflow**
+  - Updated `frontend/src/components/SupplierDashboard.js` to allow suppliers to accept pending orders, start delivery, and mark orders as delivered.
+- [x] **Customer Dashboard Order Completion & Dispute Workflow**
+  - Updated `frontend/src/components/CustomerDashboard.js` to allow buyers to complete delivered orders or dispute them.
+- [x] **Centralized Admin Order Management**
+  - Updated `frontend/src/components/OrdersList.js` to allow admins to resolve/complete orders or place them in dispute.
+
+### Version Control & CI/CD
+- [x] **Committed all infrastructure configurations**
+  - Added and committed `.dockerignore`, `.github/workflows/ci.yml`, `.github/workflows/cd.yml`, `.github/workflows/pages.yml`, `Dockerfile.backend`, `Dockerfile.frontend`, and `docker-compose.yml` to trigger the CI/CD pipeline.
+

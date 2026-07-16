@@ -113,6 +113,16 @@ export default function SupplierDashboard() {
     }
   };
 
+  const handleUpdateOrderStatus = async (orderId, targetStatus) => {
+    try {
+      await axios.patch(`/api/orders/${orderId}/status`, { status: targetStatus });
+      message.success(`Order status updated to ${targetStatus.replace(/_/g, ' ')}`);
+      fetchPortal();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Failed to update order status');
+    }
+  };
+
   const invoiceColumns = [
     { title: 'Invoice #', dataIndex: 'invoice_no', render: value => <Text code>{value}</Text> },
     { title: 'Due', dataIndex: 'due_date' },
@@ -132,7 +142,23 @@ export default function SupplierDashboard() {
       title: 'Escrow',
       render: (_, row) => <Tag color={row.escrow_status === 'released' ? 'success' : row.escrow_status === 'funded' ? 'processing' : 'warning'}>{row.escrow_status || 'awaiting funding'}</Tag>,
     },
-    { title: 'Action', render: (_, row) => <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningOrder(row)}>Sign Contract</Button> },
+    {
+      title: 'Action',
+      render: (_, row) => (
+        <Space wrap>
+          <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningOrder(row)}>Sign Contract</Button>
+          {row.status === 'pending_acceptance' && (
+            <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'accepted')}>Accept Order</Button>
+          )}
+          {row.status === 'accepted' && (
+            <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'delivery_in_progress')}>Start Delivery</Button>
+          )}
+          {row.status === 'delivery_in_progress' && (
+            <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'delivered')}>Mark Delivered</Button>
+          )}
+        </Space>
+      ),
+    },
   ];
 
   const verificationColor = profile?.verification_status === 'verified'

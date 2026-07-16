@@ -206,7 +206,11 @@ router.get('/journal', authenticate, requireRole('business_admin', 'system_admin
     if (from) { where.push(`je.entry_date >= $${i++}`); params.push(from); }
     if (to) { where.push(`je.entry_date <= $${i++}::timestamp + interval '1 day'`); params.push(to); }
     if (account) { where.push(`a.account_code = $${i++}`); params.push(account); }
-    if (search) { where.push(`(je.description ILIKE $${i} OR je.reference_type ILIKE $${i})`); params.push(`%${search}%`); i++; }
+    if (search) {
+      where.push(`(je.description ILIKE $${i} OR je.reference_type ILIKE $${i + 1})`);
+      params.push(`%${search}%`, `%${search}%`);
+      i += 2;
+    }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
     const limitIdx = i++;
