@@ -7,18 +7,30 @@ const router = express.Router();
 router.post('/bids/:bidId/requirements', authenticate, requireRole('customer'), async (req, res) => {
   const { bidId } = req.params;
   const { budget_amount, expected_delivery_time, payment_method, certification_standards, file_path } = req.body;
-  // Ensure the customer belongs to the same tenant as the bid
-  const { rows: [bid] } = await pool.query('SELECT tenant_id FROM bids WHERE id=$1', [bidId]);
-  if (!bid) return res.status(404).json({ error: 'Bid not found' });
-  const { rows: [user] } = await pool.query('SELECT tenant_id FROM tenant_users WHERE id=$1', [req.user.user_id]);
-  if (user.tenant_id !== bid.tenant_id) return res.status(403).json({ error: 'Forbidden' });
 
-  const { rows } = await pool.query(
-    `INSERT INTO bid_requirements (bid_id, customer_user_id, budget_amount, expected_delivery_time, payment_method, certification_standards, specifications_file_path)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [bidId, req.user.user_id, budget_amount, expected_delivery_time, payment_method, certification_standards, file_path]
-  );
-  res.status(201).json(rows[0]);
+  try {
+    // Efficiently verify that the user's tenant matches the bid's tenant in a single query
+    const authCheck = await pool.query(
+      `SELECT b.id FROM bids b
+       JOIN tenant_users tu ON b.tenant_id = tu.tenant_id
+       WHERE b.id = $1 AND tu.id = $2`,
+      [bidId, req.user.user_id]
+    );
+
+    if (authCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Forbidden: You do not have access to this bid.' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO bid_requirements (bid_id, customer_user_id, budget_amount, expected_delivery_time, payment_method, certification_standards, specifications_file_path)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [bidId, req.user.user_id, budget_amount, expected_delivery_time, payment_method, certification_standards, file_path]
+    );
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    console.error('Error creating bid requirement:', e);
+    res.status(500).json({ error: 'Failed to create requirement' });
+  }
 });
 
 module.exports = router;

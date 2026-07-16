@@ -7,7 +7,6 @@ services:
       POSTGRES_DB: zambia_procurement
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./backend/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -19,18 +18,19 @@ services:
       dockerfile: Dockerfile.backend
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/zambia_procurement
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_placeholder_must_change_in_production}
       NODE_ENV: production
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost}
-      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       SYSTEM_ADMIN_PASSWORD: ${SYSTEM_ADMIN_PASSWORD:-}
       BUSINESS_ADMIN_PASSWORD: ${BUSINESS_ADMIN_PASSWORD:-}
+      APP_URL: ${APP_URL:-http://localhost}
     ports:
       - "4000:4000"
     depends_on:
       db:
         condition: service_healthy
-    command: ["node", "src/index.js"]
+    command: ["sh", "-c", "npm run migrate:up && node src/index.js"]
     restart: unless-stopped
 
   frontend:

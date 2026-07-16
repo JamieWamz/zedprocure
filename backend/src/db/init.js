@@ -1,61 +1,47 @@
 /**
  * Database initialization script for production.
  * Updates platform admin passwords from environment variables on startup.
- * Runs database migrations.
+ * Seeds essential data like the chart of accounts.
+ *
+ * Database schema migrations are now handled by `node-pg-migrate` and are
+ * run as part of the deployment build step, not at application startup.
  * This runs before the server starts in production.
  */
 const bcrypt = require('bcryptjs');
-const pool = require('../config/db');
 const fs = require('fs');
 const path = require('path');
+const pool = require('../config/db');
 
 async function init() {
+  // Ensure uploads directory exists
+  const uploadsDir = path.join(__dirname, '../../uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log('Created uploads directory.');
+  }
+
   const client = await pool.connect();
   try {
-    // Run pending migrations
-    const migrationsDir = path.join(__dirname);
-    const migrationFiles = [
-      'migration_002_production.sql',
-      'migration_003_verification.sql',
-      'migration_004_manual_verification.sql',
-    ];
-
-    for (const file of migrationFiles) {
-      const filePath = path.join(migrationsDir, file);
-      if (fs.existsSync(filePath)) {
-        const sql = fs.readFileSync(filePath, 'utf8');
-        try {
-          await client.query(sql);
-          console.log(`Migration applied: ${file}`);
-        } catch (err) {
-          // If tables already exist, that's OK — migration is idempotent
-          if (err.code === '42P07' || err.message.includes('already exists')) {
-            console.log(`Migration ${file} already applied (skipping).`);
-          } else {
-            console.error(`Migration ${file} error:`, err.message);
-          }
-        }
-      }
-    }
-
     // Update System Admin password if provided
-    if (process.env.SYSTEM_ADMIN_PASSWORD && process.env.SYSTEM_ADMIN_PASSWORD.length >= 10) {
+    const systemAdminEmail = process.env.SYSTEM_ADMIN_EMAIL || 'wamuyuwamundia@gmail.com';
+    if (process.env.SYSTEM_ADMIN_PASSWORD && process.env.SYSTEM_ADMIN_PASSWORD.length >= 10 && systemAdminEmail) {
       const sysHash = await bcrypt.hash(process.env.SYSTEM_ADMIN_PASSWORD, 12);
       await client.query(
-        `UPDATE platform_admins SET password_hash=$1 WHERE email='wamuyuwamundia@gmail.com'`,
-        [sysHash]
+        `UPDATE platform_admins SET password_hash=$1 WHERE email=$2`,
+        [sysHash, systemAdminEmail]
       );
-      console.log('System admin password updated from environment.');
+      console.log(`System admin password updated for ${systemAdminEmail}.`);
     }
 
     // Update Business Admin password if provided
-    if (process.env.BUSINESS_ADMIN_PASSWORD && process.env.BUSINESS_ADMIN_PASSWORD.length >= 10) {
+    const businessAdminEmail = process.env.BUSINESS_ADMIN_EMAIL || 'brightilunga6@gmail.com';
+    if (process.env.BUSINESS_ADMIN_PASSWORD && process.env.BUSINESS_ADMIN_PASSWORD.length >= 10 && businessAdminEmail) {
       const bizHash = await bcrypt.hash(process.env.BUSINESS_ADMIN_PASSWORD, 12);
       await client.query(
-        `UPDATE platform_admins SET password_hash=$1 WHERE email='brightilunga6@gmail.com'`,
-        [bizHash]
+        `UPDATE platform_admins SET password_hash=$1 WHERE email=$2`,
+        [bizHash, businessAdminEmail]
       );
-      console.log('Business admin password updated from environment.');
+      console.log(`Business admin password updated for ${businessAdminEmail}.`);
     }
 
     // Chart of accounts (idempotent)
@@ -80,10 +66,7 @@ async function init() {
     console.log('Database initialization complete.');
   } catch (e) {
     console.error('Database initialization error:', e);
-    // Don't exit on migration errors, they may be idempotent
-    if (!e.message.includes('already exists') && e.code !== '42P07' && e.code !== '42710') {
-      process.exit(1);
-    }
+    process.exit(1);
   } finally {
     client.release();
   }

@@ -3,6 +3,7 @@
  * cash flow summaries, and key business metrics.
  */
 const express = require('express');
+const crypto = require('crypto');
 const pool = require('../config/db');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
 const router = express.Router();
@@ -303,7 +304,7 @@ router.post('/wallet/transfer', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Recipient not found' });
     }
 
-    const txId = require('crypto').randomUUID();
+    const txId = crypto.randomUUID();
     const amt = parseFloat(amount);
 
     // Debit sender
@@ -319,7 +320,7 @@ router.post('/wallet/transfer', authenticate, async (req, res) => {
     await client.query(
       `INSERT INTO wallet_transactions (id, wallet_id, type, amount, balance_before, balance_after, description)
        VALUES ($1, $2, 'transfer_in', $3, $4, $5, $6)`,
-      [require('crypto').randomUUID(), recipient.id, amt, parseFloat(recipient.balance), parseFloat(recipient.balance) + amt, `Transfer from ${req.user.email}`]
+      [crypto.randomUUID(), recipient.id, amt, parseFloat(recipient.balance), parseFloat(recipient.balance) + amt, `Transfer from ${req.user.email}`]
     );
     await client.query(`UPDATE wallets SET balance=$1, updated_at=NOW() WHERE id=$2`,
       [parseFloat(recipient.balance) + amt, recipient.id]);

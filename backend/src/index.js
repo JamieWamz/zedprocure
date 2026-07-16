@@ -36,6 +36,7 @@ app.use(express.json({ limit: '10mb' }));
 const globalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200 });
 app.use('/api', globalLimiter);
 
+app.use('/api/health', require('./routes/health'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api', require('./routes/registration'));
 app.use('/api/admin', require('./routes/admin'));

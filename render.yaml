@@ -1,0 +1,60 @@
+# Render deployment configuration for zambia-procurement
+# Defines a managed Postgres database and the backend web service.
+# Docs: https://render.com/docs/yaml-spec
+
+databases:
+  - name: zambia-procurement-db
+    databaseName: zambia_procurement
+    user: zambia_procurement
+    postgresVersion: "15"
+    plan: free
+    # Internal connection details are injected as DATABASE_URL automatically.
+
+services:
+  - type: web
+    name: zambia-procurement-backend
+    runtime: node
+    region: frankfurt
+    plan: free
+    branch: main
+    rootDir: backend
+    buildCommand: npm install
+    preDeployCommand: npm run migrate:up
+    startCommand: node src/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: zambia-procurement-db
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        sync: false # Set this as a secret in the Render dashboard
+      - key: CORS_ORIGINS
+        value: https://zedprocure.onrender.com
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: SYSTEM_ADMIN_PASSWORD
+        sync: false
+      - key: BUSINESS_ADMIN_PASSWORD
+        sync: false
+      - key: APP_URL
+        value: https://zedprocure.onrender.com
+
+  - type: static
+    name: zedprocure
+    region: frankfurt
+    plan: free
+    branch: main
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    publishPath: build
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: REACT_APP_API_BASE_URL
+        value: https://zambia-procurement-backend.onrender.com
+

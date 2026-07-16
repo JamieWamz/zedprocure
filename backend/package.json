@@ -4,7 +4,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "migrate:up": "node-pg-migrate --config-file pg-migrate-config.js up"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -209,6 +209,8 @@ router.get('/journal', authenticate, requireRole('business_admin', 'system_admin
     if (search) { where.push(`(je.description ILIKE $${i} OR je.reference_type ILIKE $${i})`); params.push(`%${search}%`); i++; }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
+    const limitIdx = i++;
+    const offsetIdx = i++;
     const { rows } = await pool.query(
       `SELECT je.*, json_agg(json_build_object('account_code', a.account_code, 'account_name', a.account_name, 'debit', jl.debit, 'credit', jl.credit)) AS lines
        FROM journal_entries je
@@ -217,7 +219,7 @@ router.get('/journal', authenticate, requireRole('business_admin', 'system_admin
        ${whereSql}
        GROUP BY je.id
        ORDER BY je.entry_date DESC
-       LIMIT $${i++} OFFSET $${i++}`,
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       [...params, parseInt(limit, 10), parseInt(offset, 10)]
     );
     res.json(rows);

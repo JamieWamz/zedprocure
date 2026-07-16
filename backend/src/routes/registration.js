@@ -233,13 +233,26 @@ router.post('/register', async (req, res) => {
     }
 
     const organizationName = organization || `${full_name} Buyer Account`;
-    const { rows: [tenant] } = await client.query(
-      `INSERT INTO tenants (id, name, registration_number)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (registration_number) DO UPDATE SET name = EXCLUDED.name
-       RETURNING id`,
-      [crypto.randomUUID(), organizationName, registration_number || null]
-    );
+    // Use ON CONFLICT only when registration_number is provided, since NULL != NULL in SQL
+    // and the unique constraint won't fire for null values, causing duplicate tenants.
+    let tenantRow;
+    if (registration_number) {
+      const { rows: [t] } = await client.query(
+        `INSERT INTO tenants (id, name, registration_number)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (registration_number) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id`,
+        [crypto.randomUUID(), organizationName, registration_number]
+      );
+      tenantRow = t;
+    } else {
+      const { rows: [t] } = await client.query(
+        `INSERT INTO tenants (id, name) VALUES ($1, $2) RETURNING id`,
+        [crypto.randomUUID(), organizationName]
+      );
+      tenantRow = t;
+    }
+    const tenant = tenantRow;
 
     const { rows: [user] } = await client.query(
       `INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role)
