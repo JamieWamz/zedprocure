@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Row, Col, Statistic, Table, Tag, Spin, Alert, Tabs, Progress, Tooltip, Button, Modal, Form, Input, message, List, Typography } from 'antd';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Card, Row, Col, Statistic, Table, Tag, Spin, Alert, Tabs, Progress, Tooltip, Button, Modal, Form, Input, message, List, Typography, Badge, Popover, Empty } from 'antd';
 import {
   DollarOutlined, RiseOutlined, FallOutlined, SafetyCertificateOutlined,
   FileTextOutlined, TeamOutlined, BankOutlined, ShoppingCartOutlined,
   ArrowUpOutlined, ArrowDownOutlined, WalletOutlined, SendOutlined,
   ReloadOutlined, CreditCardOutlined, CheckCircleOutlined, ClockCircleOutlined,
-  ExclamationCircleOutlined,
+  ExclamationCircleOutlined, BellOutlined, CheckOutlined,
   FlagOutlined, TrophyOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
@@ -29,6 +29,9 @@ export default function BusinessAdminDashboard() {
   const [walletModal, setWalletModal] = useState(false);
   const [wallet, setWallet] = useState(null);
   const [transferForm] = Form.useForm();
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
   const navigate = useNavigate();
 
   const fetchData = useCallback(async () => {
@@ -46,6 +49,65 @@ export default function BusinessAdminDashboard() {
       setLoading(false);
     }
   }, []);
+
+  // Poll notifications every 30 seconds
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const [notifRes, countRes] = await Promise.all([
+        axios.get('/api/notifications'),
+        axios.get('/api/notifications/unread-count'),
+      ]);
+      setNotifications(notifRes.data);
+      setUnreadCount(countRes.data.count);
+    } catch (_err) {
+      // Notifications endpoint may not be available yet
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  const markAsRead = async (id) => {
+    await axios.put(`/api/notifications/${id}/read`);
+    fetchNotifications();
+  };
+
+  const markAllRead = async () => {
+    await axios.put('/api/notifications/read-all');
+    fetchNotifications();
+  };
+
+  const notificationContent = (
+    <div style={{ width: 360, maxHeight: 400, overflowY: 'auto' }}>
+      {notifications.length === 0 ? (
+        <Empty description="No notifications" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      ) : (
+        <>
+          <div style={{ textAlign: 'right', padding: '4px 8px' }}>
+            <Button type="link" size="small" onClick={markAllRead}>Mark all as read</Button>
+          </div>
+          <List
+            size="small"
+            dataSource={notifications.slice(0, 20)}
+            renderItem={(item) => (
+              <List.Item
+                style={{ background: item.is_read ? 'transparent' : '#f0f5ff', cursor: 'pointer' }}
+                onClick={() => { markAsRead(item.id); if (item.link) navigate(item.link); setNotifOpen(false); }}
+              >
+                <List.Item.Meta
+                  title={<Text strong={!item.is_read} style={{ fontSize: 13 }}>{item.title}</Text>}
+                  description={<Text style={{ fontSize: 11, color: '#999' }}>{item.message?.substring(0, 80)}</Text>}
+                />
+              </List.Item>
+            )}
+          />
+        </>
+      )}
+    </div>
+  );
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -101,6 +163,12 @@ export default function BusinessAdminDashboard() {
           <p>Financial overview, invoice controls, cash movement and platform procurement metrics.</p>
         </div>
         <div className="page-media-actions">
+          <Popover content={notificationContent} title="Notifications" trigger="click"
+            open={notifOpen} onOpenChange={setNotifOpen}>
+            <Badge count={unreadCount} size="small" style={{ marginRight: 8 }}>
+              <Button icon={<BellOutlined />} />
+            </Badge>
+          </Popover>
           <Button icon={<ReloadOutlined />} onClick={fetchData} style={{ marginRight: 12 }}>Refresh</Button>
           <Button icon={<FileTextOutlined />} onClick={() => navigate('/admin/invoices')}>Invoices</Button>
           <Button icon={<DollarOutlined />} onClick={() => navigate('/admin/ledger')}>Ledger</Button>

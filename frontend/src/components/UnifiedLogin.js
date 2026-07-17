@@ -126,19 +126,19 @@ export default function UnifiedLogin() {
                            />
                          )}
                          <Form.Item name="full_name" label="Full Name" rules={[{ required: true }]}>
-                        <Input size="large" />
+                        <Input size="large" placeholder="e.g. Mundia J Wamuyuwa" />
                       </Form.Item>
                       <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
-                        <Input size="large" autoComplete="username" />
+                        <Input size="large" placeholder="you@organization.zm" autoComplete="username" />
                       </Form.Item>
                       <Form.Item name="organization" label={accountType === 'supplier' ? 'Company Name' : 'Organization / Buyer Name'} rules={[{ required: true }]}>
-                        <Input size="large" />
+                        <Input size="large" placeholder="e.g. Freshstart Enterprises" />
                       </Form.Item>
                       <Form.Item name="registration_number" label="Registration Number">
-                        <Input size="large" />
+                        <Input size="large" placeholder="e.g. PACRA-2024-00123" />
                       </Form.Item>
                       <Form.Item name="password" label="Password" rules={[{ required: true, min: 10 }]}>
-                        <Input.Password size="large" autoComplete="new-password" />
+                        <Input.Password size="large" placeholder="At least 10 characters" autoComplete="new-password" />
                       </Form.Item>
                       <Button type="primary" htmlType="submit" loading={registering} block size="large">
                         Create Account

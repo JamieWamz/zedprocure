@@ -5,6 +5,8 @@ const crypto = require('crypto');
 const pool = require('../config/db');
 const { authenticate } = require('../middleware/authMiddleware');
 const stripBudgetForSupplier = require('../middleware/priceIsolation');
+const { validateBidSubmission } = require('../services/submissionGuard');
+const { notifySuppliersOnBidPublished } = require('../services/notificationService');
 const router = express.Router();
 
 // Configure multer for response file uploads
@@ -30,7 +32,8 @@ const uploadResponse = multer({
 // This MUST be before any /bids routes to ensure budget_amount is stripped
 router.use('/bids', authenticate, stripBudgetForSupplier);
 
-// Create bid – min 3 verified suppliers, owned by Business Admin.
+// ─── Create bid – open marketplace: no minimum supplier requirement ───────────
+// Bids are created as 'draft' and must be explicitly published.
 router.post('/tenants/:tid/bids', authenticate, async (req, res) => {
   if (req.user.role !== 'business_admin') {
     return res.status(403).json({ error: 'Forbidden' });
@@ -39,50 +42,37 @@ router.post('/tenants/:tid/bids', authenticate, async (req, res) => {
   const tenantId = req.user.tenant_id || req.params.tid;
   const {
     title, description, deadline, delivery_start, delivery_end,
-    requires_large_contract, evaluation_method, bidding_fee_amount, supplier_ids
+    requires_large_contract, evaluation_method, bidding_fee_amount,
+    visibility, business_category
   } = req.body;
 
   const isLargeContract = requires_large_contract === true || requires_large_contract === 'true';
   const evalMethod = (evaluation_method === 'best_value') ? 'best_value' : 'lowest_price';
-
-  if (!supplier_ids || supplier_ids.length < 3) {
-    return res.status(422).json({ error: 'Minimum 3 verified suppliers required by Zambian Public Procurement Act.' });
-  }
-
-  const { rows: suppliers } = await pool.query(
-    'SELECT id, verification_status FROM suppliers WHERE id = ANY($1::uuid[])',
-    [supplier_ids]
-  );
-  const unverified = suppliers.filter(s => s.verification_status !== 'verified');
-  if (unverified.length) {
-    return res.status(422).json({ error: 'All suppliers must be verified' });
-  }
+  const bidVisibility = visibility === 'restricted' ? 'restricted' : 'global';
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // Re-verify inside the transaction to prevent race between check and insert
-    const supplierCheck = await client.query(
-      'SELECT id FROM suppliers WHERE id = ANY($1::uuid[]) AND verification_status = $2',
-      [supplier_ids, 'verified']
-    );
-    if (supplierCheck.rows.length !== supplier_ids.length) {
-      await client.query('ROLLBACK');
-      return res.status(422).json({ error: 'All suppliers must be verified' });
-    }
-
     const bidRes = await client.query(
       `INSERT INTO bids (tenant_id, title, description, deadline, delivery_start, delivery_end,
-        requires_large_contract, evaluation_method, bidding_fee_amount, created_by, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'open') RETURNING *`,
+        requires_large_contract, evaluation_method, bidding_fee_amount, created_by,
+        status, visibility, business_category)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'draft',$11,$12) RETURNING *`,
       [tenantId, title, description, deadline, delivery_start, delivery_end,
-       isLargeContract, evalMethod, bidding_fee_amount, req.user.user_id]
+       isLargeContract, evalMethod, bidding_fee_amount, req.user.user_id,
+       bidVisibility, business_category]
     );
     const bid = bidRes.rows[0];
-    for (const sid of supplier_ids) {
-      await client.query('INSERT INTO bid_suppliers (bid_id, supplier_id) VALUES ($1,$2)', [bid.id, sid]);
-    }
+
+    // Log creation
+    await client.query(
+      `INSERT INTO system_logs (actor_id, actor_type, action, entity_type, entity_id, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.user.user_id, 'platform_admin', 'bid_created', 'bid', bid.id,
+       JSON.stringify({ title: bid.title, visibility: bid.visibility })]
+    );
+
     await client.query('COMMIT');
     res.status(201).json(bid);
   } catch (e) {
@@ -94,7 +84,74 @@ router.post('/tenants/:tid/bids', authenticate, async (req, res) => {
   }
 });
 
-// Get bid details – includes suppliers and requirements, increments views
+// ─── Publish bid – draft → open, notify verified suppliers ────────────────────
+router.put('/bids/:bidId/publish', authenticate, async (req, res) => {
+  if (req.user.role !== 'business_admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: [bid] } = await client.query(
+      `UPDATE bids SET status = 'open'
+       WHERE id = $1 AND status = 'draft'
+       RETURNING *`,
+      [req.params.bidId]
+    );
+    if (!bid) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Bid not found or already published' });
+    }
+
+    // Log the publish action
+    await client.query(
+      `INSERT INTO system_logs (actor_id, actor_type, action, entity_type, entity_id, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.user.user_id, 'platform_admin', 'bid_published', 'bid', bid.id,
+       JSON.stringify({ title: bid.title, visibility: bid.visibility, business_category: bid.business_category })]
+    );
+
+    await client.query('COMMIT');
+
+    // Notify verified suppliers (non-blocking — fire and forget)
+    if (bid.visibility === 'global') {
+      notifySuppliersOnBidPublished(bid).catch(err => {
+        console.error('Error notifying suppliers on bid publish:', err);
+      });
+    }
+
+    res.json(bid);
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('Error publishing bid:', e);
+    res.status(500).json({ error: 'Failed to publish bid' });
+  } finally {
+    client.release();
+  }
+});
+
+// ─── Get global open bids (marketplace listing for suppliers) ─────────────────
+router.get('/bids/global', authenticate, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT b.id, b.title, b.description, b.deadline, b.evaluation_method,
+              b.bidding_fee_amount, b.business_category, b.views_count,
+              b.created_at, t.name AS tenant_name
+       FROM bids b
+       JOIN tenants t ON t.id = b.tenant_id
+       WHERE b.status = 'open' AND b.visibility = 'global'
+       ORDER BY b.created_at DESC`
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error('Error fetching global bids:', e);
+    res.status(500).json({ error: 'Failed to fetch global bids' });
+  }
+});
+
+// ─── Get bid details – includes suppliers and requirements, increments views ──
 router.get('/bids/:bidId', authenticate, async (req, res) => {
   try {
     const { bidId } = req.params;
@@ -119,11 +176,12 @@ router.get('/bids/:bidId', authenticate, async (req, res) => {
   }
 });
 
-// Public bid noticeboard (no auth)
+// ─── Public bid noticeboard (no auth) ─────────────────────────────────────────
 router.get('/public/bids', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT b.id, b.title, b.description, b.deadline, b.evaluation_method, b.views_count, t.name AS tenant_name
+      `SELECT b.id, b.title, b.description, b.deadline, b.evaluation_method,
+              b.business_category, b.views_count, t.name AS tenant_name
        FROM bids b JOIN tenants t ON t.id = b.tenant_id
        WHERE b.status = 'open' ORDER BY b.created_at DESC`
     );
@@ -134,15 +192,25 @@ router.get('/public/bids', async (req, res) => {
   }
 });
 
-// Supplier: list my open invitations
+// ─── Supplier: list my open invitations + matching global bids ────────────────
 router.get('/supplier/bids', authenticate, async (req, res) => {
   if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
   try {
     const { rows } = await pool.query(
-      `SELECT b.id, b.title, b.description, b.deadline, bs.accepted, bs.id as bid_supplier_id
+      `SELECT b.id, b.title, b.description, b.deadline, b.visibility,
+              bs.accepted, bs.id as bid_supplier_id
        FROM bid_suppliers bs JOIN bids b ON b.id = bs.bid_id
        WHERE bs.supplier_id = (SELECT supplier_id FROM supplier_users WHERE id = $1)
-       AND b.status = 'open'`,
+       AND b.status = 'open'
+       UNION
+       SELECT b.id, b.title, b.description, b.deadline, b.visibility,
+              NULL as accepted, NULL as bid_supplier_id
+       FROM bids b
+       WHERE b.status = 'open' AND b.visibility = 'global'
+         AND b.business_category = (SELECT s.business_category FROM suppliers s
+                                     JOIN supplier_users su ON su.supplier_id = s.id
+                                     WHERE su.id = $1)
+       ORDER BY deadline ASC`,
       [req.user.user_id]
     );
     res.json(rows);
@@ -152,6 +220,7 @@ router.get('/supplier/bids', authenticate, async (req, res) => {
   }
 });
 
+// ─── Supplier: accept/decline a bid invitation ────────────────────────────────
 router.post('/supplier/bids/:bidSupplierId/respond', authenticate, async (req, res) => {
   if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
   try {
@@ -168,6 +237,7 @@ router.post('/supplier/bids/:bidSupplierId/respond', authenticate, async (req, r
   }
 });
 
+// ─── Supplier: submit a bid response (with file upload) ───────────────────────
 router.post('/supplier/bids/:bidSupplierId/response', authenticate, uploadResponse.single('file'), async (req, res) => {
   if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
   try {
@@ -176,13 +246,19 @@ router.post('/supplier/bids/:bidSupplierId/response', authenticate, uploadRespon
 
     // Ensure the bid_supplier_id belongs to the current user's supplier record
     const { rows: [bs] } = await pool.query(
-      `SELECT bs.id FROM bid_suppliers bs
+      `SELECT bs.id, bs.bid_id FROM bid_suppliers bs
        JOIN supplier_users su ON su.supplier_id = bs.supplier_id
        WHERE bs.id = $1 AND su.id = $2`,
       [req.params.bidSupplierId, req.user.user_id]
     );
     if (!bs) {
       return res.status(403).json({ error: 'You do not have access to submit a response for this bid invitation' });
+    }
+
+    // Run submission guardrails
+    const guard = await validateBidSubmission(bs.bid_id, req.user.user_id);
+    if (!guard.valid) {
+      return res.status(422).json({ error: guard.errors.join('; ') });
     }
 
     const { rows } = await pool.query(

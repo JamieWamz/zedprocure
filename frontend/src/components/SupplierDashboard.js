@@ -1,354 +1,205 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Alert, Button, Card, Col, Empty, List, Row, Select, Space, Statistic, Table, Tag,
-  Typography, message,
-} from 'antd';
-import {
-  AuditOutlined, CheckCircleOutlined, ClockCircleOutlined, FileTextOutlined, ReloadOutlined,
-  SafetyCertificateOutlined, ShoppingCartOutlined, UploadOutlined,
-} from '@ant-design/icons';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Card, Row, Col, Table, Tag, Spin, Alert, Button, Tabs, Badge, List, Typography, Empty, Popover, Statistic, message as msg } from 'antd';
+import { BellOutlined, FileTextOutlined, CheckCircleOutlined, ClockCircleOutlined, SafetyCertificateOutlined, TrophyOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { cdnImages } from '../cdnAssets';
-import DigitalSignatureModal from './DigitalSignatureModal';
 
-const { Text } = Typography;
-
-function money(value) {
-  return `ZMW ${Number(value || 0).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
-function invoiceStatus(inv) {
-  if (inv.overdue) return <Tag color="error">Overdue</Tag>;
-  const colors = {
-    sent: 'processing',
-    partially_paid: 'gold',
-    paid: 'success',
-    cancelled: 'default',
-  };
-  return <Tag color={colors[inv.status] || 'default'}>{String(inv.status || '').replace('_', ' ')}</Tag>;
-}
+const { Text, Title } = Typography;
 
 export default function SupplierDashboard() {
-  const [invitations, setInvitations] = useState([]);
-  const [invoices, setInvoices] = useState([]);
-  const [orders, setOrders] = useState([]);
-  const [profile, setProfile] = useState(null);
-  const [summary, setSummary] = useState(null);
-  const [docFile, setDocFile] = useState(null);
-  const [docType, setDocType] = useState('pacra_certificate');
-  const [uploading, setUploading] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [signingInvoice, setSigningInvoice] = useState(null);
-  const [signingOrder, setSigningOrder] = useState(null);
-  const [documentTypes, setDocumentTypes] = useState([]);
+  const [bids, setBids] = useState([]);
+  const [verificationStatus, setVerificationStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const navigate = useNavigate();
 
-  // Required document types for Zambian suppliers
-  const REQUIRED_DOCUMENTS = [
-    { type: 'pacra_certificate', label: 'PACRA Certificate' },
-    { type: 'zra_tpin', label: 'ZRA TPIN Certificate' },
-    { type: 'zra_tax_clearance', label: 'ZRA Tax Clearance' },
-    { type: 'business_license', label: 'Business License' },
-    { type: 'directors_id', label: 'Directors ID Copies' },
-    { type: 'bank_reference', label: 'Bank Reference Letter' }
-  ];
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [bidsRes, statusRes, notifRes, countRes] = await Promise.all([
+          axios.get('/api/supplier/bids'),
+          axios.get('/api/supplier/verification/status').catch(() => null),
+          axios.get('/api/notifications').catch(() => ({ data: [] })),
+          axios.get('/api/notifications/unread-count').catch(() => ({ data: { count: 0 } })),
+        ]);
+        setBids(bidsRes.data);
+        setVerificationStatus(statusRes?.data || null);
+        setNotifications(notifRes.data);
+        setUnreadCount(countRes.data.count);
+      } catch (e) {
+        console.error('Failed to load supplier dashboard:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
 
-  const fetchPortal = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [bidRes, invoiceRes, summaryRes, orderRes, profileRes, docTypesRes] = await Promise.all([
-        axios.get('/api/supplier/bids'),
-        axios.get('/api/invoices?type=AP').catch(() => ({ data: [] })),
-        axios.get('/api/invoices/summary').catch(() => ({ data: null })),
-        axios.get('/api/orders').catch(() => ({ data: [] })),
-        axios.get('/api/supplier/profile').catch(() => ({ data: null })),
-        axios.get('/api/supplier/document-types').catch(() => ({ data: [] })),
-      ]);
-      setInvitations(bidRes.data);
-      setInvoices(invoiceRes.data);
-      setSummary(summaryRes.data);
-      setOrders(orderRes.data);
-      setProfile(profileRes.data);
-      setDocumentTypes(docTypesRes.data || []);
-    } catch {
-      message.error('Failed to load supplier workspace');
-    } finally {
-      setLoading(false);
-    }
+    // Poll notifications every 30s
+    const interval = setInterval(async () => {
+      try {
+        const [notifRes, countRes] = await Promise.all([
+          axios.get('/api/notifications').catch(() => ({ data: [] })),
+          axios.get('/api/notifications/unread-count').catch(() => ({ data: { count: 0 } })),
+        ]);
+        setNotifications(notifRes.data);
+        setUnreadCount(countRes.data.count);
+      } catch (_) {}
+    }, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => { fetchPortal(); }, [fetchPortal]);
-
-  const handleUploadDoc = async () => {
-    if (!docFile) return message.error('Select a file');
-    setUploading(true);
+  const markAsRead = async (id) => {
     try {
-      const formData = new FormData();
-      formData.append('document_type', docType);
-      formData.append('file', docFile);
-
-      await axios.post('/api/supplier/documents', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      message.success('Document submitted for verification');
-      setDocFile(null);
-      fetchPortal();
-    } catch {
-      message.error('Upload failed');
-    } finally {
-      setUploading(false);
-    }
+      await axios.put(`/api/notifications/${id}/read`);
+      const [notifRes, countRes] = await Promise.all([
+        axios.get('/api/notifications'),
+        axios.get('/api/notifications/unread-count'),
+      ]);
+      setNotifications(notifRes.data);
+      setUnreadCount(countRes.data.count);
+    } catch (_) {}
   };
 
-  const handleAccept = async (bidSupplierId, accepted) => {
-    try {
-      await axios.post(`/api/supplier/bids/${bidSupplierId}/respond`, { accepted });
-      message.success(accepted ? 'Accepted' : 'Rejected');
-      fetchPortal();
-    } catch {
-      message.error('Action failed');
-    }
-  };
+  const notificationContent = (
+    <div style={{ width: 360, maxHeight: 400, overflowY: 'auto' }}>
+      {notifications.length === 0 ? (
+        <Empty description="No notifications" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      ) : (
+        <List
+          size="small"
+          dataSource={notifications.slice(0, 20)}
+          renderItem={(item) => (
+            <List.Item
+              style={{ background: item.is_read ? 'transparent' : '#f0f5ff', cursor: 'pointer' }}
+              onClick={() => { markAsRead(item.id); if (item.link) navigate(item.link); setNotifOpen(false); }}
+            >
+              <List.Item.Meta
+                title={<Text strong={!item.is_read} style={{ fontSize: 13 }}>{item.title}</Text>}
+                description={<Text style={{ fontSize: 11, color: '#999' }}>{item.message?.substring(0, 80)}</Text>}
+              />
+            </List.Item>
+          )}
+        />
+      )}
+    </div>
+  );
 
-  const handleUpdateOrderStatus = async (orderId, targetStatus) => {
-    try {
-      await axios.patch(`/api/orders/${orderId}/status`, { status: targetStatus });
-      message.success(`Order status updated to ${targetStatus.replace(/_/g, ' ')}`);
-      fetchPortal();
-    } catch (e) {
-      message.error(e.response?.data?.error || 'Failed to update order status');
-    }
-  };
+  if (loading) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
 
-  const invoiceColumns = [
-    { title: 'Invoice #', dataIndex: 'invoice_no', render: value => <Text code>{value}</Text> },
-    { title: 'Due', dataIndex: 'due_date' },
-    { title: 'Total', dataIndex: 'total_amount', render: value => money(value) },
-    { title: 'Paid', dataIndex: 'paid_amount', render: value => money(value) },
-    { title: 'Balance', render: (_, row) => money(Number(row.total_amount) - Number(row.paid_amount)) },
-    { title: 'Status', render: (_, row) => invoiceStatus(row) },
-    { title: 'Action', render: (_, row) => <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningInvoice(row)}>Sign</Button> },
-  ];
+  const isVerified = verificationStatus?.verification_status === 'verified';
 
-  const orderColumns = [
-    { title: 'Order', dataIndex: 'id', render: value => <Text code>{value.slice(0, 8)}</Text> },
-    { title: 'Buyer', dataIndex: 'tenant_name', render: value => value || '-' },
-    { title: 'Total', dataIndex: 'total_amount', render: value => money(value) },
-    { title: 'Status', dataIndex: 'status', render: value => <Tag>{String(value).replaceAll('_', ' ')}</Tag> },
+  const columns = [
+    { title: 'Bid Title', dataIndex: 'title', key: 'title' },
+    { title: 'Description', dataIndex: 'description', key: 'description', ellipsis: true },
     {
-      title: 'Escrow',
-      render: (_, row) => <Tag color={row.escrow_status === 'released' ? 'success' : row.escrow_status === 'funded' ? 'processing' : 'warning'}>{row.escrow_status || 'awaiting funding'}</Tag>,
+      title: 'Deadline', dataIndex: 'deadline', key: 'deadline',
+      render: (v) => new Date(v).toLocaleString(),
     },
     {
-      title: 'Action',
+      title: 'Visibility', dataIndex: 'visibility', key: 'visibility',
+      render: (v) => <Tag color={v === 'global' ? 'blue' : 'default'}>{v || 'restricted'}</Tag>,
+    },
+    {
+      title: 'Status', key: 'status',
+      render: (_, row) => row.accepted === true
+        ? <Tag color="success">Accepted</Tag>
+        : row.accepted === false
+          ? <Tag color="error">Declined</Tag>
+          : <Tag color="processing">Open</Tag>,
+    },
+    {
+      title: 'Action', key: 'action',
       render: (_, row) => (
-        <Space wrap>
-          <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningOrder(row)}>Sign Contract</Button>
-          {row.status === 'pending_acceptance' && (
-            <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'accepted')}>Accept Order</Button>
-          )}
-          {row.status === 'accepted' && (
-            <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'delivery_in_progress')}>Start Delivery</Button>
-          )}
-          {row.status === 'delivery_in_progress' && (
-            <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'delivered')}>Mark Delivered</Button>
-          )}
-        </Space>
+        <Button size="small" type="link" onClick={() => navigate(`/bids/${row.id}`)}>
+          {row.bid_supplier_id ? 'View / Respond' : 'View Details'}
+        </Button>
       ),
     },
   ];
 
-  const verificationColor = profile?.verification_status === 'verified'
-    ? 'success'
-    : profile?.verification_status === 'rejected'
-      ? 'error'
-      : 'warning';
-
   return (
     <div>
+      {/* Page Header */}
       <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.supplier})` }}>
         <div>
-          <h2>Supplier Portal</h2>
-          <p>Manage tender invitations, compliance documents and payment visibility from one workspace.</p>
+          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Supplier Dashboard</h2>
+          <p>Browse open bids, manage responses, and track your verification status.</p>
         </div>
         <div className="page-media-actions">
-          <Button icon={<ReloadOutlined />} onClick={fetchPortal} loading={loading}>Refresh</Button>
+          <Popover content={notificationContent} title="Notifications" trigger="click"
+            open={notifOpen} onOpenChange={setNotifOpen}>
+            <Badge count={unreadCount} size="small" style={{ marginRight: 8 }}>
+              <Button icon={<BellOutlined />} />
+            </Badge>
+          </Popover>
+          <Button icon={<SafetyCertificateOutlined />} onClick={() => navigate('/supplier/verification')}>
+            Verification Status
+          </Button>
         </div>
       </div>
 
+      {/* Verification banner */}
+      {!isVerified && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Account not yet verified"
+          description="You must be verified before submitting bids. Upload your documents and wait for admin approval."
+          action={<Button size="small" onClick={() => navigate('/supplier/verification')}>Upload Documents</Button>}
+        />
+      )}
+
+      {/* Stats cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} md={8}>
-          <Card>
-            <Statistic title="Open Invitations" value={invitations.length} prefix={<FileTextOutlined />} valueStyle={{ color: '#1677ff' }} />
-          </Card>
-        </Col>
-        <Col xs={24} md={8}>
-          <Card>
-            <Statistic title="Expected Receipts" value={money(summary?.ap?.open)} prefix={<ClockCircleOutlined />} valueStyle={{ color: '#fa8c16' }} />
-          </Card>
-        </Col>
-        <Col xs={24} md={8}>
-          <Card>
-            <Statistic title="Paid This Month" value={money(summary?.paidThisMonth)} prefix={<CheckCircleOutlined />} valueStyle={{ color: '#389e0d' }} />
-          </Card>
-        </Col>
-        <Col xs={24} md={8}>
-          <Card>
-            <Statistic title="Awarded Orders" value={orders.length} prefix={<ShoppingCartOutlined />} valueStyle={{ color: '#1677ff' }} />
-          </Card>
-        </Col>
-      </Row>
-
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={10}>
-          <Card title="Verification Status" className="table-card" style={{ marginBottom: 16 }}>
-            <Alert
-              type={verificationColor}
-              showIcon
-              message={profile ? String(profile.verification_status || 'pending').replaceAll('_', ' ') : 'Profile loading'}
-              description={profile?.verification_status === 'verified'
-                ? 'Your supplier account is verified and eligible for bid invitations.'
-                : 'Upload compliance documents so Business Admin can verify your supplier account.'}
-            />
-            {profile && (
-              <List
-                size="small"
-                style={{ marginTop: 12 }}
-                dataSource={[
-                  ['Company', profile.company_name],
-                  ['Registration', profile.registration_number || '-'],
-                  ['Account', profile.email],
-                ]}
-                renderItem={item => <List.Item><Text strong>{item[0]}</Text><Text>{item[1]}</Text></List.Item>}
-              />
-            )}
-          </Card>
-
-          <Card title="Required Documents Checklist" className="table-card" style={{ marginBottom: 16 }}>
-            <List
-              size="small"
-              dataSource={REQUIRED_DOCUMENTS}
-              locale={{ emptyText: 'No required documents defined' }}
-              renderItem={doc => {
-                const uploaded = profile?.documents?.find(d => d.document_type === doc.type);
-                return (
-                  <List.Item
-                    actions={[
-                      uploaded ? 
-                        <Tag color={uploaded.verification_status === 'verified' ? 'success' : 'processing'}>
-                          {uploaded.verification_status === 'verified' ? 'Verified' : 'Pending Review'}
-                        </Tag> :
-                        <Tag color="warning">Not Uploaded</Tag>
-                    ]}
-                  >
-                    <List.Item.Meta 
-                      title={doc.label} 
-                      description={uploaded ? `Uploaded: ${new Date(uploaded.upload_date).toLocaleDateString()}` : 'Required for verification'}
-                    />
-                  </List.Item>
-                );
-              }}
-            />
-          </Card>
-
-          <Card title="Upload Additional Document" className="table-card" style={{ marginBottom: 16 }}>
-            <Space wrap>
-              <Select value={docType} onChange={setDocType} style={{ width: 260 }}>
-                {documentTypes.map(dt => (
-                  <Select.Option key={dt.document_type} value={dt.document_type}>
-                    {dt.display_name || dt.document_type.replace(/_/g, ' ')}
-                  </Select.Option>
-                ))}
-              </Select>
-              <input type="file" onChange={e => setDocFile(e.target.files[0])} />
-              <Button icon={<UploadOutlined />} onClick={handleUploadDoc} loading={uploading}>Submit</Button>
-            </Space>
-          </Card>
-
-          <Card title="All Documents" className="table-card" style={{ marginBottom: 16 }}>
-            <List
-              size="small"
-              style={{ marginTop: 12 }}
-              dataSource={profile?.documents || []}
-              locale={{ emptyText: 'No compliance documents uploaded yet' }}
-              renderItem={doc => (
-                <List.Item>
-                  <List.Item.Meta 
-                    title={doc.document_type.replaceAll('_', ' ')} 
-                    description={new Date(doc.upload_date).toLocaleString()} 
-                  />
-                  <Tag color={doc.verification_status === 'verified' ? 'success' : 
-                               doc.verification_status === 'rejected' ? 'error' : 'processing'}>
-                    {doc.verification_status}
-                  </Tag>
-                </List.Item>
-              )}
-            />
-          </Card>
-
-          <Card title="Open Invitations" className="table-card">
-            <List
-              dataSource={invitations}
-              loading={loading}
-              locale={{ emptyText: 'No open invitations' }}
-              renderItem={item => (
-                <List.Item actions={[
-                  <Button type="primary" size="small" onClick={() => handleAccept(item.bid_supplier_id, true)}>Accept</Button>,
-                  <Button danger size="small" onClick={() => handleAccept(item.bid_supplier_id, false)}>Reject</Button>,
-                  <Link to={`/supplier/bids/${item.id}`}><Button type="link" size="small">View</Button></Link>,
-                ]}>
-                  <List.Item.Meta
-                    title={item.title}
-                    description={`Deadline: ${new Date(item.deadline).toLocaleString()}`}
-                  />
-                </List.Item>
-              )}
+        <Col xs={24} sm={8}>
+          <Card className="stat-card">
+            <Statistic
+              title="Open Bids Available"
+              value={bids.filter(b => !b.accepted && b.visibility === 'global').length}
+              prefix={<FileTextOutlined />}
+              valueStyle={{ color: '#1677ff' }}
             />
           </Card>
         </Col>
-
-        <Col xs={24} lg={14}>
-          <Card title="Awarded Orders & Escrow" className="table-card" style={{ marginBottom: 16 }}>
-            <Table
-              rowKey="id"
-              loading={loading}
-              dataSource={orders}
-              columns={orderColumns}
-              pagination={{ pageSize: 5 }}
-              scroll={{ x: 820 }}
-              locale={{ emptyText: <Empty description="No awarded orders yet" /> }}
+        <Col xs={24} sm={8}>
+          <Card className="stat-card">
+            <Statistic
+              title="My Invitations"
+              value={bids.filter(b => b.bid_supplier_id).length}
+              prefix={<ClockCircleOutlined />}
+              valueStyle={{ color: '#faad14' }}
             />
           </Card>
-          <Card title="Payment Visibility" className="table-card">
-            <Table
-              rowKey="id"
-              loading={loading}
-              dataSource={invoices}
-              columns={invoiceColumns}
-              pagination={{ pageSize: 6 }}
-              scroll={{ x: 720 }}
-              locale={{ emptyText: <Empty description="No invoices yet" /> }}
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card className="stat-card">
+            <Statistic
+              title="Verification Status"
+              value={verificationStatus?.verification_status || 'Pending'}
+              prefix={<SafetyCertificateOutlined />}
+              valueStyle={{ color: isVerified ? '#52c41a' : '#faad14' }}
             />
           </Card>
         </Col>
       </Row>
-      <DigitalSignatureModal
-        open={!!signingInvoice}
-        onClose={() => setSigningInvoice(null)}
-        documentType="invoice"
-        documentId={signingInvoice?.id}
-        documentLabel={signingInvoice ? `Invoice ${signingInvoice.invoice_no}` : ''}
-      />
-      <DigitalSignatureModal
-        open={!!signingOrder}
-        onClose={() => setSigningOrder(null)}
-        documentType="order"
-        documentId={signingOrder?.id}
-        documentLabel={signingOrder ? `Order ${signingOrder.id.slice(0, 8)} contract with ${signingOrder.tenant_name || 'buyer'}` : ''}
-      />
+
+      {/* Open Bids Table */}
+      <Card title={<span><TrophyOutlined /> Available Bids</span>} className="table-card">
+        <Table
+          dataSource={bids}
+          columns={columns}
+          rowKey="id"
+          pagination={false}
+          size="middle"
+          scroll={{ x: 700 }}
+          locale={{ emptyText: 'No open bids available at this time. Check back later for new opportunities.' }}
+        />
+      </Card>
     </div>
   );
 }
+

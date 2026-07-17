@@ -9,6 +9,7 @@
 const express = require('express');
 const pool = require('../config/db');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
+const { notifyVerificationDecision } = require('../services/notificationService');
 const router = express.Router();
 
 // ─── Admin: Get all suppliers with their verification status ─────────────────
@@ -86,7 +87,21 @@ router.put('/admin/suppliers/:id/verify', authenticate, requireRole('business_ad
        JSON.stringify({ notes, verified_by: req.user.full_name })]
     );
     
+    // Log to system_logs
+    await client.query(
+      `INSERT INTO system_logs (actor_id, actor_type, action, entity_type, entity_id, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.user.user_id, 'platform_admin', `supplier_${status}`, 'supplier', req.params.id,
+       JSON.stringify({ notes, verified_by: req.user.full_name })]
+    );
+    
     await client.query('COMMIT');
+
+    // Send notifications (non-blocking)
+    notifyVerificationDecision(req.params.id, status, notes, req.user.full_name).catch(err => {
+      console.error('Error sending verification notification:', err);
+    });
+
     res.json({ 
       success: true, 
       message: `Supplier ${status} successfully`,

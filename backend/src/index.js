@@ -54,6 +54,7 @@ app.use('/api', require('./routes/tenant'));
 app.use('/api', require('./routes/system'));
 app.use('/api', require('./routes/dashboard'));
 app.use('/api', require('./routes/verification'));
+app.use('/api', require('./routes/notifications'));
 
 app.get('/api/me', authenticate, async (req, res) => {
   let route = '/login';
@@ -73,6 +74,16 @@ app.get('/api/me', authenticate, async (req, res) => {
     full_name: req.user.full_name,
   });
 });
+
+// Start background schedulers (only in server process, not during migrations)
+if (process.env.NODE_ENV !== 'migration') {
+  try {
+    require('./services/bidScheduler');
+    require('./services/notificationScheduler');
+  } catch (err) {
+    console.error('Failed to start background schedulers:', err);
+  }
+}
 
 // Global error handler for unhandled promise rejections and errors
 process.on('unhandledRejection', (reason, promise) => {
