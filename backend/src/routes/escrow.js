@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../config/db');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
 const { recordEscrowFunding, recordEscrowRelease } = require('../services/ledgerService');
+const { ensureWallet, creditWallet } = require('../services/walletService');
 const router = express.Router();
 
 // Customer funds escrow
@@ -78,6 +79,7 @@ router.post('/escrow/fund', authenticate, async (req, res) => {
 });
 
 // Business Admin releases escrow to supplier after fulfillment checks.
+// Credits the supplier's in-app wallet atomically.
 router.post('/escrow/release', authenticate, requireRole('business_admin'), async (req, res) => {
   const { order_id } = req.body;
   if (!order_id) return res.status(400).json({ error: 'order_id is required' });
@@ -87,7 +89,7 @@ router.post('/escrow/release', authenticate, requireRole('business_admin'), asyn
     await client.query('BEGIN');
 
     const { rows: [escrow] } = await client.query(
-      `SELECT ea.* FROM escrow_accounts ea
+      `SELECT ea.*, o.awarded_supplier_id FROM escrow_accounts ea
        JOIN orders o ON o.id = ea.order_id
        JOIN bids b ON b.id = o.bid_id
        WHERE ea.order_id = $1 FOR UPDATE OF ea`,
@@ -102,15 +104,103 @@ router.post('/escrow/release', authenticate, requireRole('business_admin'), asyn
       return res.status(400).json({ error: 'Escrow not funded' });
     }
 
-    await client.query('UPDATE escrow_accounts SET status = $1, released_at = now() WHERE order_id = $2', ['released', order_id]);
+    // Get the supplier users to credit their wallets
+    const { rows: supplierUsers } = await client.query(
+      'SELECT id FROM supplier_users WHERE supplier_id = $1',
+      [escrow.awarded_supplier_id]
+    );
+
+    // Credit each supplier user's wallet with their share
+    // (typically the full amount is credited proportionally)
+    const amountPerUser = escrow.amount / Math.max(supplierUsers.length, 1);
+    for (const su of supplierUsers) {
+      const wallet = await ensureWallet(su.id, 'supplier_user');
+      if (wallet.id) {
+        await creditWallet(
+          wallet.id,
+          amountPerUser,
+          `Escrow release from order ${order_id}`,
+          client
+        );
+      }
+    }
+
+    await client.query(
+      'UPDATE escrow_accounts SET status = $1, released_at = now() WHERE order_id = $2',
+      ['released', order_id]
+    );
+
+    // Record double-entry ledger
     await recordEscrowRelease(order_id, req.user.user_id, escrow.amount, client);
 
     await client.query('COMMIT');
-    res.json({ message: 'Escrow released to supplier' });
+    res.json({ message: 'Escrow released to supplier wallet', amount: escrow.amount });
   } catch (e) {
     await client.query('ROLLBACK');
     console.error('Error releasing escrow:', e);
-    res.status(500).json({ error: 'Failed to release escrow' });
+    res.status(500).json({ error: 'Failed to release escrow: ' + e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Business Admin refunds escrow back to customer.
+// Reverse the journal entries and credit customer wallet.
+router.post('/escrow/refund', authenticate, requireRole('business_admin'), async (req, res) => {
+  const { order_id, reason } = req.body;
+  if (!order_id) return res.status(400).json({ error: 'order_id is required' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: [escrow] } = await client.query(
+      `SELECT ea.*, o.awarded_supplier_id FROM escrow_accounts ea
+       JOIN orders o ON o.id = ea.order_id
+       WHERE ea.order_id = $1 FOR UPDATE OF ea`,
+      [order_id]
+    );
+    if (!escrow) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Escrow not found' });
+    }
+    if (escrow.status !== 'funded') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Escrow must be in funded state to refund. Current state: ' + escrow.status });
+    }
+
+    // Credit the customer's wallet
+    const wallet = await ensureWallet(escrow.customer_user_id, 'tenant_user');
+    if (wallet.id) {
+      await creditWallet(
+        wallet.id,
+        escrow.amount,
+        `Escrow refund for order ${order_id}${reason ? ': ' + reason : ''}`,
+        client
+      );
+    }
+
+    // Mark escrow as refunded
+    await client.query(
+      'UPDATE escrow_accounts SET status = $1 WHERE order_id = $2',
+      ['refunded', order_id]
+    );
+
+    // Record reversal in payment_transactions
+    await client.query(
+      `INSERT INTO payment_transactions (from_user_id, to_user_id, amount, payment_method, transaction_ref, type, status, gateway_response)
+       VALUES ($1, $2, $3, $4, $5, 'refund', 'completed', $6)`,
+      [req.user.user_id, escrow.customer_user_id, escrow.amount, 'bank_transfer',
+       `REF-${Date.now()}-${require('crypto').randomUUID().slice(0, 8)}`,
+       JSON.stringify({ reason: reason || null, escrow_id: escrow.id, order_id })]
+    );
+
+    await client.query('COMMIT');
+    res.json({ message: 'Escrow refunded to customer wallet', amount: escrow.amount });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('Error refunding escrow:', e);
+    res.status(500).json({ error: 'Failed to refund escrow: ' + e.message });
   } finally {
     client.release();
   }

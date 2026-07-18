@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "migrate:up": "node-pg-migrate --migrations-dir src/db/migrations up"
+    "migrate:up": "node-pg-migrate --migrations-dir src/db/migrations up",
+    "test": "jest"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

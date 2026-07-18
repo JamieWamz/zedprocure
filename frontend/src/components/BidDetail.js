@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Descriptions, Tag, List, Typography, Spin, Alert, Button, message, Input, Divider, Space, Steps } from 'antd';
+import { Card, Descriptions, Tag, List, Typography, Spin, Alert, Button, message, Input, Divider, Space, Steps, Table, InputNumber } from 'antd';
 import { useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined, ShoppingCartOutlined } from '@ant-design/icons';
 import axios from 'axios';
 
 const { Text, Title } = Typography;
@@ -25,6 +25,9 @@ export default function BidDetail() {
   const [responseFile, setResponseFile] = useState(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [submittingResponse, setSubmittingResponse] = useState(false);
+
+  // ─── Line-item pricing state ──────────────────────────────────────────────
+  const [lineItemPrices, setLineItemPrices] = useState({}); // { [bid_line_item_id]: unit_price }
 
   const isSupplier = () => user?.role === 'supplier_user';
 
@@ -67,8 +70,40 @@ export default function BidDetail() {
     finally { setPayLoading(false); }
   };
 
+  // Initialize line item prices from BoQ data
+  useEffect(() => {
+    if (bid?.line_items) {
+      const initial = {};
+      bid.line_items.forEach(item => {
+        initial[item.id] = '';
+      });
+      setLineItemPrices(initial);
+    }
+  }, [bid?.line_items]);
+
+  const updateLineItemPrice = (lineItemId, value) => {
+    setLineItemPrices(prev => ({ ...prev, [lineItemId]: value }));
+  };
+
+  const calculateResponseTotal = () => {
+    if (!bid?.line_items) return 0;
+    return bid.line_items.reduce((sum, item) => {
+      const price = Number(lineItemPrices[item.id]) || 0;
+      return sum + (price * Number(item.quantity));
+    }, 0);
+  };
+
   const handleSubmitResponse = async () => {
     if (!responseSpecs.trim()) return message.error('Please enter product specifications');
+    
+    // Validate line-item prices
+    if (bid?.line_items?.length > 0) {
+      const missingPrices = bid.line_items.filter(item => !lineItemPrices[item.id] || Number(lineItemPrices[item.id]) <= 0);
+      if (missingPrices.length > 0) {
+        return message.error(`Please provide unit prices for all line items. Missing: ${missingPrices.map(i => i.item_description).join(', ')}`);
+      }
+    }
+
     setSubmittingResponse(true);
     try {
       const bidSupplierId = bid.suppliers?.find(s => s.accepted !== false)?.bid_supplier_id;
@@ -76,20 +111,33 @@ export default function BidDetail() {
         message.error('No valid bid supplier entry found');
         return;
       }
+
+      // Build line_item_prices array
+      const pricesArray = (bid.line_items || []).map(item => ({
+        bid_line_item_id: item.id,
+        unit_price: Number(lineItemPrices[item.id]),
+        notes: '',
+      }));
+
       const formData = new FormData();
       formData.append('product_specifications', responseSpecs);
       formData.append('terms_conditions_accepted', termsAccepted);
+      formData.append('line_item_prices', JSON.stringify(pricesArray));
       if (responseFile) formData.append('file', responseFile);
 
       await axios.post(`/api/supplier/bids/${bidSupplierId}/response`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      message.success('Response submitted successfully');
+      message.success('Response submitted successfully with pricing');
       setResponseSpecs('');
       setTermsAccepted(false);
       setResponseFile(null);
+      setLineItemPrices({});
       fetchBid();
-    } catch { message.error('Failed to submit response'); }
+    } catch (e) {
+      const errorMsg = e.response?.data?.error || 'Failed to submit response';
+      message.error(errorMsg);
+    }
     finally { setSubmittingResponse(false); }
   };
 
@@ -132,12 +180,50 @@ export default function BidDetail() {
           <Descriptions.Item label="Evaluation Method">{bid.evaluation_method === 'lowest_price' ? 'Lowest Price' : 'Best Value'}</Descriptions.Item>
           {bid.delivery_start && <Descriptions.Item label="Delivery Start">{new Date(bid.delivery_start).toLocaleString()}</Descriptions.Item>}
           {bid.delivery_end && <Descriptions.Item label="Delivery End">{new Date(bid.delivery_end).toLocaleString()}</Descriptions.Item>}
+          <Descriptions.Item label="Delivery Terms (Incoterms)"><Tag color="blue">{bid.delivery_terms || 'Not set'}</Tag></Descriptions.Item>
           <Descriptions.Item label="Bidding Fee"><Text strong>{Number(bid.bidding_fee_amount).toLocaleString()} ZMW</Text></Descriptions.Item>
           <Descriptions.Item label="Views">{bid.views_count}</Descriptions.Item>
           <Descriptions.Item label="Large Contract">{bid.requires_large_contract ? 'Yes' : 'No'}</Descriptions.Item>
+          <Descriptions.Item label="Line Items"><Tag>{bid.total_line_items || 0} items</Tag></Descriptions.Item>
           <Descriptions.Item label="Created">{new Date(bid.created_at).toLocaleString()}</Descriptions.Item>
         </Descriptions>
       </Card>
+
+      {/* Bill of Quantities (BoQ) Line Items */}
+      {bid.line_items && bid.line_items.length > 0 && (
+        <Card title={<span><ShoppingCartOutlined /> Bill of Quantities ({bid.line_items.length} line items)</span>} style={{ marginBottom: 20 }}>
+          <Table
+            dataSource={bid.line_items}
+            rowKey="id"
+            pagination={false}
+            size="small"
+            bordered
+            columns={[
+              { title: '#', width: 40, render: (_, __, idx) => idx + 1 },
+              { title: 'Item Description', dataIndex: 'item_description' },
+              { title: 'Unit of Measure', dataIndex: 'unit_of_measure', render: v => <Tag>{v}</Tag> },
+              { title: 'Quantity', dataIndex: 'quantity', render: v => Number(v).toLocaleString() },
+              {
+                title: 'Est. Unit Price (ZMW)',
+                dataIndex: 'unit_price_estimate',
+                render: v => v != null ? Number(v).toLocaleString() : '-',
+              },
+            ]}
+          />
+        </Card>
+      )}
+
+      {/* Technical Specifications */}
+      {(bid.technical_specifications || bid.technical_specifications_path) && (
+        <Card title="Technical Specifications" size="small" style={{ marginBottom: 20 }}>
+          {bid.technical_specifications && <p>{bid.technical_specifications}</p>}
+          {bid.technical_specifications_path && (
+            <a href={bid.technical_specifications_path} target="_blank" rel="noreferrer">
+              <FileTextOutlined /> View Technical Specification Document (PDF)
+            </a>
+          )}
+        </Card>
+      )}
 
       {/* Invited Suppliers */}
       <Card title={`Invited Suppliers (${bid.suppliers?.length || 0})`} style={{ marginBottom: 20 }}>
@@ -208,6 +294,58 @@ export default function BidDetail() {
               </Space>
 
               <Divider />
+
+              {/* Line Item Pricing Table (Supplier) */}
+              {bid.line_items && bid.line_items.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <Title level={5}>Your Pricing — Bill of Quantities</Title>
+                  <Text type="secondary">Enter your unit price for each line item. Total will be calculated automatically.</Text>
+                  <Table
+                    dataSource={bid.line_items}
+                    rowKey="id"
+                    pagination={false}
+                    size="small"
+                    bordered
+                    style={{ marginTop: 8 }}
+                    columns={[
+                      { title: '#', width: 40, render: (_, __, idx) => idx + 1 },
+                      { title: 'Item Description', dataIndex: 'item_description' },
+                      { title: 'UoM', dataIndex: 'unit_of_measure', width: 80, render: v => <Tag>{v}</Tag> },
+                      { title: 'Qty', dataIndex: 'quantity', width: 80, render: v => Number(v).toLocaleString() },
+                      {
+                        title: 'Your Unit Price (ZMW) *',
+                        width: 180,
+                        render: (_, record) => (
+                          <InputNumber
+                            min={0}
+                            step={0.01}
+                            value={lineItemPrices[record.id]}
+                            onChange={val => updateLineItemPrice(record.id, val)}
+                            style={{ width: '100%' }}
+                            placeholder="0.00"
+                          />
+                        ),
+                      },
+                      {
+                        title: 'Line Total (ZMW)',
+                        width: 150,
+                        render: (_, record) => {
+                          const unitPrice = Number(lineItemPrices[record.id]) || 0;
+                          const total = unitPrice * Number(record.quantity);
+                          return <Text strong>{total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>;
+                        },
+                      },
+                    ]}
+                  />
+                  <div style={{ textAlign: 'right', marginTop: 8, padding: 8, background: '#f5f5f5', borderRadius: 4 }}>
+                    <Text strong style={{ fontSize: 16 }}>
+                      Total Bid Value: ZMW {calculateResponseTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </Text>
+                  </div>
+                </div>
+              )}
+
+              <Divider />
               <Title level={5}>Submit Technical Response</Title>
               <div>
                 <Input.TextArea 
@@ -226,7 +364,7 @@ export default function BidDetail() {
                   {' '}I accept the Terms and Conditions
                 </label>
                 <Button type="primary" icon={<FileTextOutlined />} onClick={handleSubmitResponse} loading={submittingResponse}>
-                  Submit Response
+                  Submit Response with Pricing
                 </Button>
               </div>
             </>

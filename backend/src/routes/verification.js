@@ -9,7 +9,7 @@
 const express = require('express');
 const pool = require('../config/db');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
-const { notifyVerificationDecision } = require('../services/notificationService');
+const { approveSupplier, rejectSupplier } = require('../services/supplierVerificationService');
 const router = express.Router();
 
 // ─── Admin: Get all suppliers with their verification status ─────────────────
@@ -50,69 +50,35 @@ router.get('/admin/verification/document-types', authenticate, requireRole('busi
   }
 });
 
-// ─── Admin: Verify a supplier (manual approval) ─────────────────────────────
+// ─── Admin: Verify a supplier (manual approval via service) ─────────────────
 router.put('/admin/suppliers/:id/verify', authenticate, requireRole('business_admin'), async (req, res) => {
   const { status, notes } = req.body;
   if (!['verified', 'rejected'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status. Must be verified or rejected.' });
   }
-  
-  const client = await pool.connect();
+
+  const { id } = req.params;
+  const adminUserId = req.user.user_id;
+  const adminEmail = req.user.email;
+  const adminName = req.user.full_name;
+
   try {
-    await client.query('BEGIN');
-    
-    // Update supplier status
-    const { rows: [updated] } = await client.query(
-      `UPDATE suppliers 
-       SET verification_status = $1, 
-           is_active = $2, 
-           verification_notes = $3,
-           last_verified_at = now()
-       WHERE id = $4
-       RETURNING id, company_name, verification_status, is_active`,
-      [status, status === 'verified', notes || null, req.params.id]
-    );
-    
-    if (!updated) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Supplier not found' });
+    let result;
+    if (status === 'verified') {
+      result = await approveSupplier(id, adminUserId, adminEmail, adminName, notes);
+    } else {
+      result = await rejectSupplier(id, adminUserId, adminEmail, adminName, notes);
     }
-    
-    // Log the verification action
-    await client.query(
-      `INSERT INTO audit_log (actor_id, actor_type, actor_email, action, target_type, target_id, details)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [req.user.user_id, 'platform_admin', req.user.email, 
-       `supplier_${status}`, 'supplier', req.params.id, 
-       JSON.stringify({ notes, verified_by: req.user.full_name })]
-    );
-    
-    // Log to system_logs
-    await client.query(
-      `INSERT INTO system_logs (actor_id, actor_type, action, entity_type, entity_id, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [req.user.user_id, 'platform_admin', `supplier_${status}`, 'supplier', req.params.id,
-       JSON.stringify({ notes, verified_by: req.user.full_name })]
-    );
-    
-    await client.query('COMMIT');
 
-    // Send notifications (non-blocking)
-    notifyVerificationDecision(req.params.id, status, notes, req.user.full_name).catch(err => {
-      console.error('Error sending verification notification:', err);
-    });
-
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: `Supplier ${status} successfully`,
-      supplier: updated 
+      supplier: result.supplier,
     });
   } catch (e) {
-    await client.query('ROLLBACK');
-    console.error('Error verifying supplier:', e);
-    res.status(500).json({ error: 'Failed to verify supplier' });
-  } finally {
-    client.release();
+    const statusCode = e.statusCode || 500;
+    console.error(`Error ${status} supplier:`, e);
+    res.status(statusCode).json({ error: e.message || `Failed to ${status} supplier` });
   }
 });
 

@@ -1,8 +1,58 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, DatePicker, InputNumber, Switch, Select, Button, message, Alert } from 'antd';
+import { Form, Input, DatePicker, InputNumber, Switch, Select, Button, message, Alert, Table, Upload } from 'antd';
+import { PlusOutlined, DeleteOutlined, UploadOutlined, InboxOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+
+const { Dragger } = Upload;
+
+const INCOTERMS = [
+  { value: 'EXW', label: 'EXW – Ex Works' },
+  { value: 'FCA', label: 'FCA – Free Carrier' },
+  { value: 'FAS', label: 'FAS – Free Alongside Ship' },
+  { value: 'FOB', label: 'FOB – Free on Board' },
+  { value: 'CFR', label: 'CFR – Cost and Freight' },
+  { value: 'CIF', label: 'CIF – Cost, Insurance & Freight' },
+  { value: 'CPT', label: 'CPT – Carriage Paid To' },
+  { value: 'CIP', label: 'CIP – Carriage & Insurance Paid To' },
+  { value: 'DPU', label: 'DPU – Delivered at Place Unloaded' },
+  { value: 'DAP', label: 'DAP – Delivered at Place' },
+  { value: 'DDP', label: 'DDP – Delivered Duty Paid' },
+];
+
+const UNIT_OF_MEASURE = [
+  { value: 'each', label: 'Each' },
+  { value: 'kg', label: 'Kilogram (kg)' },
+  { value: 'g', label: 'Gram (g)' },
+  { value: 'ton', label: 'Ton' },
+  { value: 'meters', label: 'Meters' },
+  { value: 'cm', label: 'Centimeters (cm)' },
+  { value: 'liters', label: 'Liters' },
+  { value: 'ml', label: 'Milliliters (ml)' },
+  { value: 'sqm', label: 'Square Meters (sqm)' },
+  { value: 'sqft', label: 'Square Feet (sqft)' },
+  { value: 'hours', label: 'Hours' },
+  { value: 'days', label: 'Days' },
+  { value: 'months', label: 'Months' },
+  { value: 'lump_sum', label: 'Lump Sum' },
+  { value: 'boxes', label: 'Boxes' },
+  { value: 'pairs', label: 'Pairs' },
+  { value: 'sets', label: 'Sets' },
+];
+
+const businessCategories = [
+  'Construction & Infrastructure',
+  'ICT & Software',
+  'Healthcare & Medical',
+  'Agriculture & Food',
+  'Transport & Logistics',
+  'Education & Training',
+  'Professional Services',
+  'Manufacturing',
+  'Energy & Utilities',
+  'Other',
+];
 
 export default function CreateBidWizard() {
   const [tenants, setTenants] = useState([]);
@@ -13,6 +63,15 @@ export default function CreateBidWizard() {
   const [form] = Form.useForm();
   const visibility = Form.useWatch('visibility', form);
 
+  // ─── Line Items State ─────────────────────────────────────────────────────
+  const [lineItems, setLineItems] = useState([
+    { key: '1', item_description: '', unit_of_measure: 'each', quantity: 1, unit_price_estimate: null },
+  ]);
+  const [nextLineKey, setNextLineKey] = useState(2);
+
+  // ─── Technical Specs File ─────────────────────────────────────────────────
+  const [techSpecFile, setTechSpecFile] = useState(null);
+
   useEffect(() => {
     if (user?.tenantId) {
       setTenantId(user.tenantId);
@@ -21,8 +80,101 @@ export default function CreateBidWizard() {
     }
   }, [user]);
 
-  // Pre-fill draft status info
-  const [saveAsDraft, setSaveAsDraft] = useState(false);
+  const addLineItem = () => {
+    setLineItems([...lineItems, { key: String(nextLineKey), item_description: '', unit_of_measure: 'each', quantity: 1, unit_price_estimate: null }]);
+    setNextLineKey(nextLineKey + 1);
+  };
+
+  const removeLineItem = (key) => {
+    if (lineItems.length <= 1) {
+      message.warning('At least one line item is required');
+      return;
+    }
+    setLineItems(lineItems.filter(item => item.key !== key));
+  };
+
+  const updateLineItem = (key, field, value) => {
+    setLineItems(lineItems.map(item =>
+      item.key === key ? { ...item, [field]: value } : item
+    ));
+  };
+
+  const lineItemColumns = [
+    {
+      title: '#',
+      width: 40,
+      render: (_, __, index) => index + 1,
+    },
+    {
+      title: 'Item Description *',
+      dataIndex: 'item_description',
+      width: 300,
+      render: (_, record) => (
+        <Input
+          placeholder="e.g. Supply of cement, steel reinforcement"
+          value={record.item_description}
+          onChange={e => updateLineItem(record.key, 'item_description', e.target.value)}
+        />
+      ),
+    },
+    {
+      title: 'Unit of Measure *',
+      dataIndex: 'unit_of_measure',
+      width: 180,
+      render: (_, record) => (
+        <Select
+          value={record.unit_of_measure}
+          onChange={val => updateLineItem(record.key, 'unit_of_measure', val)}
+          style={{ width: '100%' }}
+        >
+          {UNIT_OF_MEASURE.map(uom => (
+            <Select.Option key={uom.value} value={uom.value}>{uom.label}</Select.Option>
+          ))}
+        </Select>
+      ),
+    },
+    {
+      title: 'Quantity *',
+      dataIndex: 'quantity',
+      width: 120,
+      render: (_, record) => (
+        <InputNumber
+          min={0.0001}
+          step={1}
+          value={record.quantity}
+          onChange={val => updateLineItem(record.key, 'quantity', val)}
+          style={{ width: '100%' }}
+        />
+      ),
+    },
+    {
+      title: 'Est. Unit Price (ZMW)',
+      dataIndex: 'unit_price_estimate',
+      width: 160,
+      render: (_, record) => (
+        <InputNumber
+          min={0}
+          step={0.01}
+          value={record.unit_price_estimate}
+          onChange={val => updateLineItem(record.key, 'unit_price_estimate', val)}
+          style={{ width: '100%' }}
+          placeholder="Optional"
+        />
+      ),
+    },
+    {
+      title: 'Action',
+      width: 60,
+      render: (_, record) => (
+        <Button
+          type="text"
+          danger
+          icon={<DeleteOutlined />}
+          onClick={() => removeLineItem(record.key)}
+        />
+      ),
+    },
+  ];
 
   const onFinish = async (values) => {
     const tid = values.tenant_id || tenantId;
@@ -30,18 +182,45 @@ export default function CreateBidWizard() {
       message.error('Please select a tenant');
       return;
     }
+
+    // Validate line items
+    const validLineItems = lineItems.filter(item => item.item_description && item.item_description.trim());
+    if (validLineItems.length === 0) {
+      message.error('At least one line item with a description is required in the Bill of Quantities');
+      return;
+    }
+
     setLoading(true);
     try {
-      const payload = {
-        ...values,
-        deadline: values.deadline.toISOString(),
-        delivery_start: values.delivery_start?.toISOString(),
-        delivery_end: values.delivery_end?.toISOString(),
-        visibility: values.visibility || 'global',
-        business_category: values.business_category || null,
-      };
+      // Build FormData for multipart upload (to support file)
+      const formData = new FormData();
+      formData.append('title', values.title);
+      formData.append('description', values.description || '');
+      formData.append('deadline', values.deadline.toISOString());
+      formData.append('delivery_terms', values.delivery_terms);
+      formData.append('delivery_start', values.delivery_start?.toISOString() || '');
+      formData.append('delivery_end', values.delivery_end?.toISOString() || '');
+      formData.append('visibility', values.visibility || 'global');
+      formData.append('business_category', values.business_category || '');
+      formData.append('requires_large_contract', values.requires_large_contract ? 'true' : 'false');
+      formData.append('evaluation_method', values.evaluation_method || 'lowest_price');
+      formData.append('bidding_fee_amount', String(values.bidding_fee_amount || 0));
+      formData.append('technical_specifications', values.technical_specifications || '');
+      formData.append('line_items', JSON.stringify(validLineItems.map((item, idx) => ({
+        item_description: item.item_description.trim(),
+        unit_of_measure: item.unit_of_measure,
+        quantity: Number(item.quantity),
+        unit_price_estimate: item.unit_price_estimate ? Number(item.unit_price_estimate) : null,
+        line_order: idx + 1,
+      }))));
 
-      const res = await axios.post(`/api/tenants/${tid}/bids`, payload);
+      if (techSpecFile) {
+        formData.append('technical_specifications_file', techSpecFile);
+      }
+
+      const res = await axios.post(`/api/tenants/${tid}/bids`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       const bid = res.data;
 
       if (!saveAsDraft) {
@@ -54,33 +233,23 @@ export default function CreateBidWizard() {
 
       navigate('/admin/bids');
     } catch (err) {
-      message.error(err.response?.data?.error || 'Creation failed');
+      const errorMsg = err.response?.data?.error || 'Creation failed';
+      message.error(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
-  const businessCategories = [
-    'Construction & Infrastructure',
-    'ICT & Software',
-    'Healthcare & Medical',
-    'Agriculture & Food',
-    'Transport & Logistics',
-    'Education & Training',
-    'Professional Services',
-    'Manufacturing',
-    'Energy & Utilities',
-    'Other',
-  ];
+  const [saveAsDraft, setSaveAsDraft] = useState(false);
 
   return (
-    <div style={{ maxWidth: 800, margin: 'auto' }}>
-      <h2>Create New Bid</h2>
+    <div style={{ maxWidth: 960, margin: 'auto' }}>
+      <h2>Create New Bid — Bill of Quantities</h2>
       <Alert
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="Open Marketplace Mode — Bids are visible to all verified suppliers. You can save as draft first, then publish."
+        message="Open Marketplace Mode — Bids require a structured Bill of Quantities, Incoterms, and at least one line item before publishing."
       />
       <Form
         form={form}
@@ -101,15 +270,24 @@ export default function CreateBidWizard() {
           </Form.Item>
         )}
 
-        <Form.Item name="title" label="Bid Title" rules={[{ required: true }]}>
-          <Input placeholder="e.g. Supply of Medical Equipment" />
+        <Form.Item name="title" label="Bid Title" rules={[{ required: true, message: 'Bid title is required' }]}>
+          <Input placeholder="e.g. Supply of Medical Equipment to Lusaka Teaching Hospital" />
         </Form.Item>
 
-        <Form.Item name="description" label="Description">
-          <Input.TextArea rows={4} placeholder="Describe the bid scope, requirements, and evaluation criteria" />
+        <Form.Item name="description" label="Description / Scope of Work">
+          <Input.TextArea rows={4} placeholder="Describe the bid scope, deliverables, and evaluation criteria" />
         </Form.Item>
 
-        <Form.Item name="deadline" label="Bid Deadline" rules={[{ required: true }]}>
+        <Form.Item name="delivery_terms" label="Delivery Terms (Incoterms) *"
+          rules={[{ required: true, message: 'Incoterms delivery terms are required' }]}>
+          <Select placeholder="Select Incoterms delivery terms">
+            {INCOTERMS.map(inc => (
+              <Select.Option key={inc.value} value={inc.value}>{inc.label}</Select.Option>
+            ))}
+          </Select>
+        </Form.Item>
+
+        <Form.Item name="deadline" label="Bid Deadline *" rules={[{ required: true, message: 'Bid deadline is required' }]}>
           <DatePicker showTime style={{ width: '100%' }} />
         </Form.Item>
 
@@ -153,6 +331,63 @@ export default function CreateBidWizard() {
           <InputNumber min={0} style={{ width: '100%' }} />
         </Form.Item>
 
+        {/* ─── Bill of Quantities Line Items ─────────────────────────────── */}
+        <div style={{ marginBottom: 16 }}>
+          <h3>Bill of Quantities (BoQ) — Line Items</h3>
+          <p style={{ color: '#666', fontSize: 13 }}>
+            Define the line items for this bid. Each item must have a description, unit of measure, and quantity.
+            At least one line item is required before publishing.
+          </p>
+          <Table
+            dataSource={lineItems}
+            columns={lineItemColumns}
+            rowKey="key"
+            pagination={false}
+            size="small"
+            bordered
+            style={{ marginBottom: 8 }}
+          />
+          <Button type="dashed" onClick={addLineItem} icon={<PlusOutlined />} block>
+            Add Line Item
+          </Button>
+          <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
+            Total line items: <strong>{lineItems.filter(i => i.item_description?.trim()).length}</strong>
+          </div>
+        </div>
+
+        {/* ─── Technical Specifications ──────────────────────────────────── */}
+        <div style={{ marginBottom: 16 }}>
+          <h3>Technical Specifications</h3>
+          <Form.Item name="technical_specifications" label="Technical Specifications (Text)">
+            <Input.TextArea rows={4} placeholder="Enter detailed technical specifications, standards, and compliance requirements" />
+          </Form.Item>
+          <Form.Item label="Technical Specifications (PDF Upload)">
+            <Dragger
+              name="technical_specifications_file"
+              accept=".pdf"
+              maxCount={1}
+              beforeUpload={(file) => {
+                if (file.type !== 'application/pdf') {
+                  message.error('Technical specifications must be a PDF file');
+                  return Upload.LIST_IGNORE;
+                }
+                if (file.size > 20 * 1024 * 1024) {
+                  message.error('File size must be less than 20MB');
+                  return Upload.LIST_IGNORE;
+                }
+                setTechSpecFile(file);
+                return false; // Prevent auto-upload
+              }}
+              onRemove={() => setTechSpecFile(null)}
+              fileList={techSpecFile ? [{ uid: '-1', name: techSpecFile.name, status: 'done' }] : []}
+            >
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">Click or drag a PDF file here</p>
+              <p className="ant-upload-hint">Upload detailed technical specifications (PDF, max 20MB)</p>
+            </Dragger>
+          </Form.Item>
+        </div>
+
         <div style={{ display: 'flex', gap: 12 }}>
           <Form.Item>
             <Button
@@ -160,6 +395,7 @@ export default function CreateBidWizard() {
               htmlType="submit"
               loading={loading && !saveAsDraft}
               onClick={() => setSaveAsDraft(false)}
+              size="large"
             >
               Publish Now
             </Button>
@@ -169,6 +405,7 @@ export default function CreateBidWizard() {
               htmlType="submit"
               loading={loading && saveAsDraft}
               onClick={() => setSaveAsDraft(true)}
+              size="large"
             >
               Save as Draft
             </Button>

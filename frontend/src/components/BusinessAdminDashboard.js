@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Card, Row, Col, Statistic, Table, Tag, Spin, Alert, Tabs, Progress, Tooltip, Button, Modal, Form, Input, message, List, Typography, Badge, Popover, Empty } from 'antd';
+import { Card, Row, Col, Statistic, Table, Tag, Spin, Alert, Tabs, Progress, Tooltip, Button, Modal, Form, Input, message, List, Typography, Badge, Popover, Empty, Space } from 'antd';
 import {
   DollarOutlined, RiseOutlined, FallOutlined, SafetyCertificateOutlined,
   FileTextOutlined, TeamOutlined, BankOutlined, ShoppingCartOutlined,
   ArrowUpOutlined, ArrowDownOutlined, WalletOutlined, SendOutlined,
   ReloadOutlined, CreditCardOutlined, CheckCircleOutlined, ClockCircleOutlined,
-  ExclamationCircleOutlined, BellOutlined, CheckOutlined,
-  FlagOutlined, TrophyOutlined,
+  ExclamationCircleOutlined, BellOutlined, CheckOutlined, CloseOutlined,
+  FlagOutlined, TrophyOutlined, UserSwitchOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -33,6 +33,15 @@ export default function BusinessAdminDashboard() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const navigate = useNavigate();
+
+  // ─── Verification Queue State ─────────────────────────────────────────────
+  const [verificationQueue, setVerificationQueue] = useState([]);
+  const [verifLoading, setVerifLoading] = useState(false);
+  const [verifModalVisible, setVerifModalVisible] = useState(false);
+  const [selectedSupplier, setSelectedSupplier] = useState(null);
+  const [verifAction, setVerifAction] = useState(null); // 'verified' or 'rejected'
+  const [verifNotes, setVerifNotes] = useState('');
+  const [verifSubmitting, setVerifSubmitting] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -109,7 +118,48 @@ export default function BusinessAdminDashboard() {
     </div>
   );
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // ─── Fetch verification queue ─────────────────────────────────────────────
+  const fetchVerificationQueue = useCallback(async () => {
+    setVerifLoading(true);
+    try {
+      const { data } = await axios.get('/api/admin/verification/suppliers');
+      setVerificationQueue(data.slice(0, 5)); // Top 5 pending
+    } catch {
+      // Non-critical — dashboard still works
+    } finally {
+      setVerifLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); fetchVerificationQueue(); }, [fetchData, fetchVerificationQueue]);
+
+  // ─── Handle inline verification ───────────────────────────────────────────
+  const handleVerificationAction = async () => {
+    if (!selectedSupplier || !verifAction) return;
+    setVerifSubmitting(true);
+    try {
+      await axios.put(`/api/admin/suppliers/${selectedSupplier.id}/verify`, {
+        status: verifAction,
+        notes: verifNotes,
+      });
+      message.success(`Supplier ${verifAction === 'verified' ? 'approved' : 'rejected'} successfully`);
+      setVerifModalVisible(false);
+      setSelectedSupplier(null);
+      setVerifNotes('');
+      fetchVerificationQueue();
+      fetchData(); // Refresh stats
+    } catch (e) {
+      const errorMsg = e.response?.data?.error || 'Verification action failed';
+      // Enhanced procurement-standard error feedback
+      if (errorMsg.toLowerCase().includes('tax_clearance') || errorMsg.toLowerCase().includes('pacra')) {
+        message.error(`Verification failed: Missing mandatory document. ${errorMsg}`);
+      } else {
+        message.error(errorMsg);
+      }
+    } finally {
+      setVerifSubmitting(false);
+    }
+  };
 
   const handleTransfer = async (values) => {
     try {
@@ -398,7 +448,63 @@ export default function BusinessAdminDashboard() {
             ) : <Alert type="info" showIcon message="Supplier performance appears after awards" />}
           </Card>
         </Col>
-        <Col span={24}>
+        <Col xs={24} lg={12}>
+          <Card title={<span><UserSwitchOutlined /> Supplier Verification Queue</span>}
+            className="table-card"
+            extra={<Button size="small" onClick={() => navigate('/admin/verification')}>View All</Button>}
+            style={{ height: '100%' }}>
+            {verificationQueue.length > 0 ? (
+              <Table
+                rowKey="id"
+                dataSource={verificationQueue}
+                pagination={false}
+                size="small"
+                loading={verifLoading}
+                scroll={{ x: 500 }}
+                columns={[
+                  { title: 'Company', dataIndex: 'company_name', render: (v, r) => <div><Text strong>{v}</Text><br /><Text type="secondary" style={{ fontSize: 11 }}>{r.registration_number || '-'}</Text></div> },
+                  { title: 'Docs', render: (_, r) => <Tag>{r.documents?.length || 0} uploaded</Tag> },
+                  {
+                    title: 'Action',
+                    render: (_, record) => (
+                      <Space size="small">
+                        <Button
+                          type="primary"
+                          size="small"
+                          icon={<CheckCircleOutlined />}
+                          onClick={() => {
+                            setSelectedSupplier(record);
+                            setVerifAction('verified');
+                            setVerifNotes('');
+                            setVerifModalVisible(true);
+                          }}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          danger
+                          size="small"
+                          icon={<CloseOutlined />}
+                          onClick={() => {
+                            setSelectedSupplier(record);
+                            setVerifAction('rejected');
+                            setVerifNotes('');
+                            setVerifModalVisible(true);
+                          }}
+                        >
+                          Reject
+                        </Button>
+                      </Space>
+                    ),
+                  },
+                ]}
+              />
+            ) : (
+              <Alert type="success" showIcon message="No suppliers pending verification" />
+            )}
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
           <Card title={<span><ClockCircleOutlined /> Bids Needing Attention</span>} className="table-card">
             {urgentBids.length ? (
               <Table
@@ -515,6 +621,52 @@ export default function BusinessAdminDashboard() {
             ) : <Alert type="info" message="No wallet transactions yet" showIcon />,
           }
         ]} />
+      </Modal>
+
+      {/* Verification Action Modal */}
+      <Modal
+        title={`${verifAction === 'verified' ? 'Approve' : 'Reject'} Supplier: ${selectedSupplier?.company_name || ''}`}
+        open={verifModalVisible}
+        onCancel={() => { setVerifModalVisible(false); setSelectedSupplier(null); setVerifNotes(''); }}
+        footer={[
+          <Button key="cancel" onClick={() => { setVerifModalVisible(false); setSelectedSupplier(null); setVerifNotes(''); }}>
+            Cancel
+          </Button>,
+          <Button
+            key="submit"
+            type={verifAction === 'verified' ? 'primary' : 'danger'}
+            loading={verifSubmitting}
+            onClick={handleVerificationAction}
+          >
+            {verifAction === 'verified' ? 'Approve Supplier' : 'Reject Supplier'}
+          </Button>,
+        ]}
+      >
+        {verifAction === 'rejected' && (
+          <Alert
+            type="warning"
+            showIcon
+            message="Rejection requires a reason"
+            description="Please provide a clear reason for rejection so the supplier can address the issues."
+            style={{ marginBottom: 16 }}
+          />
+        )}
+        <Form layout="vertical">
+          <Form.Item
+            label="Verification Notes"
+            required={verifAction === 'rejected'}
+            help={verifAction === 'rejected' ? 'Required: explain why the supplier is being rejected' : 'Optional notes about this decision'}
+          >
+            <Input.TextArea
+              rows={3}
+              value={verifNotes}
+              onChange={e => setVerifNotes(e.target.value)}
+              placeholder={verifAction === 'rejected'
+                ? 'e.g. Missing mandatory Tax Compliance document (ZRA Tax Clearance). Please upload before re-applying.'
+                : 'e.g. All documents verified and compliant with procurement standards'}
+            />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

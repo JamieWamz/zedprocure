@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Button, Select, Upload, message, Alert, Steps, Card, List, Typography, Tag } from 'antd';
-import { UploadOutlined, FileTextOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Upload, message, Alert, Steps, Card, Typography, Row, Col } from 'antd';
+import { UploadOutlined, InboxOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { cdnImages } from '../cdnAssets';
@@ -21,27 +21,22 @@ const REQUIRED_DOCUMENTS = [
 export default function SupplierRegistration() {
   const [form] = Form.useForm();
   const [currentStep, setCurrentStep] = useState(0);
-  const [documentFiles, setDocumentFiles] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
-
-  const handleFileChange = (docType, { fileList }) => {
-    setDocumentFiles(prev => ({ ...prev, [docType]: fileList.slice(-1) }));
-  };
 
   const handleRegister = async (values) => {
     setSubmitting(true);
     try {
       const formData = new FormData();
+      // Append text fields
       formData.append('email', values.email);
       formData.append('password', values.password);
       formData.append('full_name', values.full_name);
       formData.append('company_name', values.company_name);
       formData.append('registration_number', values.registration_number || '');
 
-      // Append all required document files
       REQUIRED_DOCUMENTS.forEach(doc => {
-        const file = documentFiles[doc.type]?.[0]?.originFileObj;
+        const file = values[doc.type]?.[0]?.originFileObj;
         if (file) {
           formData.append(doc.type, file);
         }
@@ -118,37 +113,30 @@ export default function SupplierRegistration() {
             description="All documents must be uploaded for your account to be reviewed. Accepted formats: PDF, DOC, DOCX, JPG, PNG (max 10MB each)."
             style={{ marginBottom: 16 }}
           />
-          <List
-            dataSource={REQUIRED_DOCUMENTS}
-            renderItem={doc => (
-              <List.Item
-                actions={[
-                  documentFiles[doc.type]?.[0] ? 
-                    <Tag color="success" icon={<CheckCircleOutlined />}>Uploaded</Tag> :
-                    <Tag color="warning" icon={<ExclamationCircleOutlined />}>Required</Tag>
-                ]}
-              >
-                <List.Item.Meta
-                  title={doc.label}
-                  description={doc.description}
-                />
+          <Row gutter={[16, 16]}>
+            {REQUIRED_DOCUMENTS.map(doc => (
+              <Col xs={24} sm={12} key={doc.type}>
                 <Form.Item
                   name={doc.type}
-                  noStyle
-                  rules={[{ required: true, message: `${doc.label} is required` }]}
+                  label={doc.label}
+                  valuePropName="fileList"
+                  getValueFromEvent={(e) => Array.isArray(e) ? e : e?.fileList}
+                  rules={[{ required: true, message: `Please upload your ${doc.label}` }]}
+                  help={doc.description}
                 >
-                  <Upload
+                  <Upload.Dragger
+                    name={doc.type}
                     accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                     beforeUpload={() => false}
-                    fileList={documentFiles[doc.type] || []}
-                    onChange={({ fileList }) => handleFileChange(doc.type, { fileList })}
+                    maxCount={1}
                   >
-                    <Button icon={<UploadOutlined />}>Upload</Button>
-                  </Upload>
+                    <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                    <p className="ant-upload-text">Click or drag file to upload</p>
+                  </Upload.Dragger>
                 </Form.Item>
-              </List.Item>
-            )}
-          />
+              </Col>
+            ))}
+          </Row>
         </>
       ),
     },

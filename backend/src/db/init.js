@@ -12,6 +12,20 @@ const fs = require('fs');
 const path = require('path');
 const pool = require('../config/db');
 
+async function updateAdminPassword(client, emailEnv, passwordEnv, defaultEmail, roleName) {
+  const email = process.env[emailEnv] || defaultEmail;
+  const password = process.env[passwordEnv];
+
+  if (password && password.length >= 10 && email) {
+    const hash = await bcrypt.hash(password, 12);
+    await client.query(
+      `UPDATE platform_admins SET password_hash=$1 WHERE email=$2`,
+      [hash, email]
+    );
+    console.log(`${roleName} password updated for ${email}.`);
+  }
+}
+
 async function init() {
   // Ensure uploads directory exists
   const uploadsDir = path.join(__dirname, '../../uploads');
@@ -22,27 +36,9 @@ async function init() {
 
   const client = await pool.connect();
   try {
-    // Update System Admin password if provided
-    const systemAdminEmail = process.env.SYSTEM_ADMIN_EMAIL || 'wamuyuwamundia@gmail.com';
-    if (process.env.SYSTEM_ADMIN_PASSWORD && process.env.SYSTEM_ADMIN_PASSWORD.length >= 10 && systemAdminEmail) {
-      const sysHash = await bcrypt.hash(process.env.SYSTEM_ADMIN_PASSWORD, 12);
-      await client.query(
-        `UPDATE platform_admins SET password_hash=$1 WHERE email=$2`,
-        [sysHash, systemAdminEmail]
-      );
-      console.log(`System admin password updated for ${systemAdminEmail}.`);
-    }
-
-    // Update Business Admin password if provided
-    const businessAdminEmail = process.env.BUSINESS_ADMIN_EMAIL || 'brightilunga6@gmail.com';
-    if (process.env.BUSINESS_ADMIN_PASSWORD && process.env.BUSINESS_ADMIN_PASSWORD.length >= 10 && businessAdminEmail) {
-      const bizHash = await bcrypt.hash(process.env.BUSINESS_ADMIN_PASSWORD, 12);
-      await client.query(
-        `UPDATE platform_admins SET password_hash=$1 WHERE email=$2`,
-        [bizHash, businessAdminEmail]
-      );
-      console.log(`Business admin password updated for ${businessAdminEmail}.`);
-    }
+    // Update admin passwords from environment variables
+    await updateAdminPassword(client, 'SYSTEM_ADMIN_EMAIL', 'SYSTEM_ADMIN_PASSWORD', 'wamuyuwamundia@gmail.com', 'System admin');
+    await updateAdminPassword(client, 'BUSINESS_ADMIN_EMAIL', 'BUSINESS_ADMIN_PASSWORD', 'brightilunga6@gmail.com', 'Business admin');
 
     // Chart of accounts (idempotent)
     const accounts = [
@@ -50,6 +46,7 @@ async function init() {
       ['ESCROW_CASH', 'Escrow Cash', 'asset'],
       ['ACCOUNTS_RECEIVABLE', 'Accounts Receivable', 'asset'],
       ['ACCOUNTS_PAYABLE', 'Accounts Payable', 'liability'],
+      ['OWNER_EQUITY', 'Owner Equity', 'equity'],
       ['PLATFORM_REVENUE', 'Platform Revenue', 'revenue'],
       ['SERVICE_REVENUE', 'Service Revenue', 'revenue'],
       ['SUPPLIER_EXPENSE', 'Supplier Expense', 'expense'],

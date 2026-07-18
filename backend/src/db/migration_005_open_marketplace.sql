@@ -1,52 +1,67 @@
 -- ============================================================================
 -- Migration 005: Open Marketplace
--- Adds columns for global visibility, business categories, immutable audit
--- logging, and in-app notifications.
+-- Adds columns for global visibility and business categories to enable an
+-- open marketplace where suppliers can find relevant bids.
+-- This also normalizes business categories into a dedicated table.
 -- ============================================================================
 
--- ─── Suppliers: add business_category and documents cache ────────────────────
-ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS business_category VARCHAR(100);
-ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS documents JSONB DEFAULT '[]';
-ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ;
+-- ─── Business Categories: create and seed a central table ───────────────────
+CREATE TABLE IF NOT EXISTS business_categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT true
+);
 
--- ─── Bids: add visibility and business_category ─────────────────────────────
+-- Seed the categories from the hardcoded list in the frontend
+INSERT INTO business_categories (name) VALUES
+    ('Construction & Infrastructure'),
+    ('ICT & Software'),
+    ('Healthcare & Medical'),
+    ('Agriculture & Food'),
+    ('Transport & Logistics'),
+    ('Education & Training'),
+    ('Professional Services'),
+    ('Manufacturing'),
+    ('Energy & Utilities'),
+    ('Other')
+ON CONFLICT (name) DO NOTHING;
+
+-- ─── Suppliers: add business_category foreign key ───────────────────────────
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='suppliers' AND column_name='business_category') THEN
+        ALTER TABLE suppliers ADD COLUMN business_category VARCHAR(100);
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE table_name = 'suppliers' AND constraint_name = 'fk_suppliers_business_category'
+    ) THEN
+        ALTER TABLE suppliers ADD CONSTRAINT fk_suppliers_business_category
+        FOREIGN KEY (business_category) REFERENCES business_categories(name) ON UPDATE CASCADE ON DELETE SET NULL;
+    END IF;
+END $$;
+
+-- ─── Bids: add visibility and business_category foreign key ─────────────────
 ALTER TABLE bids ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'global'
     CHECK (visibility IN ('global', 'restricted'));
-ALTER TABLE bids ADD COLUMN IF NOT EXISTS business_category VARCHAR(100);
 
--- ─── System Logs: immutable audit trail ─────────────────────────────────────
-CREATE TABLE IF NOT EXISTS system_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    actor_id UUID,
-    actor_type VARCHAR(32),
-    action VARCHAR(100) NOT NULL,
-    entity_type VARCHAR(50) NOT NULL,
-    entity_id UUID,
-    metadata JSONB,
-    ip_address INET,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bids' AND column_name='business_category') THEN
+        ALTER TABLE bids ADD COLUMN business_category VARCHAR(100);
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE table_name = 'bids' AND constraint_name = 'fk_bids_business_category'
+    ) THEN
+        ALTER TABLE bids ADD CONSTRAINT fk_bids_business_category
+        FOREIGN KEY (business_category) REFERENCES business_categories(name) ON UPDATE CASCADE ON DELETE SET NULL;
+    END IF;
+END $$;
 
-REVOKE UPDATE, DELETE ON system_logs FROM PUBLIC;
-
-CREATE INDEX IF NOT EXISTS idx_system_logs_entity ON system_logs(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_system_logs_created ON system_logs(created_at DESC);
-
--- ─── Notifications: in-app notification queue ───────────────────────────────
-CREATE TABLE IF NOT EXISTS notifications (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL,
-    user_type VARCHAR(32) NOT NULL,
-    type VARCHAR(50) NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    message TEXT,
-    link VARCHAR(500),
-    metadata JSONB,
-    is_read BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
-    ON notifications(user_id, user_type, is_read);
-CREATE INDEX IF NOT EXISTS idx_notifications_created
-    ON notifications(created_at DESC);
+-- ─── Indexes for performance ────────────────────────────────────────────────
+-- Index for finding suppliers by their business category
+CREATE INDEX IF NOT EXISTS idx_suppliers_business_category ON suppliers(business_category) WHERE business_category IS NOT NULL;
+-- Index for finding open, global bids in the marketplace, filtered by category
+CREATE INDEX IF NOT EXISTS idx_bids_visibility_category ON bids(visibility, business_category) WHERE status = 'open';
+-- Index on the new categories table
+CREATE INDEX IF NOT EXISTS idx_business_categories_name ON business_categories(name);

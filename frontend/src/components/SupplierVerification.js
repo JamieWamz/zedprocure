@@ -24,6 +24,8 @@ export default function SupplierVerification() {
   const [verifyForm] = Form.useForm();
   const [documentModalVisible, setDocumentModalVisible] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState(null);
+  const [rejectModalVisible, setRejectModalVisible] = useState(false);
+  const [rejectNotes, setRejectNotes] = useState('');
 
   const fetchSuppliers = async () => {
     setLoading(true);
@@ -45,7 +47,24 @@ export default function SupplierVerification() {
       message.success(`Supplier ${status} successfully`);
       fetchSuppliers();
     } catch (e) {
-      message.error(e.response?.data?.error || 'Verification failed');
+      const errorMsg = e.response?.data?.error || 'Verification failed';
+      // Procurement-standard error feedback
+      const procurementErrors = {
+        tax_clearance: 'Verification failed: Missing mandatory Tax Compliance document (ZRA Tax Clearance). Please ensure the supplier has uploaded this document before approving.',
+        pacra_certificate: 'Verification failed: Missing mandatory Certificate of Incorporation (PACRA). Please ensure the supplier has uploaded their PACRA certificate.',
+        zra_tpin: 'Verification failed: Missing mandatory ZRA TPIN Certificate. Please ensure the supplier has uploaded their TPIN.',
+        business_license: 'Verification failed: Missing mandatory Business License. Suppliers must hold a valid trading license.',
+        directors_id: 'Verification failed: Missing mandatory Directors ID copies. Please ensure copies of all directors IDs are uploaded.',
+        bank_reference: 'Verification failed: Missing mandatory Bank Reference Letter. Please ensure a valid bank reference is on file.',
+      };
+      const matchedKey = Object.keys(procurementErrors).find(key =>
+        errorMsg.toLowerCase().includes(key.replace(/_/g, ' ')) || errorMsg.toLowerCase().includes(key)
+      );
+      if (matchedKey) {
+        message.error(procurementErrors[matchedKey]);
+      } else {
+        message.error(errorMsg);
+      }
     }
   };
 
@@ -55,10 +74,42 @@ export default function SupplierVerification() {
     verifyForm.setFieldsValue({ status: 'verified', notes: '' });
   };
 
+  const openRejectModal = (supplier) => {
+    setSelectedSupplier(supplier);
+    setRejectModalVisible(true);
+    setRejectNotes('');
+  };
+
   const handleVerifySubmit = async (values) => {
     if (!selectedSupplier) return;
     await handleVerify(selectedSupplier.id, values.status);
     setModalVisible(false);
+  };
+
+  const handleRejectSubmit = async () => {
+    if (!selectedSupplier) return;
+    if (!rejectNotes || !rejectNotes.trim()) {
+      message.error('A rejection reason is required. Please provide specific feedback on what documents or information are missing.');
+      return;
+    }
+    try {
+      await axios.put(`/api/admin/suppliers/${selectedSupplier.id}/verify`, {
+        status: 'rejected',
+        notes: rejectNotes.trim(),
+      });
+      message.success('Supplier rejected. A notification has been sent with the reason.');
+      setRejectModalVisible(false);
+      setSelectedSupplier(null);
+      setRejectNotes('');
+      fetchSuppliers();
+    } catch (e) {
+      const errorMsg = e.response?.data?.error || 'Rejection failed';
+      if (errorMsg.toLowerCase().includes('required') || errorMsg.toLowerCase().includes('reason')) {
+        message.error('Rejection failed: A detailed reason is required. Please explain what compliance requirements the supplier did not meet.');
+      } else {
+        message.error(errorMsg);
+      }
+    }
   };
 
   const openDocumentModal = (document) => {
@@ -77,7 +128,14 @@ export default function SupplierVerification() {
       setDocumentModalVisible(false);
       fetchSuppliers();
     } catch (e) {
-      message.error(e.response?.data?.error || 'Document verification failed');
+      const errorMsg = e.response?.data?.error || 'Document verification failed';
+      if (status === 'rejected' && errorMsg.toLowerCase().includes('missing')) {
+        message.error(`Document rejected: ${errorMsg}. Please notify the supplier to re-upload a compliant document.`);
+      } else if (errorMsg.toLowerCase().includes('format') || errorMsg.toLowerCase().includes('file')) {
+        message.error(`Document verification failed: The file appears to be in an incorrect format or corrupted. Allowed formats: PDF, DOC, DOCX, JPG, PNG.`);
+      } else {
+        message.error(`Document verification action failed: ${errorMsg}`);
+      }
     }
   };
 
@@ -141,16 +199,24 @@ export default function SupplierVerification() {
     { 
       title: 'Action', 
       render: (_, record) => (
-        <Space>
-          <Button 
-            type="primary" 
-            size="small" 
-            icon={<CheckCircleOutlined />}
-            onClick={() => openVerifyModal(record)}
-          >
-            Review
-          </Button>
-        </Space>
+          <Space>
+            <Button 
+              type="primary" 
+              size="small" 
+              icon={<CheckCircleOutlined />}
+              onClick={() => openVerifyModal(record)}
+            >
+              Approve
+            </Button>
+            <Button 
+              danger 
+              size="small" 
+              icon={<CloseCircleOutlined />}
+              onClick={() => openRejectModal(record)}
+            >
+              Reject
+            </Button>
+          </Space>
       )
     }
   ];
@@ -208,6 +274,43 @@ export default function SupplierVerification() {
         </Form>
       </Modal>
 
+      {/* Reject Supplier Modal */}
+      <Modal
+        title={`Reject Supplier: ${selectedSupplier?.company_name}`}
+        open={rejectModalVisible}
+        onCancel={() => { setRejectModalVisible(false); setSelectedSupplier(null); setRejectNotes(''); }}
+        footer={[
+          <Button key="cancel" onClick={() => { setRejectModalVisible(false); setSelectedSupplier(null); setRejectNotes(''); }}>
+            Cancel
+          </Button>,
+          <Button key="submit" danger loading={loading} onClick={handleRejectSubmit}>
+            Reject Supplier
+          </Button>,
+        ]}
+      >
+        <Alert
+          type="warning"
+          showIcon
+          message="Rejection requires a detailed reason"
+          description="Providing clear feedback helps suppliers understand what compliance requirements they did not meet and how to rectify issues before re-applying."
+          style={{ marginBottom: 16 }}
+        />
+        <Form layout="vertical">
+          <Form.Item
+            label="Rejection Reason"
+            required
+            help="This will be sent to the supplier via email and in-app notification"
+          >
+            <Input.TextArea
+              rows={4}
+              value={rejectNotes}
+              onChange={e => setRejectNotes(e.target.value)}
+              placeholder="e.g. Missing mandatory Tax Compliance document (ZRA Tax Clearance). Please upload a valid tax clearance certificate and re-submit for review."
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
       {/* Document Review Modal */}
       <Modal
         title={`Document: ${selectedDocument?.document_type?.replace(/_/g, ' ')}`}
@@ -219,23 +322,24 @@ export default function SupplierVerification() {
         {selectedDocument && (
           <div>
             <p><Text strong>File:</Text> <a href={selectedDocument.path} target="_blank" rel="noreferrer">View Document</a></p>
-            <p><Text strong>Status:</Text> {getDocumentStatusTag(selectedDocument)}</p>
-            <p><Text strong>Uploaded:</Text> {new Date(selectedDocument.upload_date).toLocaleString()}</p>
+        <p><Text strong>Status:</Text> {getDocumentStatusTag(selectedDocument)}</p>
+        <p><Text strong>Category:</Text> <Tag>{selectedDocument.document_category || 'required'}</Tag></p>
+        <p><Text strong>Uploaded:</Text> {new Date(selectedDocument.upload_date).toLocaleString()}</p>
             
             <Space style={{ marginTop: 16 }}>
               <Button 
                 type="primary" 
                 icon={<CheckCircleOutlined />}
-                onClick={() => handleDocumentVerify('verified', 'Document verified')}
+                onClick={() => handleDocumentVerify('verified', 'Document verified - meets compliance requirements')}
               >
-                Approve
+                Approve Document
               </Button>
               <Button 
                 danger 
                 icon={<CloseCircleOutlined />}
-                onClick={() => handleDocumentVerify('rejected', 'Document rejected - please re-upload')}
+                onClick={() => handleDocumentVerify('rejected', 'Document rejected - does not meet compliance requirements')}
               >
-                Reject
+                Reject Document
               </Button>
             </Space>
           </div>

@@ -74,13 +74,16 @@ class ManualVerification {
 
   /**
    * Check if supplier has all required documents uploaded.
+   * Now respects document_category: only checks documents marked as 'required'.
    */
   async checkRequiredDocuments(supplierId) {
     const { rows: [supplier] } = await pool.query(
       `SELECT s.*, 
               COALESCE(json_agg(json_build_object(
                 'id', sd.id, 'type', sd.document_type, 'path', sd.file_path,
-                'verification_status', sd.verification_status
+                'verification_status', sd.verification_status,
+                'document_category', sd.document_category,
+                'verification_notes', sd.verification_notes
               )) FILTER (WHERE sd.id IS NOT NULL), '[]') as documents
        FROM suppliers s
        LEFT JOIN supplier_documents sd ON sd.supplier_id = s.id
@@ -89,9 +92,10 @@ class ManualVerification {
       [supplierId]
     );
 
-    if (!supplier) return { hasAllRequired: false, missing: [], documents: [] };
+    if (!supplier) return { hasAllRequired: false, missing: [], documents: [], optionalMissing: [] };
 
-    const requiredTypes = [
+    // Core mandatory document types for Zambian suppliers
+    const mandatoryTypes = [
       'pacra_certificate',
       'zra_tpin',
       'zra_tax_clearance',
@@ -100,14 +104,72 @@ class ManualVerification {
       'bank_reference'
     ];
 
-    const missing = requiredTypes.filter(
+    // Also pull required types from the dynamic required_document_types table
+    // that have is_active = true and are seeded as 'required' category
+    const { rows: dbRequiredTypes } = await pool.query(
+      `SELECT document_type FROM required_document_types WHERE is_active = true ORDER BY sort_order`
+    );
+    const allRequiredTypes = [...new Set([
+      ...mandatoryTypes,
+      ...dbRequiredTypes.map(r => r.document_type)
+    ])];
+
+    // Separate into required vs optional categories
+    const requiredDocs = supplier.documents?.filter(
+      d => d.document_category === 'required' || d.document_category === null
+    ) || [];
+
+    const missing = allRequiredTypes.filter(
+      type => !requiredDocs.find(d => d.type === type)
+    );
+
+    // Optional document types that are not uploaded
+    const optionalTypes = [
+      'audited_accounts',
+      'insurance_certificate',
+      'nppa_registration',
+      'company_profile',
+      'procurement_history'
+    ];
+    const optionalMissing = optionalTypes.filter(
       type => !supplier.documents?.find(d => d.type === type)
     );
+
+    // Count documents by verification status
+    const pendingReview = supplier.documents?.filter(d => d.verification_status === 'pending_review' || d.verification_status === 'pending').length || 0;
+    const verified = supplier.documents?.filter(d => d.verification_status === 'verified').length || 0;
+    const rejected = supplier.documents?.filter(d => d.verification_status === 'rejected').length || 0;
 
     return {
       hasAllRequired: missing.length === 0,
       missing,
-      documents: supplier.documents || []
+      optionalMissing,
+      documents: supplier.documents || [],
+      summary: {
+        total: supplier.documents?.length || 0,
+        pendingReview,
+        verified,
+        rejected,
+      }
+    };
+  }
+
+  /**
+   * Get a summary breakdown of uploaded documents grouped by category and status.
+   */
+  async getUploadedDocumentSummary(supplierId) {
+    const { rows: documents } = await pool.query(
+      `SELECT document_type, document_category, verification_status
+       FROM supplier_documents
+       WHERE supplier_id = $1
+       ORDER BY document_category, document_type`,
+      [supplierId]
+    );
+
+    return {
+      required: documents.filter(d => d.document_category === 'required'),
+      supplementary: documents.filter(d => d.document_category === 'supplementary'),
+      optional: documents.filter(d => d.document_category === 'optional'),
     };
   }
 }

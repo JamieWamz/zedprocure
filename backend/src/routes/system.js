@@ -276,6 +276,10 @@ router.post('/system/console', authenticate, requireRole('system_admin'), async 
         await pool.query('SELECT 1');
         output = 'Database connection OK';
         break;
+      case 'db version':
+        const { rows: versionRows } = await pool.query('SELECT version()');
+        output = versionRows[0].version;
+        break;
       case 'active users':
         const { rows: activeSeats } = await pool.query(
           `SELECT role, COUNT(*)::int AS cnt
@@ -290,7 +294,7 @@ router.post('/system/console', authenticate, requireRole('system_admin'), async 
         output = `Free memory: ${os.freemem()} bytes / Total: ${os.totalmem()} bytes`;
         break;
       default:
-        output = 'Unknown command. Available: uptime, memory, load, db status, active users, free';
+        output = 'Unknown command. Available: uptime, memory, load, db status, db version, active users, free';
     }
     res.json({ output });
   } catch (err) {

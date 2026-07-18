@@ -63,31 +63,84 @@ const VALID_DOCUMENT_TYPES = [
   'procurement_history'
 ];
 
-router.post('/supplier/documents', authenticate, upload.single('file'), async (req, res) => {
+router.post('/supplier/documents', authenticate, upload.array('files', 10), async (req, res) => {
   if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { document_type } = req.body;
-    if (!document_type) return res.status(400).json({ error: 'document_type is required' });
-    if (!VALID_DOCUMENT_TYPES.includes(document_type)) {
-      return res.status(400).json({ error: `Invalid document type. Valid types: ${VALID_DOCUMENT_TYPES.join(', ')}` });
-    }
-    if (!req.file) return res.status(400).json({ error: 'File is required' });
+    // Accept either single 'document_type' (applied to all files) or
+    // parallel array 'document_types[]' for per-file classification
+    const documentTypes = req.body.document_types
+      ? (Array.isArray(req.body.document_types) ? req.body.document_types : [req.body.document_types])
+      : [req.body.document_type || 'company_profile'];
 
-    const file_path = req.file.path;
-    const { rows } = await pool.query(
-      `INSERT INTO supplier_documents (supplier_id, document_type, file_path, document_category)
-       SELECT supplier_id, $1, $2, 'required' FROM supplier_users WHERE id = $3 
-       RETURNING *`,
-      [document_type, file_path, req.user.user_id]
-    );
-    await pool.query(
-      `UPDATE suppliers SET verification_status = 'documents_submitted' WHERE id = (SELECT supplier_id FROM supplier_users WHERE id = $1)`,
-      [req.user.user_id]
-    );
-    res.status(201).json(rows[0]);
+    // Determine document category: 'required' for core docs, 'supplementary' otherwise
+    const requiredTypes = [
+      'pacra_certificate','zra_tpin','zra_tax_clearance','business_license',
+      'directors_id','bank_reference','certificate_of_incorporation','tax_clearance',
+      'tpin_certificate'
+    ];
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'At least one file is required' });
+    }
+
+    // Validate each file has a corresponding document type
+    for (let i = 0; i < req.files.length; i++) {
+      const docType = documentTypes[i] || documentTypes[documentTypes.length - 1] || 'company_profile';
+      if (!VALID_DOCUMENT_TYPES.includes(docType)) {
+        return res.status(400).json({
+          error: `File "${req.files[i].originalname}": Invalid document type "${docType}". Valid types: ${VALID_DOCUMENT_TYPES.join(', ')}`
+        });
+      }
+
+      const ext = path.extname(req.files[i].originalname).toLowerCase();
+      if (!ALLOWED_EXT.includes(ext)) {
+        return res.status(400).json({
+          error: `File "${req.files[i].originalname}": Invalid file format ".${ext}". Allowed: PDF, DOC, DOCX, JPG, PNG`
+        });
+      }
+    }
+
+    const insertedDocuments = [];
+
+    // Use a transaction for atomic multi-insert
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (let i = 0; i < req.files.length; i++) {
+        const file = req.files[i];
+        const docType = documentTypes[i] || documentTypes[documentTypes.length - 1] || 'company_profile';
+        const category = requiredTypes.includes(docType) ? 'required' : 'supplementary';
+
+        const { rows } = await client.query(
+          `INSERT INTO supplier_documents (supplier_id, document_type, file_path, document_category, verification_status)
+           SELECT su.supplier_id, $1, $2, $3, 'pending_review'
+           FROM supplier_users su WHERE su.id = $4
+           RETURNING *`,
+          [docType, file.path, category, req.user.user_id]
+        );
+        insertedDocuments.push(rows[0]);
+      }
+
+      // Update supplier status if currently 'pending'
+      await client.query(
+        `UPDATE suppliers
+         SET verification_status = CASE WHEN verification_status = 'pending' THEN 'documents_submitted' ELSE verification_status END
+         WHERE id = (SELECT supplier_id FROM supplier_users WHERE id = $1)`,
+        [req.user.user_id]
+      );
+
+      await client.query('COMMIT');
+      res.status(201).json({ documents: insertedDocuments, count: insertedDocuments.length });
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
   } catch (e) {
-    console.error('Error uploading document:', e);
-    res.status(500).json({ error: 'Failed to upload document: ' + e.message });
+    console.error('Error uploading documents:', e);
+    res.status(500).json({ error: 'Failed to upload document(s): ' + e.message });
   }
 });
 
