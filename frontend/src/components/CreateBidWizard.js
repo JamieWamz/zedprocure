@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, DatePicker, InputNumber, Switch, Select, Button, message, Alert, Table, Upload } from 'antd';
+import { Form, Input, DatePicker, InputNumber, Switch, Select, Button, message, Alert, Space, Upload } from 'antd';
 import { PlusOutlined, DeleteOutlined, UploadOutlined, InboxOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -63,118 +63,16 @@ export default function CreateBidWizard() {
   const [form] = Form.useForm();
   const visibility = Form.useWatch('visibility', form);
 
-  // ─── Line Items State ─────────────────────────────────────────────────────
-  const [lineItems, setLineItems] = useState([
-    { key: '1', item_description: '', unit_of_measure: 'each', quantity: 1, unit_price_estimate: null },
-  ]);
-  const [nextLineKey, setNextLineKey] = useState(2);
-
-  // ─── Technical Specs File ─────────────────────────────────────────────────
   const [techSpecFile, setTechSpecFile] = useState(null);
+  const [saveAsDraft, setSaveAsDraft] = useState(false);
 
   useEffect(() => {
     if (user?.tenantId) {
       setTenantId(user.tenantId);
-    } else if (user?.role === 'business_admin') {
+    } else if (user?.role === 'business_admin' || user?.role === 'system_admin') {
       axios.get('/api/tenant/list').then(res => setTenants(res.data)).catch(() => {});
     }
   }, [user]);
-
-  const addLineItem = () => {
-    setLineItems([...lineItems, { key: String(nextLineKey), item_description: '', unit_of_measure: 'each', quantity: 1, unit_price_estimate: null }]);
-    setNextLineKey(nextLineKey + 1);
-  };
-
-  const removeLineItem = (key) => {
-    if (lineItems.length <= 1) {
-      message.warning('At least one line item is required');
-      return;
-    }
-    setLineItems(lineItems.filter(item => item.key !== key));
-  };
-
-  const updateLineItem = (key, field, value) => {
-    setLineItems(lineItems.map(item =>
-      item.key === key ? { ...item, [field]: value } : item
-    ));
-  };
-
-  const lineItemColumns = [
-    {
-      title: '#',
-      width: 40,
-      render: (_, __, index) => index + 1,
-    },
-    {
-      title: 'Item Description *',
-      dataIndex: 'item_description',
-      width: 300,
-      render: (_, record) => (
-        <Input
-          placeholder="e.g. Supply of cement, steel reinforcement"
-          value={record.item_description}
-          onChange={e => updateLineItem(record.key, 'item_description', e.target.value)}
-        />
-      ),
-    },
-    {
-      title: 'Unit of Measure *',
-      dataIndex: 'unit_of_measure',
-      width: 180,
-      render: (_, record) => (
-        <Select
-          value={record.unit_of_measure}
-          onChange={val => updateLineItem(record.key, 'unit_of_measure', val)}
-          style={{ width: '100%' }}
-        >
-          {UNIT_OF_MEASURE.map(uom => (
-            <Select.Option key={uom.value} value={uom.value}>{uom.label}</Select.Option>
-          ))}
-        </Select>
-      ),
-    },
-    {
-      title: 'Quantity *',
-      dataIndex: 'quantity',
-      width: 120,
-      render: (_, record) => (
-        <InputNumber
-          min={0.0001}
-          step={1}
-          value={record.quantity}
-          onChange={val => updateLineItem(record.key, 'quantity', val)}
-          style={{ width: '100%' }}
-        />
-      ),
-    },
-    {
-      title: 'Est. Unit Price (ZMW)',
-      dataIndex: 'unit_price_estimate',
-      width: 160,
-      render: (_, record) => (
-        <InputNumber
-          min={0}
-          step={0.01}
-          value={record.unit_price_estimate}
-          onChange={val => updateLineItem(record.key, 'unit_price_estimate', val)}
-          style={{ width: '100%' }}
-          placeholder="Optional"
-        />
-      ),
-    },
-    {
-      title: 'Action',
-      width: 60,
-      render: (_, record) => (
-        <Button
-          type="text"
-          danger
-          icon={<DeleteOutlined />}
-          onClick={() => removeLineItem(record.key)}
-        />
-      ),
-    },
-  ];
 
   const onFinish = async (values) => {
     const tid = values.tenant_id || tenantId;
@@ -183,8 +81,7 @@ export default function CreateBidWizard() {
       return;
     }
 
-    // Validate line items
-    const validLineItems = lineItems.filter(item => item.item_description && item.item_description.trim());
+    const validLineItems = (values.line_items || []).filter(item => item && item.item_description && item.item_description.trim());
     if (validLineItems.length === 0) {
       message.error('At least one line item with a description is required in the Bill of Quantities');
       return;
@@ -192,7 +89,6 @@ export default function CreateBidWizard() {
 
     setLoading(true);
     try {
-      // Build FormData for multipart upload (to support file)
       const formData = new FormData();
       formData.append('title', values.title);
       formData.append('description', values.description || '');
@@ -207,8 +103,8 @@ export default function CreateBidWizard() {
       formData.append('bidding_fee_amount', String(values.bidding_fee_amount || 0));
       formData.append('technical_specifications', values.technical_specifications || '');
       formData.append('line_items', JSON.stringify(validLineItems.map((item, idx) => ({
+        ...item,
         item_description: item.item_description.trim(),
-        unit_of_measure: item.unit_of_measure,
         quantity: Number(item.quantity),
         unit_price_estimate: item.unit_price_estimate ? Number(item.unit_price_estimate) : null,
         line_order: idx + 1,
@@ -224,7 +120,6 @@ export default function CreateBidWizard() {
       const bid = res.data;
 
       if (!saveAsDraft) {
-        // Publish immediately
         await axios.put(`/api/bids/${bid.id}/publish`);
         message.success('Bid published and suppliers notified');
       } else {
@@ -239,8 +134,6 @@ export default function CreateBidWizard() {
       setLoading(false);
     }
   };
-
-  const [saveAsDraft, setSaveAsDraft] = useState(false);
 
   return (
     <div style={{ maxWidth: 960, margin: 'auto' }}>
@@ -258,6 +151,7 @@ export default function CreateBidWizard() {
         initialValues={{
           evaluation_method: 'lowest_price',
           visibility: 'global',
+          line_items: [{ item_description: '', unit_of_measure: 'each', quantity: 1, unit_price_estimate: null }],
         }}
       >
         {!tenantId && tenants.length > 0 && (
@@ -331,31 +225,65 @@ export default function CreateBidWizard() {
           <InputNumber min={0} style={{ width: '100%' }} />
         </Form.Item>
 
-        {/* ─── Bill of Quantities Line Items ─────────────────────────────── */}
         <div style={{ marginBottom: 16 }}>
           <h3>Bill of Quantities (BoQ) — Line Items</h3>
           <p style={{ color: '#666', fontSize: 13 }}>
             Define the line items for this bid. Each item must have a description, unit of measure, and quantity.
             At least one line item is required before publishing.
           </p>
-          <Table
-            dataSource={lineItems}
-            columns={lineItemColumns}
-            rowKey="key"
-            pagination={false}
-            size="small"
-            bordered
-            style={{ marginBottom: 8 }}
-          />
-          <Button type="dashed" onClick={addLineItem} icon={<PlusOutlined />} block>
-            Add Line Item
-          </Button>
-          <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
-            Total line items: <strong>{lineItems.filter(i => i.item_description?.trim()).length}</strong>
-          </div>
+          <Form.List name="line_items">
+            {(fields, { add, remove }) => (
+              <>
+                {fields.map(({ key, name, ...restField }) => (
+                  <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+                    <Form.Item
+                      {...restField}
+                      name={[name, 'item_description']}
+                      rules={[{ required: true, message: 'Description is required' }]}
+                      style={{ width: '300px' }}
+                    >
+                      <Input placeholder="Item Description" />
+                    </Form.Item>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 'unit_of_measure']}
+                      rules={[{ required: true, message: 'UoM is required' }]}
+                       style={{ width: '150px' }}
+                    >
+                      <Select placeholder="Unit of Measure">
+                        {UNIT_OF_MEASURE.map(uom => (
+                          <Select.Option key={uom.value} value={uom.value}>{uom.label}</Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 'quantity']}
+                      rules={[{ required: true, message: 'Quantity is required' }]}
+                       style={{ width: '100px' }}
+                    >
+                      <InputNumber min={0.0001} placeholder="Quantity" style={{width: '100%'}} />
+                    </Form.Item>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 'unit_price_estimate']}
+                       style={{ width: '130px' }}
+                    >
+                      <InputNumber min={0} placeholder="Est. Price" style={{width: '100%'}} />
+                    </Form.Item>
+                    <DeleteOutlined onClick={() => remove(name)} />
+                  </Space>
+                ))}
+                <Form.Item>
+                  <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                    Add Line Item
+                  </Button>
+                </Form.Item>
+              </>
+            )}
+          </Form.List>
         </div>
 
-        {/* ─── Technical Specifications ──────────────────────────────────── */}
         <div style={{ marginBottom: 16 }}>
           <h3>Technical Specifications</h3>
           <Form.Item name="technical_specifications" label="Technical Specifications (Text)">

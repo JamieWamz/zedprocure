@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Button, Card, Col, Empty, Form, Input, InputNumber, Modal, Row, Select,
-  Space, Statistic, Table, Tag, Typography, message,
+  Alert, Button, Col, Form, Input, InputNumber, Modal, Row, Select,
+  Space, Table, Tag, Typography, message, Card
 } from 'antd';
 import {
   AuditOutlined, BankOutlined, ClockCircleOutlined, FileTextOutlined, ReloadOutlined,
@@ -10,6 +10,9 @@ import {
 import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
 import DigitalSignatureModal from './DigitalSignatureModal';
+import { useAuth } from '../context/AuthContext';
+import EnhancedEmpty from './EnhancedEmpty';
+import DashboardStatistic from './DashboardStatistic';
 
 const { Text } = Typography;
 
@@ -42,6 +45,8 @@ export default function CustomerDashboard() {
   const [signingOrder, setSigningOrder] = useState(null);
   const [fundingOrder, setFundingOrder] = useState(null);
   const [fundForm] = Form.useForm();
+  const [customerBids, setCustomerBids] = useState([]);
+  const { user } = useAuth();
 
   const loadPortal = useCallback(async () => {
     setInvoiceLoading(true);
@@ -54,12 +59,17 @@ export default function CustomerDashboard() {
       setInvoices(invoiceRes.data);
       setSummary(summaryRes.data);
       setOrders(orderRes.data);
+
+      if (user?.role === 'customer') {
+        const bidsRes = await axios.get('/api/bids/my-tenant-bids');
+        setCustomerBids(bidsRes.data);
+      }
     } catch (e) {
       message.error(e.response?.data?.error || 'Failed to load customer workspace');
     } finally {
       setInvoiceLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => { loadPortal(); }, [loadPortal]);
 
@@ -159,24 +169,16 @@ export default function CustomerDashboard() {
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} md={8}>
-          <Card>
-            <Statistic title="Open Balance" value={money(summary?.ar?.open)} prefix={<FileTextOutlined />} valueStyle={{ color: '#1677ff' }} />
-          </Card>
+          <DashboardStatistic title="Open Balance" value={money(summary?.ar?.open)} prefix={<FileTextOutlined />} />
         </Col>
         <Col xs={24} md={8}>
-          <Card>
-            <Statistic title="Overdue" value={money(summary?.ar?.overdue)} prefix={<ClockCircleOutlined />} valueStyle={{ color: Number(summary?.ar?.overdue || 0) > 0 ? '#cf1322' : '#389e0d' }} />
-          </Card>
+          <DashboardStatistic title="Overdue" value={money(summary?.ar?.overdue)} prefix={<ClockCircleOutlined />} color={Number(summary?.ar?.overdue || 0) > 0 ? '#cf1322' : '#389e0d'} />
         </Col>
         <Col xs={24} md={8}>
-          <Card>
-            <Statistic title="Paid This Month" value={money(summary?.paidThisMonth)} valueStyle={{ color: '#389e0d' }} />
-          </Card>
+          <DashboardStatistic title="Paid This Month" value={money(summary?.paidThisMonth)} color="#389e0d" />
         </Col>
         <Col xs={24} md={8}>
-          <Card>
-            <Statistic title="Orders" value={orders.length} prefix={<ShoppingCartOutlined />} valueStyle={{ color: '#1677ff' }} />
-          </Card>
+          <DashboardStatistic title="Orders" value={orders.length} prefix={<ShoppingCartOutlined />} />
         </Col>
       </Row>
 
@@ -185,8 +187,21 @@ export default function CustomerDashboard() {
           <Card title="Submit Requirements" className="table-card">
             <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Budgets remain hidden from suppliers during bid evaluation." />
             <Form layout="vertical" onFinish={onFinish}>
-              <Form.Item name="bid_id" label="Bid ID" rules={[{ required: true }]}>
-                <Input placeholder="Enter bid UUID" />
+              <Form.Item name="bid_id" label="Bid" rules={[{ required: true, message: 'Please select a bid' }]}>
+                <Select
+                  showSearch
+                  placeholder="Select a bid"
+                  optionFilterProp="children"
+                  filterOption={(input, option) =>
+                    option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                  }
+                >
+                  {customerBids.map(bid => (
+                    <Select.Option key={bid.id} value={bid.id}>
+                      {bid.title} (Deadline: {new Date(bid.deadline).toLocaleDateString()})
+                    </Select.Option>
+                  ))}
+                </Select>
               </Form.Item>
               <Form.Item name="budget_amount" label="Budget (ZMW)">
                 <InputNumber min={0} style={{ width: '100%' }} />
@@ -213,7 +228,7 @@ export default function CustomerDashboard() {
               columns={orderColumns}
               pagination={{ pageSize: 5 }}
               scroll={{ x: 820 }}
-              locale={{ emptyText: <Empty description="No orders yet" /> }}
+              locale={{ emptyText: <EnhancedEmpty title="No Orders Yet" description="Your awarded bids and orders will appear here." ctaText="Browse Public Bids" ctaPath="/public-noticeboard" /> }}
             />
           </Card>
           <Card title="My Invoices" className="table-card">
@@ -224,7 +239,7 @@ export default function CustomerDashboard() {
               columns={columns}
               pagination={{ pageSize: 6 }}
               scroll={{ x: 720 }}
-              locale={{ emptyText: <Empty description="No invoices yet" /> }}
+              locale={{ emptyText: <EnhancedEmpty title="No Invoices Yet" description="Invoices will appear here once orders are fulfilled and billed." /> }}
             />
           </Card>
         </Col>

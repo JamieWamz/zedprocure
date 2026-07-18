@@ -69,7 +69,7 @@ router.use('/bids', authenticate, stripBudgetForSupplier);
 // ─── Create bid – BoQ line items, Incoterms, tech specs ──────────────────────
 // Bids are created as 'draft' and must be explicitly published.
 router.post('/tenants/:tid/bids', authenticate, uploadSpec.single('technical_specifications_file'), async (req, res) => {
-  if (req.user.role !== 'business_admin') {
+  if (!['business_admin', 'system_admin'].includes(req.user.role)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -159,7 +159,7 @@ router.post('/tenants/:tid/bids', authenticate, uploadSpec.single('technical_spe
     await client.query(
       `INSERT INTO system_logs (actor_id, actor_type, action, entity_type, entity_id, metadata)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [req.user.user_id, 'platform_admin', 'bid_created', 'bid', bid.id,
+      [req.user.user_id, req.user.role, 'bid_created', 'bid', bid.id,
        JSON.stringify({ title: bid.title, visibility: bid.visibility, line_items_count: parsedLineItems.length })]
     );
 
@@ -306,6 +306,59 @@ router.get('/bids/:bidId', authenticate, async (req, res) => {
   } catch (e) {
     console.error('Error fetching bid:', e);
     res.status(500).json({ error: 'Failed to fetch bid details' });
+  }
+});
+
+// ─── Customer: Submit bid requirements ───────────────────────────────────────
+router.post('/bids/:bidId/requirements', authenticate, async (req, res) => {
+  // Only customer users can submit requirements
+  if (req.user.role !== 'customer') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const { bidId } = req.params;
+  const { budget_amount, expected_delivery_time, payment_method, certification_standards } = req.body;
+
+  // Basic validation
+  if (!bidId) {
+    return res.status(400).json({ error: 'Bid ID is required' });
+  }
+
+  try {
+    // Check if bid exists and belongs to the customer's tenant
+    const { rows: [bid] } = await pool.query(
+      `SELECT id FROM bids WHERE id = $1 AND tenant_id = $2`,
+      [bidId, req.user.tenant_id]
+    );
+
+    if (!bid) {
+      return res.status(404).json({ error: 'Bid not found or you do not have access' });
+    }
+
+    // Insert or update bid requirements
+    const { rows: [requirement] } = await pool.query(
+      `INSERT INTO bid_requirements (bid_id, customer_user_id, budget_amount, expected_delivery_time, payment_method, certification_standards)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (bid_id, customer_user_id) DO UPDATE SET
+         budget_amount = EXCLUDED.budget_amount,
+         expected_delivery_time = EXCLUDED.expected_delivery_time,
+         payment_method = EXCLUDED.payment_method,
+         certification_standards = EXCLUDED.certification_standards
+       RETURNING *`,
+      [
+        bidId,
+        req.user.user_id,
+        budget_amount ? Number(budget_amount) : null,
+        expected_delivery_time || null, // Assuming INTERVAL is handled as text for now
+        payment_method || null,
+        certification_standards || null,
+      ]
+    );
+
+    res.status(200).json(requirement);
+  } catch (e) {
+    console.error('Error submitting bid requirements:', e);
+    res.status(500).json({ error: 'Failed to submit bid requirements: ' + e.message });
   }
 });
 
@@ -605,6 +658,26 @@ router.get('/bids/:bidId/evaluation', authenticate, async (req, res) => {
   } catch (e) {
     console.error('Error fetching evaluation:', e);
     res.status(500).json({ error: 'Failed to fetch evaluation scores' });
+  }
+});
+
+// ─── Customer: Get all active bids for my tenant ──────────────────────────────
+router.get('/bids/my-tenant-bids', authenticate, async (req, res) => {
+  if (req.user.role !== 'customer') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, title, deadline
+       FROM bids
+       WHERE tenant_id = $1 AND status IN ('open', 'evaluation', 'awarded')
+       ORDER BY deadline DESC`,
+      [req.user.tenant_id]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error('Error fetching tenant bids:', e);
+    res.status(500).json({ error: 'Failed to fetch tenant bids' });
   }
 });
 
