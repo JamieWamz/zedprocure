@@ -4,6 +4,8 @@
 -- Dependencies: Requires migration_006 (bid_line_items) to have been applied first.
 -- ============================================================================
 
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- ─── Supplier Response Line Items (per-line-item pricing) ───────────────────
 -- supplier_responses table is created in schema.sql
 -- bid_line_items table is created in migration_006_boq_bid_structure.sql

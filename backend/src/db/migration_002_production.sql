@@ -1,6 +1,8 @@
 -- Migration: Production readiness — password reset, invitations, wallet, audit
 -- Run after schema.sql on existing databases.
 
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Password reset tokens
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
   id SERIAL PRIMARY KEY,

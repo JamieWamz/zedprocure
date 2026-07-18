@@ -8,6 +8,8 @@
 -- supplementary category option.
 -- ============================================================================
 
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- ─── Bill of Quantities: line items for structured bids ─────────────────────
 CREATE TABLE IF NOT EXISTS bid_line_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

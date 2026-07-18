@@ -1,6 +1,8 @@
 -- Migration: Automated Supplier Verification Engine
 -- Adds tables for PACRA, ZRA and document-level verification results
 
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Supplier verification runs: each run triggers checks against external APIs
 CREATE TABLE IF NOT EXISTS supplier_verification_runs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

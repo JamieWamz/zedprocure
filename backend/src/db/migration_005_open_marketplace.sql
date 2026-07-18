@@ -5,6 +5,8 @@
 -- This also normalizes business categories into a dedicated table.
 -- ============================================================================
 
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- ─── Business Categories: create and seed a central table ───────────────────
 CREATE TABLE IF NOT EXISTS business_categories (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

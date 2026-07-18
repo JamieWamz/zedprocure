@@ -1,6 +1,8 @@
 -- Migration: Manual Supplier Verification with Required Documents
 -- Adds document categories and verification notes for manual business admin review
 
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Add document category to track required vs optional documents
 ALTER TABLE supplier_documents 
 ADD COLUMN IF NOT EXISTS document_category VARCHAR(50) DEFAULT 'optional'
