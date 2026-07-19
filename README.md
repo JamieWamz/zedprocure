@@ -1,229 +1,430 @@
-# Freshstart Procurement Portal
+# ZedProcure — Zambia Procurement Platform
 
-Containerized procurement, accounting, invoicing, escrow, and supplier-management platform for Zambian procurement workflows.
+> A multi-tenant, end-to-end procurement, accounting, escrow, and supplier-management platform built for Zambian procurement workflows.
 
-The current system has two platform administrator seats:
+[![CI](https://github.com/JamieWamz/zedprocure/actions/workflows/ci.yml/badge.svg)](https://github.com/JamieWamz/zedprocure/actions/workflows/ci.yml)
 
-- System Admin: owns system health, platform oversight, users, organizations, suppliers, audit, and operational visibility.
-- Business Admin: owns procurement operations, accounting, invoices, supplier verification, bids, orders, escrow release, and customer/supplier support.
+---
 
-There is no tenant-admin role. Customers and suppliers register organically. Suppliers remain pending until Business Admin verifies them.
+## Table of Contents
 
-## Current Capabilities
+1. [Platform Overview](#1-platform-overview)
+2. [Tech Stack](#2-tech-stack)
+3. [Architecture](#3-architecture)
+4. [Repository Structure](#4-repository-structure)
+5. [Git Branching Strategy](#5-git-branching-strategy)
+6. [Platform Capabilities](#6-platform-capabilities)
+7. [Payment Integrations](#7-payment-integrations)
+8. [Security Model](#8-security-model)
+9. [Deployment — Render (Production)](#9-deployment--render-production)
+10. [Local Development](#10-local-development)
+11. [CI/CD Pipelines](#11-cicd-pipelines)
+12. [Key API Reference](#12-key-api-reference)
+13. [Platform Admin Access](#13-platform-admin-access)
+14. [Onboarding](#14-onboarding)
+15. [Environment Variables](#15-environment-variables)
+16. [License](#16-license)
 
-- Organic customer registration with buyer organization creation.
-- Organic supplier registration with pending verification.
-- Supplier compliance document upload and Business Admin verification.
-- Verified supplier invitation, bid response, and bidding-fee workflow.
-- Customer requirements capture with budget isolation from suppliers.
-- Bid creation, award, order tracking, escrow funding, and escrow release.
-- AR/AP invoicing, invoice aging, payment recording, reminders, and exports.
-- Double-entry ledger, chart of accounts, journal, trial balance, income statement, balance sheet, and cash-flow reporting.
-- Paperless digital signatures for invoices and orders with consent text, signer identity, hash, timestamp, IP/user-agent metadata, and audit log entries.
-- Customer portal for requirements, invoices, orders, escrow, and signatures.
-- Supplier portal for verification status, documents, invitations, awarded orders, invoices, escrow visibility, and signatures.
-- Business Admin portal for full procurement and accounting operations.
-- System Admin portal for estate-wide monitoring and governance.
-- CI/CD via GitHub Actions for syntax checks, frontend build, Docker Compose validation, Docker image build, and manual server deployment.
+---
 
-## Tech Stack
+## 1. Platform Overview
+
+ZedProcure is a **multi-tenant SaaS** platform that digitises the full procurement lifecycle for Zambian organisations — from supplier onboarding and bid management, through order tracking and escrow, to accounting and digital signatures.
+
+**Two platform administrator roles:**
+
+| Role | Responsibilities |
+|---|---|
+| **System Admin** | Platform health, organisations, users, suppliers, audit trail, system-wide visibility |
+| **Business Admin** | Procurement operations, bid management, supplier verification, invoicing, escrow release, financial reporting |
+
+There is no tenant-admin role. Customers and suppliers self-register. Suppliers start as `pending` and must be verified by Business Admin before participating in bids.
+
+---
+
+## 2. Tech Stack
 
 | Layer | Technology |
-| --- | --- |
-| Frontend | React 18, Ant Design 5, React Router, Axios, Recharts |
-| Backend | Node.js 22, Express, httpOnly cookie JWT auth, Multer uploads |
-| Database | PostgreSQL 15 with `uuid-ossp` |
-| Runtime | Docker Compose |
-| Web | Nginx reverse proxy for frontend and `/api` |
-| CI/CD | GitHub Actions |
+|---|---|
+| **Frontend** | React 18, Ant Design 5, React Router, Axios, Recharts |
+| **Backend** | Node.js 22, Express 4, httpOnly cookie JWT auth, Multer uploads, Winston logging |
+| **Database** | PostgreSQL 15 with `uuid-ossp`, `node-pg-migrate` |
+| **Payments** | MTN Mobile Money, Airtel Money, Zamtel Kwacha, Bank Transfer |
+| **Deployment** | Render (web service + static site + managed Postgres) |
+| **CI/CD** | GitHub Actions |
+| **Docker** | Docker Compose for local/self-hosted environments |
 
-## Container-First Deployment
+---
 
-This application is intended to run as containers.
+## 3. Architecture
 
-1. Create a root `.env` file:
+```
+┌─────────────────────────────────────────────┐
+│              React Frontend (SPA)            │
+│  CustomerPortal · SupplierPortal · AdminPortal│
+└──────────────────────┬──────────────────────┘
+                       │ HTTPS / Axios + httpOnly cookies
+┌──────────────────────▼──────────────────────┐
+│           Express.js Backend API             │
+│  Auth · Bids · Orders · Escrow · Invoices    │
+│  Ledger · Signatures · Notifications         │
+│  ┌─────────────────────────────────────┐    │
+│  │       Payment Service (Unified)      │    │
+│  │  MTN MoMo · Airtel · Zamtel · Bank  │    │
+│  └─────────────────────────────────────┘    │
+└──────────────────────┬──────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────┐
+│           PostgreSQL 15 Database             │
+│  Tenants · Users · Bids · Orders · Escrow   │
+│  Invoices · Ledger · Signatures · Payments  │
+└─────────────────────────────────────────────┘
+```
+
+**Key design principles:**
+- **Tenant isolation** enforced via `X-Tenant-ID` headers and DB-level filtering on every query
+- **Double-entry bookkeeping** — all financial events create immutable journal entries
+- **Escrow-first** — buyer funds are held in escrow and released only after fulfillment
+- **Zero client-side payment secrets** — all provider calls happen server-side
+
+---
+
+## 4. Repository Structure
+
+```text
+zedprocure/
+├── backend/
+│   └── src/
+│       ├── config/           # DB pool, auth config
+│       ├── db/
+│       │   ├── migrations/   # node-pg-migrate migration files
+│       │   ├── init.js       # Startup DB initialisation
+│       │   └── schema.sql    # Reference schema
+│       ├── middleware/       # Auth, tenant context, rate limiting
+│       ├── routes/           # Express route handlers
+│       │   ├── auth.js
+│       │   ├── bid.js
+│       │   ├── order.js
+│       │   ├── payment.js    # Bidding fees + mobile money endpoints
+│       │   ├── escrow.js
+│       │   ├── invoices.js
+│       │   ├── ledger.js
+│       │   ├── signatures.js
+│       │   ├── supplier.js
+│       │   ├── verification.js
+│       │   └── ...
+│       └── services/
+│           ├── payments/
+│           │   ├── mtnMomoService.js      # MTN Mobile Money
+│           │   ├── airtelMoneyService.js  # Airtel Money
+│           │   ├── zamtelKwachaService.js # Zamtel Kwacha
+│           │   └── paymentService.js      # Unified payment layer
+│           ├── ledgerService.js
+│           ├── notificationService.js
+│           └── walletService.js
+├── frontend/
+│   └── src/
+│       ├── components/       # All React components
+│       │   ├── PaymentModal.js          # MTN/Airtel/Zamtel/Bank UI
+│       │   ├── CustomerDashboard.js
+│       │   ├── SupplierDashboard.js
+│       │   ├── DigitalSignatureModal.js
+│       │   └── ...
+│       ├── context/
+│       │   └── AuthContext.js  # JWT + tenant header management
+│       ├── App.js
+│       └── index.js
+├── docs/
+│   └── PAYMENT_INTEGRATION.md  # Full payment API integration guide
+├── nginx/                       # Nginx config for Docker deployments
+├── .github/workflows/           # CI/CD pipelines
+├── BRANCHES.md                  # Git branching strategy
+├── render.yaml                  # Render deployment blueprint
+├── docker-compose.yml
+├── Dockerfile.backend
+└── Dockerfile.frontend
+```
+
+---
+
+## 5. Git Branching Strategy
+
+See [BRANCHES.md](./BRANCHES.md) for the full workflow guide.
+
+| Branch | Purpose |
+|---|---|
+| `main` | Latest integrated code — Render auto-deploys from here |
+| `production` | Stable release snapshot — only updated via PRs from `test` |
+| `staging` | Pre-release integration testing |
+| `test` | QA & automated test verification |
+| `working` | Safe snapshot before large refactors |
+| `features` | Base for all new feature branches |
+
+**Promotion flow:**
+```
+features/your-feature  →  staging  →  test  →  production
+```
+
+---
+
+## 6. Platform Capabilities
+
+### Procurement
+- Organic customer registration with buyer organisation creation
+- Organic supplier registration with compliance document upload and Business Admin verification
+- Multi-step bid creation wizard (title, requirements, BoQ, suppliers, deadline, visibility)
+- Public bid noticeboard for open/global bids
+- Supplier bid invitation, response submission, and bidding-fee workflow
+- Bid evaluation, award, and order creation with audit trail
+- Order status lifecycle: `pending_acceptance → accepted → delivery_in_progress → delivered → completed`
+
+### Finance & Accounting
+- AR/AP invoicing with aging, payment recording, reminders, and CSV/PDF export
+- **Double-entry ledger** — chart of accounts, journal, trial balance, income statement, balance sheet, cash-flow reporting
+- **Escrow** — buyer funds held in escrow, released by Business Admin after fulfillment
+- **Mobile money & bank payments** — MTN, Airtel, Zamtel, Bank (see §7)
+- Wallet system for supplier bidding fees
+
+### Portals
+| Portal | Key Features |
+|---|---|
+| **Customer Portal** | Requirements, invoices, orders, **Pay Now** (mobile money), escrow funding, digital signatures |
+| **Supplier Portal** | Bid opportunities, compliance verification & document upload, orders & contracts, digital signatures, notifications |
+| **Business Admin** | Full procurement ops, supplier verification, bid/order management, invoicing, escrow release, financial reports |
+| **System Admin** | Platform health, user management, organisation oversight, audit logs |
+
+### Other
+- Real-time notifications with 30s polling and mark-as-read
+- Paperless **digital signatures** on invoices and orders (signer identity, consent, SHA hash, timestamp, IP/user-agent, audit log)
+- Supplier compliance tracking with per-document status (PACRA, ZRA TPIN, Tax Clearance, Business License, Directors ID, Bank Reference)
+
+---
+
+## 7. Payment Integrations
+
+ZedProcure integrates with all major Zambian payment providers. See [docs/PAYMENT_INTEGRATION.md](./docs/PAYMENT_INTEGRATION.md) for the full developer guide.
+
+| Provider | Type | Status | Portal |
+|---|---|---|---|
+| **MTN Mobile Money** | Mobile wallet | Ready (needs credentials) | [momodeveloper.mtn.com](https://momodeveloper.mtn.com) |
+| **Airtel Money** | Mobile wallet | Ready (needs credentials) | [developers.airtel.africa](https://developers.airtel.africa) |
+| **Zamtel Kwacha** | Mobile wallet | Ready (needs credentials) | Contact enterprise@zamtel.co.zm |
+| **Bank Transfer** | Direct debit | Ready (webhook-based) | Contact your bank |
+
+**How it works:**
+1. Customer clicks **Pay Now** on any unfunded order
+2. Selects provider and enters their mobile number
+3. A payment prompt is sent to their phone instantly
+4. The platform polls the provider every 4 seconds
+5. On success → escrow account is automatically funded
+6. Providers can also push status updates via the webhook endpoint:
+   `POST /api/payments/mobile/callback?provider=mtn`
+
+**To activate:** Set the required env vars in the Render dashboard (see §15).
+
+---
+
+## 8. Security Model
+
+- **Authentication**: httpOnly, SameSite cookies. Tokens never stored in `localStorage`.
+- **Tenant isolation**: Every query is scoped by `tenant_id` extracted from the authenticated user.
+- **CORS**: Restricted to `CORS_ORIGINS` — no wildcard in production.
+- **Passwords**: Minimum 10 characters, uppercase + lowercase + number + symbol required.
+- **Uploads**: Validated by both MIME type and file extension; random filenames; 10MB limit.
+- **Budget isolation**: Customer procurement budgets are never visible to suppliers.
+- **Escrow**: Fund/release operations use DB transactions + row-level locks.
+- **Ledger**: Journal entries and lines are immutable by design.
+- **Signatures**: Record signer identity, consent text, SHA-256 hash, timestamp, IP, user-agent, and write audit log entries.
+- **Admin seats**: Only one active System Admin and one Business Admin seat at any time.
+- **Payment secrets**: All provider API calls are server-side — no credentials ever reach the browser.
+
+**Never commit:** `.env`, private keys, `DATABASE_URL`, database dumps, or uploaded files.
+
+---
+
+## 9. Deployment — Render (Production)
+
+The project uses a **Render Blueprint** (`render.yaml`) to define both services:
+
+| Service | Type | URL |
+|---|---|---|
+| `zambia-procurement-backend` | Web Service (Node) | `https://zambia-procurement-backend.onrender.com` |
+| `zedprocure` | Static Site (React) | `https://zedprocure.onrender.com` |
+| `zambia-procurement-db` | Managed PostgreSQL 15 | Internal `DATABASE_URL` |
+
+**Deploying:**
+```bash
+# Just push to main — Render auto-deploys
+git push origin main
+```
+
+Database migrations run automatically as a `preDeployCommand`:
+```bash
+npm run migrate:up
+```
+
+**Required secrets in Render Dashboard → Environment:**
 
 ```env
-JWT_SECRET=<generate-with-openssl-rand-hex-32>
-CORS_ORIGINS=http://localhost,http://your-domain.example
-COOKIE_SECURE=false
+JWT_SECRET=<openssl rand -hex 32>
 SYSTEM_ADMIN_PASSWORD=<strong-password>
 BUSINESS_ADMIN_PASSWORD=<strong-password>
 ```
 
-For HTTPS production, set:
+---
 
-```env
-COOKIE_SECURE=true
-CORS_ORIGINS=https://your-domain.example
-```
+## 10. Local Development
 
-2. Build and run:
+### Option A — Docker Compose (recommended)
 
 ```bash
+# Copy and fill in the env file
+cp .env.example .env
+
+# Build and start everything
 docker compose up --build
 ```
 
-3. Open:
+- Frontend: http://localhost
+- Backend API: http://localhost:4000
 
-- Frontend: `http://localhost`
-- Backend API: `http://localhost:4000`
+### Option B — Manual
 
-The backend container initializes the database on startup, updating admin passwords from environment variables and ensuring chart of accounts exist.
-
-## Platform Admin Access
-
-Seeded platform admin emails:
-
-| Seat | Email |
-| --- | --- |
-| System Admin | `wamuyuwamundia@gmail.com` |
-| Business Admin | `brightilunga6@gmail.com` |
-
-Passwords are never hardcoded. Set `SYSTEM_ADMIN_PASSWORD` and `BUSINESS_ADMIN_PASSWORD` before first startup. If omitted, strong random passwords are generated and printed once in the backend logs; store them securely.
-## Organic Onboarding
-
-Customers:
-
-- Register from the login page as `Customer / Buyer`.
-- A buyer organization is created from the supplied organization details.
-- Customers can submit requirements, track invoices, fund escrow, view orders, and sign documents digitally.
-
-Suppliers:
-
-- Register from the login page as `Supplier`.
-- Supplier records start with `pending` verification and `is_active=false`.
-- Suppliers upload compliance documents from the supplier portal.
-- Business Admin verifies or rejects suppliers.
-- Only verified suppliers appear in bid invitation flows.
-
-## Security
-
-- Authentication uses httpOnly, SameSite cookies. Tokens are not stored in localStorage.
-- Production requires a strong `JWT_SECRET`.
-- CORS is restricted with `CORS_ORIGINS`.
-- Set `COOKIE_SECURE=true` only when serving over HTTPS.
-- Password validation requires at least 10 characters with uppercase, lowercase, number, and symbol.
-- Uploads are limited to approved document/image MIME types and extensions with random filenames.
-- Procurement budgets are hidden from supplier views.
-- Escrow funding/release and payment confirmation use database transactions and row locks.
-- Journal entries and journal lines are immutable by design.
-- Digital signatures record signer identity, consent, timestamp, hash, IP/user-agent metadata, and audit events.
-- Only one active System Admin seat and one active Business Admin seat are allowed.
-- Do not commit `.env`, private keys, database dumps, or uploaded files.
-
-Recommended production hardening:
-
-- Put Nginx or a cloud load balancer with TLS in front of the stack.
-- Use managed PostgreSQL or encrypted Docker volumes with backups.
-- Rotate `JWT_SECRET` and admin passwords per environment.
-- Configure SMTP credentials outside Git for invoice/reminder/reset emails.
-- Restrict SSH deployment keys to the deployment host and repository.
-- Run dependency and image scanning in your GitHub security settings.
-
-## CI/CD
-
-Workflows live in `.github/workflows`.
-
-`ci.yml` runs on pull requests and pushes to `main`:
-
-- Install backend dependencies with `npm ci`.
-- Run `node --check` across backend source.
-- Install frontend dependencies with `npm ci`.
-- Build the frontend.
-- Validate Docker Compose.
-- Build Docker images.
-
-`pages.yml` deploys the static React frontend to GitHub Pages:
-
-- Install frontend dependencies with `npm ci`.
-- Build the frontend.
-- Upload and deploy the `frontend/build` artifact to Pages.
-
-GitHub Pages cannot run the Express API or PostgreSQL database. If you use Pages for the frontend, configure a repository/environment variable named `REACT_APP_API_BASE_URL` with the public URL of the deployed backend, for example:
-
-```text
-https://api.your-domain.example
-```
-
-`cd.yml` is manual (`workflow_dispatch`) and deploys via SSH once you configure GitHub environment secrets:
-
-| Secret | Purpose |
-| --- | --- |
-| `DEPLOY_HOST` | Server hostname or IP |
-| `DEPLOY_USER` | SSH user |
-| `DEPLOY_SSH_KEY` | Private SSH key for deploy |
-| `DEPLOY_PATH` | Existing repo path on the server |
-
-The CD command runs:
-
-```bash
-git pull --ff-only origin main
-docker compose up --build -d
-```
-
-## Local Development
-
-Containerized development is preferred, but local development is available.
-
-Backend:
-
+**Backend:**
 ```bash
 cd backend
 npm ci
+cp .env.example .env   # fill in DATABASE_URL, JWT_SECRET, etc.
 npm run dev
 ```
 
-Frontend:
-
+**Frontend:**
 ```bash
 cd frontend
 npm ci
 npm start
 ```
 
-Use Docker or a local PostgreSQL 15 database. For non-Docker backend development, provide `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, and `COOKIE_SECURE` in your local environment.
+Requires a local or Docker PostgreSQL 15 instance.
 
-## Key API Areas
+---
+
+## 11. CI/CD Pipelines
+
+Workflows live in [`.github/workflows/`](.github/workflows/).
+
+| Workflow | Trigger | Steps |
+|---|---|---|
+| `ci.yml` | Push / PR to `main` | `npm ci` → syntax check → frontend build → Docker Compose validate → Docker image build |
+| `pages.yml` | Push to `main` | Build React → deploy to GitHub Pages |
+| `cd.yml` | Manual (`workflow_dispatch`) | SSH into server → `git pull` → `docker compose up --build -d` |
+
+---
+
+## 12. Key API Reference
 
 | Area | Endpoints |
-| --- | --- |
-| Auth | `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, `/api/me` |
-| Registration | `/api/register`, `/api/forgot-password`, `/api/reset-password` |
-| Business/System Admin | `/api/admin/*`, `/api/system/*` |
-| Suppliers | `/api/supplier/profile`, `/api/supplier/documents`, `/api/admin/suppliers/pending`, `/api/admin/suppliers/:id/verify` |
-| Bids | `/api/tenants/:tid/bids`, `/api/tenant/bids`, `/api/bids/:bidId`, `/api/public/bids` |
-| Orders | `/api/orders`, `/api/bids/:bidId/award` |
-| Escrow | `/api/escrow/fund`, `/api/escrow/release` |
-| Invoices | `/api/invoices`, `/api/invoices/summary`, `/api/invoices/aging`, `/api/invoices/:id/payments` |
-| Ledger | `/api/ledger/accounts`, `/api/ledger/journal`, `/api/ledger/trial-balance`, `/api/ledger/income-statement`, `/api/ledger/balance-sheet`, `/api/ledger/cash-flow` |
-| Signatures | `/api/signatures/:documentType/:documentId`, `/api/signatures` |
+|---|---|
+| **Auth** | `POST /api/auth/login`, `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/me` |
+| **Registration** | `POST /api/register`, `POST /api/forgot-password`, `POST /api/reset-password` |
+| **Suppliers** | `GET /api/supplier/profile`, `POST /api/supplier/documents`, `GET /api/supplier/verification/status` |
+| **Bids** | `GET /api/public/bids`, `GET /api/tenant/bids`, `POST /api/tenants/:id/bids`, `GET /api/supplier/bids` |
+| **Requirements** | `POST /api/bids/:id/requirements` (upsert) |
+| **Orders** | `GET /api/orders`, `POST /api/bids/:id/award`, `PATCH /api/orders/:id/status` |
+| **Payments (Bidding Fee)** | `POST /api/payments/bidding-fee`, `POST /api/payments/confirm` |
+| **Payments (Mobile Money)** | `POST /api/payments/mobile/initiate`, `GET /api/payments/mobile/:id/status` |
+| **Payments (History)** | `GET /api/payments/mobile/order/:orderId` |
+| **Payments (Webhook)** | `POST /api/payments/mobile/callback?provider=mtn\|airtel\|zamtel\|bank` |
+| **Escrow** | `POST /api/escrow/fund`, `POST /api/escrow/release` |
+| **Invoices** | `GET /api/invoices`, `GET /api/invoices/summary`, `GET /api/invoices/aging` |
+| **Ledger** | `GET /api/ledger/accounts`, `GET /api/ledger/trial-balance`, `GET /api/ledger/income-statement` |
+| **Signatures** | `POST /api/signatures`, `GET /api/signatures/:type/:id` |
+| **Notifications** | `GET /api/notifications`, `PUT /api/notifications/:id/read` |
+| **Admin** | `GET /api/admin/*`, `GET /api/system/*` |
 
-## Repository Structure
+---
 
-```text
-zambia-procurement/
-├── backend/
-│   └── src/
-│       ├── config/
-│       ├── db/
-│       ├── middleware/
-│       ├── routes/
-│       ├── services/
-│       └── utils/
-├── frontend/
-│   └── src/
-│       ├── components/
-│       ├── context/
-│       ├── App.js
-│       └── index.js
-├── nginx/
-├── .github/workflows/
-├── docker-compose.yml
-├── Dockerfile.backend
-└── Dockerfile.frontend
+## 13. Platform Admin Access
+
+Seeded administrator emails:
+
+| Seat | Email |
+|---|---|
+| System Admin | `wamuyuwamundia@gmail.com` |
+| Business Admin | `brightilunga6@gmail.com` |
+
+Passwords are **never hardcoded**. Set `SYSTEM_ADMIN_PASSWORD` and `BUSINESS_ADMIN_PASSWORD` in the environment before first startup. If omitted, strong random passwords are generated and printed once in backend logs — store them securely.
+
+---
+
+## 14. Onboarding
+
+### Customers
+1. Click **Register** on the login page → select **Customer / Buyer**
+2. Fill in your personal details and organisation information
+3. Access the **Customer Portal** to submit procurement requirements, browse bids, fund escrow, and sign documents
+
+### Suppliers
+1. Click **Register** → select **Supplier**
+2. Upload compliance documents from the **Supplier Portal → Verification Status**
+   - PACRA Certificate
+   - ZRA TPIN Certificate
+   - ZRA Tax Clearance
+   - Business License
+   - Directors' ID Copies
+   - Bank Reference Letter
+3. Business Admin reviews and verifies your account
+4. Once verified, you appear in bid invitation flows and can respond to bids
+
+---
+
+## 15. Environment Variables
+
+### Core (required in all environments)
+
+```env
+DATABASE_URL=postgresql://user:pass@host:5432/dbname
+JWT_SECRET=<64-char hex string>
+CORS_ORIGINS=https://zedprocure.onrender.com
+COOKIE_SECURE=true
+NODE_ENV=production
+SYSTEM_ADMIN_PASSWORD=<strong-password>
+BUSINESS_ADMIN_PASSWORD=<strong-password>
+APP_URL=https://zedprocure.onrender.com
 ```
 
-## License
+### Payment Providers (set in Render dashboard as secrets)
 
-Internal use.
+```env
+# MTN Mobile Money — register at momodeveloper.mtn.com
+MTN_MOMO_BASE_URL=https://sandbox.momodeveloper.mtn.com
+MTN_MOMO_SUBSCRIPTION_KEY=your_subscription_key
+MTN_MOMO_API_USER=your_api_user_uuid
+MTN_MOMO_API_KEY=your_api_key
+MTN_MOMO_ENV=sandbox   # → 'production' when going live
+
+# Airtel Money — register at developers.airtel.africa
+AIRTEL_BASE_URL=https://openapiuat.airtel.africa
+AIRTEL_CLIENT_ID=your_client_id
+AIRTEL_CLIENT_SECRET=your_client_secret
+
+# Zamtel Kwacha — contact enterprise@zamtel.co.zm
+ZAMTEL_BASE_URL=https://api.zamtel.co.zm
+ZAMTEL_MERCHANT_ID=your_merchant_id
+ZAMTEL_API_KEY=your_api_key
+```
+
+### Optional
+
+```env
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=noreply@example.com
+SMTP_PASS=<smtp-password>
+```
+
+---
+
+## 16. License
+
+Internal use — ZedProcure / JamieWamz.
