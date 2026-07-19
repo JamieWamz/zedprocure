@@ -228,7 +228,7 @@ export default function CustomerDashboard() {
               columns={orderColumns}
               pagination={{ pageSize: 5 }}
               scroll={{ x: 820 }}
-              locale={{ emptyText: <EnhancedEmpty title="No Orders Yet" description="Your awarded bids and orders will appear here." ctaText="Browse Public Bids" ctaPath="/public-noticeboard" /> }}
+              locale={{ emptyText: <EnhancedEmpty title="No Orders Yet" description="Your awarded bids and orders will appear here." ctaText="Browse Public Bids" ctaPath="/public/bids" /> }}
             />
           </Card>
           <Card title="My Invoices" className="table-card">

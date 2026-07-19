@@ -10,6 +10,8 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [dashboardRoute, setDashboardRoute] = useState('/login');
   const [loading, setLoading] = useState(true);
+  const [activeTenantId, setActiveTenantId] = useState(null);
+  const [tenants, setTenants] = useState([]);
   const refreshingRef = useRef(false);
 
   const applyMe = useCallback((data) => {
@@ -21,6 +23,10 @@ export function AuthProvider({ children }) {
       email: data.email,
       full_name: data.full_name,
     });
+    // Initialize active tenant from user's default tenant
+    if (data.tenantId) {
+      setActiveTenantId(data.tenantId);
+    }
   }, []);
 
   const logout = useCallback(async () => {
@@ -31,6 +37,8 @@ export function AuthProvider({ children }) {
     }
     setUser(null);
     setDashboardRoute('/login');
+    setActiveTenantId(null);
+    setTenants([]);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -68,6 +76,33 @@ export function AuthProvider({ children }) {
     return () => { cancelled = true; };
   }, [applyMe, refresh]);
 
+  // Fetch available tenants for business_admin users
+  useEffect(() => {
+    if (user?.role === 'business_admin' || user?.role === 'system_admin') {
+      axios.get('/api/tenant/list')
+        .then(res => setTenants(res.data))
+        .catch(() => {});
+    }
+  }, [user]);
+
+  // Axios request interceptor: inject X-Tenant-ID header on POST/PUT requests
+  useEffect(() => {
+    const requestInterceptor = axios.interceptors.request.use(
+      (config) => {
+        // Only inject tenant header for POST and PUT requests to /api/
+        if (config.method && ['post', 'put'].includes(config.method.toLowerCase()) && config.url && config.url.startsWith('/api/')) {
+          const tenantId = activeTenantId;
+          if (tenantId) {
+            config.headers['X-Tenant-ID'] = String(tenantId);
+          }
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+    return () => axios.interceptors.request.eject(requestInterceptor);
+  }, [activeTenantId]);
+
   // Axios interceptor: on 401, attempt a single token refresh then retry.
   useEffect(() => {
     const interceptor = axios.interceptors.response.use(
@@ -102,8 +137,16 @@ export function AuthProvider({ children }) {
     return meRes.data.dashboardRoute;
   };
 
+  const handleSetActiveTenant = useCallback((tenantId) => {
+    setActiveTenantId(tenantId);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, dashboardRoute, loading }}>
+    <AuthContext.Provider value={{
+      user, login, logout, dashboardRoute, loading,
+      activeTenantId, setActiveTenantId: handleSetActiveTenant,
+      tenants,
+    }}>
       {children}
     </AuthContext.Provider>
   );

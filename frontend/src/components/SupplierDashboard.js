@@ -1,43 +1,90 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Table, Tag, Spin, Alert, Button, Tabs, Badge, List, Typography, Empty, Popover, Statistic, message as msg } from 'antd';
-import { BellOutlined, FileTextOutlined, CheckCircleOutlined, ClockCircleOutlined, SafetyCertificateOutlined, TrophyOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Card, Row, Col, Table, Tag, Spin, Alert, Button, Tabs, Badge, List,
+  Typography, Empty, Popover, Statistic, message as msg, Modal, Form,
+  Upload, Space, Divider, Progress, Tooltip,
+} from 'antd';
+import {
+  BellOutlined, FileTextOutlined, CheckCircleOutlined, ClockCircleOutlined,
+  SafetyCertificateOutlined, TrophyOutlined, UploadOutlined, InboxOutlined,
+  AuditOutlined, ShoppingCartOutlined, ReloadOutlined,
+} from '@ant-design/icons';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { cdnImages } from '../cdnAssets';
+import DigitalSignatureModal from './DigitalSignatureModal';
 
 const { Text, Title } = Typography;
 
+// Required documents for Zambian suppliers
+const REQUIRED_DOCS = [
+  { type: 'pacra_certificate',   label: 'PACRA Certificate',      desc: 'Certificate of Incorporation from PACRA' },
+  { type: 'zra_tpin',            label: 'ZRA TPIN Certificate',   desc: 'Taxpayer Identification Number from ZRA' },
+  { type: 'zra_tax_clearance',   label: 'ZRA Tax Clearance',      desc: 'Tax clearance certificate from ZRA' },
+  { type: 'business_license',    label: 'Business License',       desc: 'Local municipal trading license' },
+  { type: 'directors_id',        label: "Directors' ID Copies",   desc: 'ID copies for all company directors' },
+  { type: 'bank_reference',      label: 'Bank Reference Letter',  desc: 'Reference letter from your company bank' },
+];
+
+function money(v) {
+  return `ZMW ${Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export default function SupplierDashboard() {
   const [bids, setBids] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [verificationStatus, setVerificationStatus] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
+
+  // Verification modal
+  const [verifModalOpen, setVerifModalOpen] = useState(false);
+  const [uploading, setUploading] = useState({});
+
+  // Order signing
+  const [signingOrder, setSigningOrder] = useState(null);
+
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [bidsRes, statusRes, notifRes, countRes] = await Promise.all([
+        axios.get('/api/supplier/bids'),
+        axios.get('/api/supplier/verification/status').catch(() => null),
+        axios.get('/api/notifications').catch(() => ({ data: [] })),
+        axios.get('/api/notifications/unread-count').catch(() => ({ data: { count: 0 } })),
+      ]);
+      setBids(bidsRes.data);
+      setVerificationStatus(statusRes?.data || null);
+      setNotifications(notifRes.data);
+      setUnreadCount(countRes.data.count);
+    } catch (e) {
+      console.error('Failed to load supplier dashboard:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchOrders = useCallback(async () => {
+    setOrdersLoading(true);
+    try {
+      const { data } = await axios.get('/api/orders');
+      setOrders(data);
+    } catch (e) {
+      console.error('Failed to load orders:', e);
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [bidsRes, statusRes, notifRes, countRes] = await Promise.all([
-          axios.get('/api/supplier/bids'),
-          axios.get('/api/supplier/verification/status').catch(() => null),
-          axios.get('/api/notifications').catch(() => ({ data: [] })),
-          axios.get('/api/notifications/unread-count').catch(() => ({ data: { count: 0 } })),
-        ]);
-        setBids(bidsRes.data);
-        setVerificationStatus(statusRes?.data || null);
-        setNotifications(notifRes.data);
-        setUnreadCount(countRes.data.count);
-      } catch (e) {
-        console.error('Failed to load supplier dashboard:', e);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
+    fetchOrders();
 
-    // Poll notifications every 30s
     const interval = setInterval(async () => {
       try {
         const [notifRes, countRes] = await Promise.all([
@@ -49,7 +96,14 @@ export default function SupplierDashboard() {
       } catch (_) {}
     }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchData, fetchOrders]);
+
+  // Open verification modal if navigating to /supplier/verification
+  useEffect(() => {
+    if (location.pathname === '/supplier/verification') {
+      setVerifModalOpen(true);
+    }
+  }, [location.pathname]);
 
   const markAsRead = async (id) => {
     try {
@@ -61,6 +115,37 @@ export default function SupplierDashboard() {
       setNotifications(notifRes.data);
       setUnreadCount(countRes.data.count);
     } catch (_) {}
+  };
+
+  const handleUploadDocument = async (docType, file) => {
+    setUploading(prev => ({ ...prev, [docType]: true }));
+    try {
+      const formData = new FormData();
+      formData.append('files', file);
+      formData.append('document_types', docType);
+      await axios.post('/api/supplier/documents', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      msg.success(`${docType.replace(/_/g, ' ')} uploaded successfully`);
+      // Refresh verification status
+      const statusRes = await axios.get('/api/supplier/verification/status').catch(() => null);
+      setVerificationStatus(statusRes?.data || null);
+    } catch (e) {
+      msg.error(e.response?.data?.error || 'Upload failed');
+    } finally {
+      setUploading(prev => ({ ...prev, [docType]: false }));
+    }
+    return false; // prevent default upload behavior
+  };
+
+  const handleUpdateOrderStatus = async (orderId, targetStatus) => {
+    try {
+      await axios.patch(`/api/orders/${orderId}/status`, { status: targetStatus });
+      msg.success(`Order updated to ${targetStatus.replace(/_/g, ' ')}`);
+      fetchOrders();
+    } catch (e) {
+      msg.error(e.response?.data?.error || 'Failed to update order status');
+    }
   };
 
   const notificationContent = (
@@ -91,7 +176,18 @@ export default function SupplierDashboard() {
 
   const isVerified = verificationStatus?.verification_status === 'verified';
 
-  const columns = [
+  const verifiedDocTypes = new Set(
+    (verificationStatus?.documents || [])
+      .filter(d => d.verification_status === 'verified')
+      .map(d => d.type || d.document_type)
+  );
+  const uploadedDocTypes = new Set(
+    (verificationStatus?.documents || [])
+      .map(d => d.type || d.document_type)
+  );
+  const verifiedCount = REQUIRED_DOCS.filter(d => verifiedDocTypes.has(d.type)).length;
+
+  const bidColumns = [
     { title: 'Bid Title', dataIndex: 'title', key: 'title' },
     { title: 'Description', dataIndex: 'description', key: 'description', ellipsis: true },
     {
@@ -113,9 +209,42 @@ export default function SupplierDashboard() {
     {
       title: 'Action', key: 'action',
       render: (_, row) => (
-        <Button size="small" type="link" onClick={() => navigate(`/bids/${row.id}`)}>
+        <Button size="small" type="link" onClick={() => navigate(`/supplier/bids/${row.id}`)}>
           {row.bid_supplier_id ? 'View / Respond' : 'View Details'}
         </Button>
+      ),
+    },
+  ];
+
+  const orderColumns = [
+    { title: 'Order', dataIndex: 'id', render: v => <Text code>{v.slice(0, 8)}</Text> },
+    { title: 'Tenant', dataIndex: 'tenant_name', render: v => v || '-' },
+    { title: 'Total', dataIndex: 'total_amount', render: v => money(v) },
+    { title: 'Status', dataIndex: 'status', render: v => <Tag>{String(v).replaceAll('_', ' ')}</Tag> },
+    {
+      title: 'Escrow',
+      render: (_, row) => <Tag color={['funded', 'released'].includes(row.escrow_status) ? 'success' : 'warning'}>{row.escrow_status || 'not funded'}</Tag>,
+    },
+    {
+      title: 'Signatures',
+      dataIndex: 'signature_count',
+      render: v => <Tag color={Number(v) > 0 ? 'success' : 'default'}>{v || 0} signed</Tag>,
+    },
+    {
+      title: 'Actions',
+      render: (_, row) => (
+        <Space wrap>
+          <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningOrder(row)}>Sign</Button>
+          {row.status === 'pending_acceptance' && (
+            <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'accepted')}>Accept</Button>
+          )}
+          {row.status === 'accepted' && (
+            <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'delivery_in_progress')}>Start Delivery</Button>
+          )}
+          {row.status === 'delivery_in_progress' && (
+            <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'delivered')}>Mark Delivered</Button>
+          )}
+        </Space>
       ),
     },
   ];
@@ -126,7 +255,7 @@ export default function SupplierDashboard() {
       <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.supplier})` }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Supplier Dashboard</h2>
-          <p>Browse open bids, manage responses, and track your verification status.</p>
+          <p>Browse open bids, manage responses, track orders, and your verification status.</p>
         </div>
         <div className="page-media-actions">
           <Popover content={notificationContent} title="Notifications" trigger="click"
@@ -135,7 +264,8 @@ export default function SupplierDashboard() {
               <Button icon={<BellOutlined />} />
             </Badge>
           </Popover>
-          <Button icon={<SafetyCertificateOutlined />} onClick={() => navigate('/supplier/verification')}>
+          <Button icon={<ReloadOutlined />} onClick={() => { fetchData(); fetchOrders(); }}>Refresh</Button>
+          <Button icon={<SafetyCertificateOutlined />} onClick={() => setVerifModalOpen(true)}>
             Verification Status
           </Button>
         </div>
@@ -149,13 +279,13 @@ export default function SupplierDashboard() {
           style={{ marginBottom: 16 }}
           message="Account not yet verified"
           description="You must be verified before submitting bids. Upload your documents and wait for admin approval."
-          action={<Button size="small" onClick={() => navigate('/supplier/verification')}>Upload Documents</Button>}
+          action={<Button size="small" onClick={() => setVerifModalOpen(true)}>Upload Documents</Button>}
         />
       )}
 
       {/* Stats cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={8}>
+        <Col xs={24} sm={6}>
           <Card className="stat-card">
             <Statistic
               title="Open Bids Available"
@@ -165,7 +295,7 @@ export default function SupplierDashboard() {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={8}>
+        <Col xs={24} sm={6}>
           <Card className="stat-card">
             <Statistic
               title="My Invitations"
@@ -175,7 +305,17 @@ export default function SupplierDashboard() {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={8}>
+        <Col xs={24} sm={6}>
+          <Card className="stat-card">
+            <Statistic
+              title="Active Orders"
+              value={orders.filter(o => !['completed', 'disputed'].includes(o.status)).length}
+              prefix={<ShoppingCartOutlined />}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={6}>
           <Card className="stat-card">
             <Statistic
               title="Verification Status"
@@ -187,19 +327,164 @@ export default function SupplierDashboard() {
         </Col>
       </Row>
 
-      {/* Open Bids Table */}
-      <Card title={<span><TrophyOutlined /> Available Bids</span>} className="table-card">
-        <Table
-          dataSource={bids}
-          columns={columns}
-          rowKey="id"
-          pagination={false}
-          size="middle"
-          scroll={{ x: 700 }}
-          locale={{ emptyText: 'No open bids available at this time. Check back later for new opportunities.' }}
+      {/* Main Tabs */}
+      <Tabs
+        defaultActiveKey="bids"
+        items={[
+          {
+            key: 'bids',
+            label: <span><TrophyOutlined /> Available Bids</span>,
+            children: (
+              <Card className="table-card">
+                <Table
+                  dataSource={bids}
+                  columns={bidColumns}
+                  rowKey="id"
+                  pagination={{ pageSize: 10 }}
+                  size="middle"
+                  scroll={{ x: 700 }}
+                  locale={{ emptyText: 'No open bids available at this time. Check back later for new opportunities.' }}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: 'orders',
+            label: <span><ShoppingCartOutlined /> Orders & Contracts</span>,
+            children: (
+              <Card className="table-card">
+                <Table
+                  dataSource={orders}
+                  columns={orderColumns}
+                  rowKey="id"
+                  loading={ordersLoading}
+                  pagination={{ pageSize: 10 }}
+                  size="middle"
+                  scroll={{ x: 900 }}
+                  locale={{ emptyText: 'No orders yet. Accepted bids will appear here once awarded.' }}
+                />
+              </Card>
+            ),
+          },
+        ]}
+      />
+
+      {/* Digital Signature Modal */}
+      <DigitalSignatureModal
+        open={!!signingOrder}
+        onClose={() => setSigningOrder(null)}
+        documentType="order"
+        documentId={signingOrder?.id}
+        documentLabel={signingOrder ? `Order ${signingOrder.id.slice(0, 8)} – ${signingOrder.tenant_name || 'Tenant'}` : ''}
+        onSigned={fetchOrders}
+      />
+
+      {/* Verification & Document Upload Modal */}
+      <Modal
+        title={
+          <Space>
+            <SafetyCertificateOutlined style={{ color: isVerified ? '#52c41a' : '#faad14' }} />
+            <span>Compliance & Verification Status</span>
+          </Space>
+        }
+        open={verifModalOpen}
+        onCancel={() => {
+          setVerifModalOpen(false);
+          if (location.pathname === '/supplier/verification') navigate('/supplier');
+        }}
+        footer={[
+          <Button key="close" onClick={() => {
+            setVerifModalOpen(false);
+            if (location.pathname === '/supplier/verification') navigate('/supplier');
+          }}>Close</Button>,
+        ]}
+        width={720}
+      >
+        {/* Overall status */}
+        <Alert
+          type={isVerified ? 'success' : verificationStatus?.verification_status === 'rejected' ? 'error' : 'warning'}
+          showIcon
+          message={
+            isVerified
+              ? 'Account Verified — You can participate in all open bids.'
+              : verificationStatus?.verification_status === 'rejected'
+              ? 'Verification Rejected — Please review the rejection reason and re-upload corrected documents.'
+              : 'Pending Verification — Upload all required documents for admin review.'
+          }
+          description={verificationStatus?.verification_notes || undefined}
+          style={{ marginBottom: 16 }}
         />
-      </Card>
+
+        {/* Document compliance progress */}
+        <div style={{ marginBottom: 16 }}>
+          <Text strong>Compliance Progress: {verifiedCount}/{REQUIRED_DOCS.length} documents verified</Text>
+          <Progress
+            percent={Math.round((verifiedCount / REQUIRED_DOCS.length) * 100)}
+            status={isVerified ? 'success' : 'active'}
+            style={{ marginTop: 8 }}
+          />
+        </div>
+
+        <Divider />
+
+        {/* Per-document upload and status */}
+        <Row gutter={[12, 12]}>
+          {REQUIRED_DOCS.map(doc => {
+            const uploaded = (verificationStatus?.documents || []).find(
+              d => (d.type || d.document_type) === doc.type
+            );
+            const docVerified = uploaded?.verification_status === 'verified';
+            const docRejected = uploaded?.verification_status === 'rejected';
+
+            return (
+              <Col xs={24} sm={12} key={doc.type}>
+                <Card
+                  size="small"
+                  bordered
+                  style={{
+                    borderColor: docVerified ? '#b7eb8f' : docRejected ? '#ffa39e' : '#d9d9d9',
+                    background: docVerified ? '#f6ffed' : docRejected ? '#fff2f0' : '#fafafa',
+                  }}
+                >
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Space>
+                      {docVerified
+                        ? <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                        : docRejected
+                        ? <span style={{ color: '#ff4d4f' }}>✕</span>
+                        : <ClockCircleOutlined style={{ color: '#faad14' }} />}
+                      <Text strong style={{ fontSize: 13 }}>{doc.label}</Text>
+                      {uploaded && (
+                        <Tag color={docVerified ? 'success' : docRejected ? 'error' : 'processing'}>
+                          {uploaded.verification_status || 'pending'}
+                        </Tag>
+                      )}
+                      {!uploaded && <Tag color="warning">Not Uploaded</Tag>}
+                    </Space>
+                    <Text type="secondary" style={{ fontSize: 11 }}>{doc.desc}</Text>
+                    {uploaded?.verification_notes && (
+                      <Alert type="warning" showIcon message={uploaded.verification_notes} style={{ fontSize: 11, padding: '4px 8px' }} />
+                    )}
+                    <Upload
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      showUploadList={false}
+                      beforeUpload={(file) => handleUploadDocument(doc.type, file)}
+                    >
+                      <Button
+                        size="small"
+                        icon={<UploadOutlined />}
+                        loading={uploading[doc.type]}
+                      >
+                        {uploaded ? 'Re-upload' : 'Upload'}
+                      </Button>
+                    </Upload>
+                  </Space>
+                </Card>
+              </Col>
+            );
+          })}
+        </Row>
+      </Modal>
     </div>
   );
 }
-

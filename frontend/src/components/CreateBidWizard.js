@@ -55,29 +55,19 @@ const businessCategories = [
 ];
 
 export default function CreateBidWizard() {
-  const [tenants, setTenants] = useState([]);
-  const [tenantId, setTenantId] = useState(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, activeTenantId, setActiveTenantId, tenants } = useAuth();
   const [form] = Form.useForm();
   const visibility = Form.useWatch('visibility', form);
 
   const [techSpecFile, setTechSpecFile] = useState(null);
   const [saveAsDraft, setSaveAsDraft] = useState(false);
 
-  useEffect(() => {
-    if (user?.tenantId) {
-      setTenantId(user.tenantId);
-    } else if (user?.role === 'business_admin' || user?.role === 'system_admin') {
-      axios.get('/api/tenant/list').then(res => setTenants(res.data)).catch(() => {});
-    }
-  }, [user]);
-
   const onFinish = async (values) => {
-    const tid = values.tenant_id || tenantId;
+    const tid = values.tenant_id || activeTenantId;
     if (!tid) {
-      message.error('Please select a tenant');
+      message.error('Please select a Workspace/Organization before creating a bid');
       return;
     }
 
@@ -154,9 +144,9 @@ export default function CreateBidWizard() {
           line_items: [{ item_description: '', unit_of_measure: 'each', quantity: 1, unit_price_estimate: null }],
         }}
       >
-        {!tenantId && tenants.length > 0 && (
-          <Form.Item name="tenant_id" label="Tenant (Organization)" rules={[{ required: true }]}>
-            <Select placeholder="Select a tenant" onChange={val => setTenantId(val)}>
+        {!activeTenantId && tenants.length > 0 && (
+          <Form.Item name="tenant_id" label="Workspace/Organization" rules={[{ required: true }]}>
+            <Select placeholder="Select a Workspace/Organization" onChange={val => setActiveTenantId(val)}>
               {tenants.map(t => (
                 <Select.Option key={t.id} value={t.id}>{t.name}</Select.Option>
               ))}

@@ -21,7 +21,7 @@ router.get('/tenant/bids', authenticate, async (req, res) => {
       rows = result.rows;
     } else {
       const tenantId = req.user.tenant_id;
-      if (!tenantId) return res.status(400).json({ error: 'No tenant associated with your account.' });
+      if (!tenantId) return res.status(400).json({ error: 'Select a Workspace/Organization before proceeding. Please choose an organization from the header dropdown.' });
       const result = await pool.query(
         'SELECT * FROM bids WHERE tenant_id = $1 ORDER BY created_at DESC',
         [tenantId]

@@ -1,6 +1,6 @@
 import React from 'react';
-import { Layout, Button, Typography, Space } from 'antd';
-import { LogoutOutlined, ArrowLeftOutlined, MenuOutlined } from '@ant-design/icons';
+import { Layout, Button, Typography, Space, Select, Tooltip } from 'antd';
+import { LogoutOutlined, ArrowLeftOutlined, MenuOutlined, BankOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -8,7 +8,7 @@ const { Header, Content } = Layout;
 const { Text } = Typography;
 
 export default function AppLayout({ children, showBack = false }) {
-  const { logout, user } = useAuth();
+  const { logout, user, activeTenantId, setActiveTenantId, tenants } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -32,6 +32,9 @@ export default function AppLayout({ children, showBack = false }) {
     '/supplier': 'Supplier Portal',
   };
   const currentTitle = pathTitles[location.pathname] || 'Procurement Portal';
+
+  // Determine if we should show the organization picker
+  const showOrgPicker = user && (user.role === 'business_admin' || user.role === 'system_admin') && tenants.length > 0;
 
   return (
     <Layout className="app-bg">
@@ -69,6 +72,29 @@ export default function AppLayout({ children, showBack = false }) {
           </Text>
         </div>
         <Space>
+          {showOrgPicker && (
+            <Tooltip title="Select a Workspace/Organization">
+              <Select
+                value={activeTenantId}
+                onChange={setActiveTenantId}
+                style={{ minWidth: 200 }}
+                placeholder="Select a Workspace/Organization"
+                dropdownMatchSelectWidth={false}
+                prefix={<BankOutlined />}
+              >
+                {tenants.map(t => (
+                  <Select.Option key={t.id} value={t.id}>
+                    {t.name}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Tooltip>
+          )}
+          {!activeTenantId && showOrgPicker && (
+            <Text style={{ color: '#ffd666', fontSize: 12 }}>
+              Select a Workspace/Organization
+            </Text>
+          )}
           <Text style={{ color: '#fff' }} aria-label={`Logged in as ${user?.email || 'User'}`}>
             {user?.email || 'User'}
           </Text>

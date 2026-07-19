@@ -3,7 +3,7 @@ const pool = require('../config/db');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
 const router = express.Router();
 
-// Customer creates requirement for a bid
+// Customer creates or updates requirement for a bid (upsert)
 router.post('/bids/:bidId/requirements', authenticate, requireRole('customer'), async (req, res) => {
   const { bidId } = req.params;
   const { budget_amount, expected_delivery_time, payment_method, certification_standards, file_path } = req.body;
@@ -23,7 +23,14 @@ router.post('/bids/:bidId/requirements', authenticate, requireRole('customer'), 
 
     const { rows } = await pool.query(
       `INSERT INTO bid_requirements (bid_id, customer_user_id, budget_amount, expected_delivery_time, payment_method, certification_standards, specifications_file_path)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (bid_id, customer_user_id) DO UPDATE SET
+         budget_amount = EXCLUDED.budget_amount,
+         expected_delivery_time = EXCLUDED.expected_delivery_time,
+         payment_method = EXCLUDED.payment_method,
+         certification_standards = EXCLUDED.certification_standards,
+         specifications_file_path = COALESCE(EXCLUDED.specifications_file_path, bid_requirements.specifications_file_path)
+       RETURNING *`,
       [bidId, req.user.user_id, budget_amount, expected_delivery_time, payment_method, certification_standards, file_path]
     );
     res.status(201).json(rows[0]);
@@ -32,5 +39,6 @@ router.post('/bids/:bidId/requirements', authenticate, requireRole('customer'), 
     res.status(500).json({ error: 'Failed to create requirement' });
   }
 });
+
 
 module.exports = router;

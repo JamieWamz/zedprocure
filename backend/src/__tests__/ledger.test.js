@@ -32,9 +32,9 @@ describe('Ledger Service', () => {
     it('should create a balanced journal entry', async () => {
       const entryData = {
         referenceType: 'test_ref',
-        referenceId: 'test_id_123',
+        referenceId: '00000000-0000-0000-0000-000000000001',
         description: 'Test transaction',
-        createdBy: 'test_user',
+        createdBy: '00000000-0000-0000-0000-000000000099',
         lines: [
           { accountCode: 'CASH_BANK', debit: 100, credit: 0 },
           { accountCode: 'PLATFORM_REVENUE', debit: 0, credit: 100 },
@@ -60,9 +60,9 @@ describe('Ledger Service', () => {
     it('should throw an error for an unbalanced journal entry', async () => {
       const entryData = {
         referenceType: 'test_ref',
-        referenceId: 'test_id_456',
+        referenceId: '00000000-0000-0000-0000-000000000002',
         description: 'Unbalanced transaction',
-        createdBy: 'test_user',
+        createdBy: '00000000-0000-0000-0000-000000000099',
         lines: [
           { accountCode: 'CASH_BANK', debit: 100, credit: 0 },
           { accountCode: 'PLATFORM_REVENUE', debit: 0, credit: 99 }, // Unbalanced
@@ -77,9 +77,9 @@ describe('Ledger Service', () => {
     it('should throw an error for a journal entry with zero amount', async () => {
         const entryData = {
           referenceType: 'test_ref',
-          referenceId: 'test_id_789',
+          referenceId: '00000000-0000-0000-0000-000000000003',
           description: 'Zero amount transaction',
-          createdBy: 'test_user',
+          createdBy: '00000000-0000-0000-0000-000000000099',
           lines: [
             { accountCode: 'CASH_BANK', debit: 0, credit: 0 },
             { accountCode: 'PLATFORM_REVENUE', debit: 0, credit: 0 },

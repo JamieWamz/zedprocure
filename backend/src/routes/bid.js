@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const pool = require('../config/db');
 const { authenticate } = require('../middleware/authMiddleware');
+const { requireTenantContext, validateTenantAccess } = require('../middleware/tenantContext');
 const stripBudgetForSupplier = require('../middleware/priceIsolation');
 const { validateBidSubmission } = require('../services/submissionGuard');
 const { notifySuppliersOnBidPublished } = require('../services/notificationService');
@@ -68,7 +69,7 @@ router.use('/bids', authenticate, stripBudgetForSupplier);
 
 // ─── Create bid – BoQ line items, Incoterms, tech specs ──────────────────────
 // Bids are created as 'draft' and must be explicitly published.
-router.post('/tenants/:tid/bids', authenticate, uploadSpec.single('technical_specifications_file'), async (req, res) => {
+router.post('/tenants/:tid/bids', authenticate, validateTenantAccess, uploadSpec.single('technical_specifications_file'), async (req, res) => {
   if (!['business_admin', 'system_admin'].includes(req.user.role)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
