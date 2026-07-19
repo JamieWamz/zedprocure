@@ -10,6 +10,7 @@ import {
 import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
 import DigitalSignatureModal from './DigitalSignatureModal';
+import PaymentModal from './PaymentModal';
 import { useAuth } from '../context/AuthContext';
 import EnhancedEmpty from './EnhancedEmpty';
 import DashboardStatistic from './DashboardStatistic';
@@ -43,6 +44,7 @@ export default function CustomerDashboard() {
   const [summary, setSummary] = useState(null);
   const [signingInvoice, setSigningInvoice] = useState(null);
   const [signingOrder, setSigningOrder] = useState(null);
+  const [payingOrder, setPayingOrder] = useState(null);
   const [fundingOrder, setFundingOrder] = useState(null);
   const [fundForm] = Form.useForm();
   const [customerBids, setCustomerBids] = useState([]);
@@ -139,10 +141,15 @@ export default function CustomerDashboard() {
         <Space wrap>
           <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningOrder(row)}>Sign</Button>
           {row.escrow_status !== 'funded' && row.escrow_status !== 'released' && (
-            <Button size="small" type="primary" icon={<BankOutlined />} onClick={() => {
-              fundForm.setFieldsValue({ amount: Number(row.total_amount), payment_method: 'bank_transfer' });
-              setFundingOrder(row);
-            }}>Fund Escrow</Button>
+            <>
+              <Button size="small" type="primary" icon={<BankOutlined />} onClick={() => setPayingOrder(row)}>
+                Pay Now
+              </Button>
+              <Button size="small" icon={<BankOutlined />} onClick={() => {
+                fundForm.setFieldsValue({ amount: Number(row.total_amount), payment_method: 'bank_transfer' });
+                setFundingOrder(row);
+              }}>Manual Escrow</Button>
+            </>
           )}
           {['delivered', 'delivery_in_progress'].includes(row.status) && (
             <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'completed')}>Complete Order</Button>
@@ -257,6 +264,14 @@ export default function CustomerDashboard() {
         documentType="order"
         documentId={signingOrder?.id}
         documentLabel={signingOrder ? `Order ${signingOrder.id.slice(0, 8)} with ${signingOrder.supplier_name || 'supplier'}` : ''}
+      />
+      <PaymentModal
+        open={!!payingOrder}
+        onClose={() => setPayingOrder(null)}
+        orderId={payingOrder?.id}
+        amount={payingOrder?.total_amount}
+        orderLabel={payingOrder ? `Order ${payingOrder.id?.slice(0, 8)} — ${payingOrder.supplier_name || 'Supplier'}` : ''}
+        onSuccess={() => { setPayingOrder(null); loadPortal(); }}
       />
       <Modal
         title={fundingOrder ? `Fund Escrow for Order ${fundingOrder.id.slice(0, 8)}` : 'Fund Escrow'}

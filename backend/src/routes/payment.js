@@ -102,4 +102,126 @@ router.post('/payments/confirm', authenticate, async (req, res) => {
   }
 });
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Mobile Money & Bank Payment Routes (MTN / Airtel / Zamtel / Bank)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const { initiatePayment, syncPaymentStatus, processWebhook } = require('../services/payments/paymentService');
+const crypto = require('crypto');
+
+/**
+ * POST /api/payments/mobile/initiate
+ * Kick off a mobile money or bank payment for an order.
+ * Body: { provider, amount, msisdn, orderId, description? }
+ */
+router.post('/payments/mobile/initiate', authenticate, async (req, res) => {
+  const { provider, amount, msisdn, orderId, description } = req.body;
+
+  if (!provider || !amount || !orderId) {
+    return res.status(400).json({ error: 'provider, amount, and orderId are required' });
+  }
+  if (['mtn', 'airtel', 'zamtel'].includes(provider) && !msisdn) {
+    return res.status(400).json({ error: 'msisdn is required for mobile money providers' });
+  }
+  if (Number(amount) <= 0) {
+    return res.status(400).json({ error: 'amount must be greater than zero' });
+  }
+
+  try {
+    // Verify the order belongs to this user / tenant
+    let orderCheck;
+    if (req.user.user_type === 'supplier_user') {
+      orderCheck = await pool.query(
+        `SELECT o.id FROM orders o
+         JOIN supplier_users su ON su.supplier_id = o.awarded_supplier_id
+         WHERE o.id = $1 AND su.id = $2`,
+        [orderId, req.user.user_id]
+      );
+    } else if (req.user.tenant_id) {
+      orderCheck = await pool.query(
+        `SELECT o.id FROM orders o
+         JOIN bids b ON b.id = o.bid_id
+         WHERE o.id = $1 AND b.tenant_id = $2`,
+        [orderId, req.user.tenant_id]
+      );
+    } else {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    if (orderCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Order not found or access denied' });
+    }
+
+    const result = await initiatePayment({
+      provider, amount, msisdn, orderId,
+      description: description || 'ZedProcure Order Payment',
+      initiatedBy: req.user.user_id,
+    });
+
+    res.status(201).json(result);
+  } catch (e) {
+    console.error('[Payment] Initiation error:', e.message);
+    const status = e.message.includes('not configured') ? 503 : 500;
+    res.status(status).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /api/payments/mobile/:paymentLogId/status
+ * Poll & sync status from the provider. Returns current status.
+ */
+router.get('/payments/mobile/:paymentLogId/status', authenticate, async (req, res) => {
+  try {
+    const status = await syncPaymentStatus(req.params.paymentLogId);
+    res.json({ status });
+  } catch (e) {
+    console.error('[Payment] Status sync error:', e.message);
+    res.status(404).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /api/payments/mobile/order/:orderId
+ * List all payment attempts for a given order.
+ */
+router.get('/payments/mobile/order/:orderId', authenticate, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, provider, provider_reference, amount, status, created_at, updated_at
+       FROM payments_log
+       WHERE order_id = $1
+       ORDER BY created_at DESC`,
+      [req.params.orderId]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch payment history' });
+  }
+});
+
+/**
+ * POST /api/payments/mobile/callback
+ * Inbound webhook from provider (MTN / Airtel / Zamtel / Bank).
+ * Provider is identified via query param: ?provider=mtn
+ *
+ * NOTE: In production, validate the provider's HMAC signature before calling
+ *       processWebhook. See PAYMENT_INTEGRATION.md §8 for details.
+ */
+router.post('/payments/mobile/callback', express.raw({ type: '*/*' }), async (req, res) => {
+  const provider = req.query.provider;
+  if (!provider) return res.status(400).json({ error: 'provider query parameter required' });
+
+  try {
+    const bodyStr = Buffer.isBuffer(req.body) ? req.body.toString() : JSON.stringify(req.body);
+    const payload = JSON.parse(bodyStr);
+    await processWebhook(provider, payload);
+    res.status(200).json({ received: true });
+  } catch (e) {
+    console.error('[Payment] Webhook error:', e.message);
+    // Always return 200 to prevent provider retries from filling logs
+    res.status(200).json({ received: true, warning: 'Processing error logged' });
+  }
+});
+
 module.exports = router;
