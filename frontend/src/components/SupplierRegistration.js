@@ -47,6 +47,8 @@ export default function SupplierRegistration() {
       });
       
       message.success('Supplier account created with documents. Business Admin will review and verify.');
+      form.resetFields();
+      setCurrentStep(0);
       navigate('/login');
     } catch (e) {
       message.error(e.response?.data?.error || 'Registration failed');
@@ -142,6 +144,18 @@ export default function SupplierRegistration() {
     },
   ];
 
+  const nextStep = async () => {
+    const fields = currentStep === 0
+      ? ['company_name', 'registration_number', 'full_name', 'email', 'password']
+      : REQUIRED_DOCUMENTS.map(doc => doc.type);
+    try {
+      await form.validateFields(fields);
+      setCurrentStep(step => Math.min(step + 1, steps.length - 1));
+    } catch {
+      // Ant Design displays the field-level validation messages.
+    }
+  };
+
   return (
     <div 
       style={{ 
@@ -179,7 +193,7 @@ export default function SupplierRegistration() {
               </Button>
             )}
             {currentStep < steps.length - 1 && (
-              <Button type="primary" onClick={() => setCurrentStep(currentStep + 1)}>
+              <Button type="primary" onClick={nextStep}>
                 Next
               </Button>
             )}

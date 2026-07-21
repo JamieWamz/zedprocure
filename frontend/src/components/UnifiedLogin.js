@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { Alert, Form, Input, Button, Select, Tabs, message } from 'antd';
+import { Alert, Form, Input, Button, Select, Tabs, message, Space } from 'antd';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
+import { useTheme } from '../context/ThemeContext';
 
 export default function UnifiedLogin() {
   const { login } = useAuth();
+  const { appearance, setAppearance } = useTheme();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [registering, setRegistering] = useState(false);
@@ -32,6 +34,8 @@ export default function UnifiedLogin() {
       message.success(values.account_type === 'supplier'
         ? 'Supplier account created. Business Admin will verify it before bidding access is enabled.'
         : 'Customer account created. You can sign in now.');
+      registerForm.resetFields();
+      registerForm.setFieldValue('account_type', 'customer');
     } catch (e) {
       message.error(e.response?.data?.error || 'Registration failed');
     } finally {
@@ -63,6 +67,9 @@ export default function UnifiedLogin() {
 
       <div className="login-form-pane">
         <div className="login-card">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <Space size={6}><span>Appearance</span><Select size="small" value={appearance} onChange={setAppearance} style={{ width: 100 }} options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'system', label: 'System' }]} /></Space>
+          </div>
           <Tabs
             defaultActiveKey="login"
             items={[

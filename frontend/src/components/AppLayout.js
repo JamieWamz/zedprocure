@@ -1,7 +1,8 @@
 import React from 'react';
 import { Layout, Button, Typography, Space, Select, Tooltip } from 'antd';
-import { LogoutOutlined, ArrowLeftOutlined, MenuOutlined, BankOutlined } from '@ant-design/icons';
+import { LogoutOutlined, ArrowLeftOutlined, BankOutlined, BulbOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const { Header, Content } = Layout;
@@ -9,6 +10,7 @@ const { Text } = Typography;
 
 export default function AppLayout({ children, showBack = false }) {
   const { logout, user, activeTenantId, setActiveTenantId, tenants } = useAuth();
+  const { appearance, setAppearance } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -72,6 +74,10 @@ export default function AppLayout({ children, showBack = false }) {
           </Text>
         </div>
         <Space>
+          <Tooltip title="Appearance">
+            <Select aria-label="Appearance" value={appearance} onChange={setAppearance} style={{ width: 118 }} prefix={<BulbOutlined />}
+              options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'system', label: 'System' }]} />
+          </Tooltip>
           {showOrgPicker && (
             <Tooltip title="Select a Workspace/Organization">
               <Select
