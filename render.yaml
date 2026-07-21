@@ -6,7 +6,8 @@ databases:
   - name: zambia-procurement-db
     databaseName: zambia_procurement
     user: zambia_procurement
-    postgresVersion: "15"
+    postgresMajorVersion: "15"
+    region: frankfurt
     plan: free
     # Internal connection details are injected as DATABASE_URL automatically.
 
@@ -42,14 +43,14 @@ services:
       - key: APP_URL
         value: https://zedprocure.onrender.com
 
-  - type: static
+  - type: web
     name: zedprocure
-    region: frankfurt
+    runtime: static
     plan: free
     branch: main
     rootDir: frontend
     buildCommand: npm install && npm run build
-    publishPath: build
+    staticPublishPath: frontend/build
     routes:
       - type: rewrite
         source: /*
@@ -57,4 +58,3 @@ services:
     envVars:
       - key: REACT_APP_API_BASE_URL
         value: https://zambia-procurement-backend.onrender.com
-
