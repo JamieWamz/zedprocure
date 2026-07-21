@@ -477,15 +477,15 @@ export default function FinanceInvoices() {
             />
             <Space style={{ marginBottom: 12 }}>
               {statusTag(view)}
-              {view.status !== 'sent' && view.status !== 'paid' && view.status !== 'cancelled' && (
+              {view.status === 'draft' && (
                 <Button size="small" icon={<SendOutlined />} onClick={() => changeStatus(view.id, 'sent')}>Mark Sent</Button>
               )}
-              {view.status !== 'cancelled' && view.status !== 'paid' && (
+              {view.status === 'draft' && (
                 <Popconfirm title="Cancel this invoice?" onConfirm={() => changeStatus(view.id, 'cancelled')}>
                   <Button size="small" icon={<StopOutlined />}>Cancel</Button>
                 </Popconfirm>
               )}
-              {view.status !== 'paid' && view.status !== 'cancelled' && (
+              {OPEN_STATUSES.includes(view.status) && (
                 <Button size="small" type="primary" icon={<DollarOutlined />} onClick={() => {
                   payForm.resetFields();
                   payForm.setFieldsValue({ method: 'bank_transfer', payment_date: dayjs() });

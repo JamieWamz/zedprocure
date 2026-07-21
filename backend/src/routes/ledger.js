@@ -205,7 +205,12 @@ router.get('/journal', authenticate, requireRole('business_admin', 'system_admin
     let i = 1;
     if (from) { where.push(`je.entry_date >= $${i++}`); params.push(from); }
     if (to) { where.push(`je.entry_date <= $${i++}::timestamp + interval '1 day'`); params.push(to); }
-    if (account) { where.push(`a.account_code = $${i++}`); params.push(account); }
+    // Filter entries by account without dropping the other lines that belong to
+    // the same double-entry journal entry.
+    if (account) {
+      where.push(`EXISTS (SELECT 1 FROM journal_lines filter_jl JOIN accounts filter_a ON filter_a.id = filter_jl.account_id WHERE filter_jl.journal_entry_id = je.id AND filter_a.account_code = $${i++})`);
+      params.push(account);
+    }
     if (search) {
       where.push(`(je.description ILIKE $${i} OR je.reference_type ILIKE $${i + 1})`);
       params.push(`%${search}%`, `%${search}%`);
@@ -224,7 +229,7 @@ router.get('/journal', authenticate, requireRole('business_admin', 'system_admin
        GROUP BY je.id
        ORDER BY je.entry_date DESC
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-      [...params, parseInt(limit, 10), parseInt(offset, 10)]
+      [...params, Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500), Math.max(parseInt(offset, 10) || 0, 0)]
     );
     res.json(rows);
   } catch (e) {

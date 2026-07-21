@@ -275,15 +275,20 @@ router.post('/', authenticate, async (req, res) => {
   if (!party_name) return res.status(400).json({ error: 'party_name is required' });
   if (!due_date) return res.status(400).json({ error: 'due_date is required' });
   if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: 'At least one line item is required' });
+  if (issue_date && new Date(issue_date) > new Date(due_date)) return res.status(400).json({ error: 'Due date must be on or after the issue date' });
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     let subtotal = 0, taxAmount = 0;
     const cleanLines = lines.map((l, idx) => {
-      const qty = parseFloat(l.quantity ?? 1) || 0;
-      const price = parseFloat(l.unit_price ?? 0) || 0;
-      const tax = parseFloat(l.tax_rate ?? 0) || 0;
+      const qty = Number(l.quantity ?? 1);
+      const price = Number(l.unit_price ?? 0);
+      const tax = Number(l.tax_rate ?? 0);
+      if (!String(l.description || '').trim()) throw new Error(`Line ${idx + 1}: description is required`);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Line ${idx + 1}: quantity must be greater than zero`);
+      if (!Number.isFinite(price) || price < 0) throw new Error(`Line ${idx + 1}: unit price cannot be negative`);
+      if (!Number.isFinite(tax) || tax < 0 || tax > 100) throw new Error(`Line ${idx + 1}: tax rate must be between 0 and 100`);
       const net = qty * price;
       const amt = net + (net * tax) / 100;
       subtotal += net;
@@ -291,6 +296,10 @@ router.post('/', authenticate, async (req, res) => {
       return { description: l.description, quantity: qty, unit_price: price, tax_rate: tax, amount: amt, line_order: idx };
     });
     const total = subtotal + taxAmount;
+    if (total <= 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Invoice total must be greater than zero' });
+    }
     const status = requestedStatus === 'sent' ? 'sent' : 'draft';
     const invoiceNo = await nextInvoiceNo(client, type);
     const safeIssueDate = issue_date || new Date().toISOString().slice(0, 10);
@@ -330,6 +339,9 @@ router.post('/', authenticate, async (req, res) => {
     res.status(201).json(inv);
   } catch (e) {
     await client.query('ROLLBACK');
+    if (String(e.message || '').startsWith('Line ')) {
+      return res.status(400).json({ error: e.message });
+    }
     console.error('Create invoice error:', e);
     res.status(500).json({ error: 'Failed to create invoice: ' + e.message });
   } finally {
@@ -364,7 +376,7 @@ router.get('/:id', authenticate, async (req, res) => {
 router.patch('/:id', authenticate, async (req, res) => {
   if (!isAdmin(req.user)) return res.status(403).json({ error: 'Forbidden' });
   const { status } = req.body;
-  if (!['sent', 'cancelled', 'draft'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  if (!['sent', 'cancelled'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
 
   const client = await pool.connect();
   try {
@@ -372,7 +384,11 @@ router.patch('/:id', authenticate, async (req, res) => {
     const { rows: [inv] } = await client.query('SELECT * FROM invoices WHERE id = $1 FOR UPDATE', [req.params.id]);
     if (!inv) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Invoice not found' }); }
 
-    if (status === 'sent' && inv.status !== 'sent') {
+    if (status === 'sent') {
+      if (inv.status !== 'draft') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Only draft invoices can be issued' });
+      }
       // Post recognition entry once (guard against duplicates).
       const { rows: [existing] } = await client.query(
         "SELECT 1 FROM journal_entries WHERE reference_type='invoice_issue' AND reference_id=$1", [inv.id]
@@ -385,6 +401,10 @@ router.patch('/:id', authenticate, async (req, res) => {
           html: `<p>Dear ${inv.party_name},</p><p>Invoice <b>${inv.invoice_no}</b> for ${inv.currency || 'ZMW'} ${parseFloat(inv.total_amount).toFixed(2)} has been issued. Due date: ${inv.due_date}.</p>`,
         }).catch(() => {});
       }
+    }
+    if (status === 'cancelled' && inv.status !== 'draft') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Only draft invoices can be cancelled. Use a credit note for an issued invoice.' });
     }
     const { rows: [updated] } = await client.query(
       'UPDATE invoices SET status=$1, updated_at=now() WHERE id=$2 RETURNING *', [status, inv.id]
@@ -427,15 +447,18 @@ router.post('/:id/payments', authenticate, async (req, res) => {
   if (!isAdmin(req.user)) return res.status(403).json({ error: 'Forbidden' });
   const { amount, payment_date, method, reference } = req.body;
   const amt = parseFloat(amount);
-  if (!amt || amt <= 0) return res.status(400).json({ error: 'A positive amount is required' });
+  if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'A positive amount is required' });
+  if (!['mobile_money', 'bank_transfer', 'wallet', 'cash'].includes(method || 'bank_transfer')) {
+    return res.status(400).json({ error: 'Invalid payment method' });
+  }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const { rows: [inv] } = await client.query('SELECT * FROM invoices WHERE id = $1 FOR UPDATE', [req.params.id]);
     if (!inv) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Invoice not found' }); }
-    if (inv.status === 'cancelled' || inv.status === 'paid') {
-      await client.query('ROLLBACK'); return res.status(400).json({ error: `Invoice is ${inv.status}` });
+    if (!OPEN_STATUSES.includes(inv.status)) {
+      await client.query('ROLLBACK'); return res.status(400).json({ error: 'Only issued invoices can receive payments' });
     }
     const remaining = parseFloat(inv.total_amount) - parseFloat(inv.paid_amount);
     if (amt > remaining + 0.005) {
