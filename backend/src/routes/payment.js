@@ -110,6 +110,19 @@ router.post('/payments/confirm', authenticate, async (req, res) => {
 const { initiatePayment, syncPaymentStatus, processWebhook } = require('../services/payments/paymentService');
 const crypto = require('crypto');
 
+async function customerOrder(req, orderId) {
+  if (req.user.user_type !== 'tenant_user' || req.user.role !== 'customer') return null;
+  const { rows } = await pool.query(
+    `SELECT o.id, o.total_amount, o.status, ea.status AS escrow_status,
+            EXISTS(SELECT 1 FROM payments_log pl WHERE pl.order_id = o.id AND pl.status = 'pending') AS has_pending_payment
+     FROM orders o JOIN bids b ON b.id = o.bid_id
+     LEFT JOIN escrow_accounts ea ON ea.order_id = o.id
+     WHERE o.id = $1 AND b.tenant_id = $2`,
+    [orderId, req.user.tenant_id]
+  );
+  return rows[0] || null;
+}
+
 /**
  * POST /api/payments/mobile/initiate
  * Kick off a mobile money or bank payment for an order.
@@ -129,32 +142,26 @@ router.post('/payments/mobile/initiate', authenticate, async (req, res) => {
   }
 
   try {
-    // Verify the order belongs to this user / tenant
-    let orderCheck;
-    if (req.user.user_type === 'supplier_user') {
-      orderCheck = await pool.query(
-        `SELECT o.id FROM orders o
-         JOIN supplier_users su ON su.supplier_id = o.awarded_supplier_id
-         WHERE o.id = $1 AND su.id = $2`,
-        [orderId, req.user.user_id]
-      );
-    } else if (req.user.tenant_id) {
-      orderCheck = await pool.query(
-        `SELECT o.id FROM orders o
-         JOIN bids b ON b.id = o.bid_id
-         WHERE o.id = $1 AND b.tenant_id = $2`,
-        [orderId, req.user.tenant_id]
-      );
-    } else {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
-    if (orderCheck.rows.length === 0) {
+    const order = await customerOrder(req, orderId);
+    if (!order) {
       return res.status(404).json({ error: 'Order not found or access denied' });
+    }
+    if (['completed', 'disputed'].includes(order.status)) {
+      return res.status(400).json({ error: 'This order can no longer be funded' });
+    }
+    if (['funded', 'released', 'refunded'].includes(order.escrow_status)) {
+      return res.status(400).json({ error: 'This order already has a completed escrow transaction' });
+    }
+    if (order.has_pending_payment) {
+      return res.status(409).json({ error: 'A payment for this order is already awaiting confirmation' });
+    }
+    // The amount is server-authoritative: never trust a value supplied by the browser.
+    if (Number(amount) !== Number(order.total_amount)) {
+      return res.status(400).json({ error: 'Payment amount must match the order total' });
     }
 
     const result = await initiatePayment({
-      provider, amount, msisdn, orderId,
+      provider, amount: order.total_amount, msisdn, orderId,
       description: description || 'ZedProcure Order Payment',
       initiatedBy: req.user.user_id,
     });
@@ -173,6 +180,15 @@ router.post('/payments/mobile/initiate', authenticate, async (req, res) => {
  */
 router.get('/payments/mobile/:paymentLogId/status', authenticate, async (req, res) => {
   try {
+    const { rows } = await pool.query(
+      `SELECT pl.order_id FROM payments_log pl
+       JOIN orders o ON o.id = pl.order_id JOIN bids b ON b.id = o.bid_id
+       WHERE pl.id = $1 AND b.tenant_id = $2`,
+      [req.params.paymentLogId, req.user.tenant_id]
+    );
+    if (req.user.user_type !== 'tenant_user' || req.user.role !== 'customer' || !rows.length) {
+      return res.status(404).json({ error: 'Payment not found or access denied' });
+    }
     const status = await syncPaymentStatus(req.params.paymentLogId);
     res.json({ status });
   } catch (e) {
@@ -187,6 +203,9 @@ router.get('/payments/mobile/:paymentLogId/status', authenticate, async (req, re
  */
 router.get('/payments/mobile/order/:orderId', authenticate, async (req, res) => {
   try {
+    if (!await customerOrder(req, req.params.orderId)) {
+      return res.status(404).json({ error: 'Order not found or access denied' });
+    }
     const { rows } = await pool.query(
       `SELECT id, provider, provider_reference, amount, status, created_at, updated_at
        FROM payments_log

@@ -46,6 +46,7 @@ export default function CustomerDashboard() {
   const [signingOrder, setSigningOrder] = useState(null);
   const [payingOrder, setPayingOrder] = useState(null);
   const [fundingOrder, setFundingOrder] = useState(null);
+  const [form] = Form.useForm();
   const [fundForm] = Form.useForm();
   const [customerBids, setCustomerBids] = useState([]);
   const { user } = useAuth();
@@ -61,15 +62,20 @@ export default function CustomerDashboard() {
       setInvoices(invoiceRes.data);
       setSummary(summaryRes.data);
       setOrders(orderRes.data);
-
-      if (user?.role === 'customer') {
-        const bidsRes = await axios.get('/api/bids/my-tenant-bids');
-        setCustomerBids(bidsRes.data);
-      }
     } catch (e) {
       message.error(e.response?.data?.error || 'Failed to load customer workspace');
     } finally {
       setInvoiceLoading(false);
+    }
+
+    if (user?.role === 'customer') {
+      try {
+        const bidsRes = await axios.get('/api/bids/my-tenant-bids');
+        setCustomerBids(bidsRes.data);
+      } catch (e) {
+        setCustomerBids([]);
+        message.error(e.response?.data?.error || 'Failed to load available bids');
+      }
     }
   }, [user]);
 
@@ -80,6 +86,10 @@ export default function CustomerDashboard() {
     try {
       await axios.post(`/api/bids/${values.bid_id}/requirements`, values);
       message.success('Requirement submitted');
+      // Keep the form ready for a new requirement rather than accidentally re-submitting it.
+      const submittedBidId = values.bid_id;
+      form.resetFields();
+      form.setFieldValue('bid_id', submittedBidId);
     } catch (err) {
       message.error(err.response?.data?.error || 'Failed');
     } finally {
@@ -140,7 +150,7 @@ export default function CustomerDashboard() {
       render: (_, row) => (
         <Space wrap>
           <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningOrder(row)}>Sign</Button>
-          {row.escrow_status !== 'funded' && row.escrow_status !== 'released' && (
+          {row.escrow_status !== 'funded' && row.escrow_status !== 'released' && !['completed', 'disputed'].includes(row.status) && (
             <>
               <Button size="small" type="primary" icon={<BankOutlined />} onClick={() => setPayingOrder(row)}>
                 Pay Now
@@ -193,7 +203,7 @@ export default function CustomerDashboard() {
         <Col xs={24} lg={10}>
           <Card title="Submit Requirements" className="table-card">
             <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Budgets remain hidden from suppliers during bid evaluation." />
-            <Form layout="vertical" onFinish={onFinish}>
+            <Form form={form} layout="vertical" onFinish={onFinish}>
               <Form.Item name="bid_id" label="Bid" rules={[{ required: true, message: 'Please select a bid' }]}>
                 <Select
                   showSearch
@@ -222,7 +232,7 @@ export default function CustomerDashboard() {
               <Form.Item name="certification_standards" label="Certification Standards">
                 <Input.TextArea rows={3} />
               </Form.Item>
-              <Button type="primary" htmlType="submit" loading={loading} icon={<SendOutlined />}>Submit Requirement</Button>
+              <Button type="primary" htmlType="submit" loading={loading} disabled={!customerBids.length} icon={<SendOutlined />}>Submit Requirement</Button>
             </Form>
           </Card>
         </Col>
@@ -282,7 +292,7 @@ export default function CustomerDashboard() {
         <Form form={fundForm} layout="vertical">
           <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Funds are held in escrow until Business Admin releases payment after fulfillment." />
           <Form.Item name="amount" label="Amount (ZMW)" rules={[{ required: true }]}>
-            <InputNumber min={0.01} step={0.01} style={{ width: '100%' }} />
+            <InputNumber disabled min={0.01} step={0.01} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="payment_method" label="Payment Method" rules={[{ required: true }]}>
             <Select options={[{ value: 'bank_transfer', label: 'Bank Transfer' }, { value: 'mobile_money', label: 'Mobile Money' }]} />

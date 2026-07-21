@@ -24,7 +24,8 @@ router.post('/escrow/fund', authenticate, async (req, res) => {
     await client.query('BEGIN');
 
     const { rows: [order] } = await client.query(
-      `SELECT b.tenant_id FROM orders o JOIN bids b ON b.id = o.bid_id WHERE o.id = $1 FOR UPDATE OF o`,
+      `SELECT b.tenant_id, o.total_amount, o.status
+       FROM orders o JOIN bids b ON b.id = o.bid_id WHERE o.id = $1 FOR UPDATE OF o`,
       [order_id]
     );
     if (!order) {
@@ -34,6 +35,14 @@ router.post('/escrow/fund', authenticate, async (req, res) => {
     if (order.tenant_id !== req.user.tenant_id) {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (['completed', 'disputed'].includes(order.status)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This order can no longer be funded' });
+    }
+    if (amountNum !== Number(order.total_amount)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Funding amount must match the order total' });
     }
 
     // Lock the escrow row so concurrent requests cannot both pass the status check.

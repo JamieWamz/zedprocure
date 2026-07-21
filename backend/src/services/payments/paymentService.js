@@ -11,6 +11,7 @@ const pool       = require('../../config/db');
 const mtnMomo    = require('./mtnMomoService');
 const airtel     = require('./airtelMoneyService');
 const zamtel     = require('./zamtelKwachaService');
+const { recordEscrowFunding } = require('../ledgerService');
 
 const PROVIDERS = ['mtn', 'airtel', 'zamtel', 'bank'];
 
@@ -103,19 +104,25 @@ async function syncPaymentStatus(paymentLogId) {
     try {
       await client.query('BEGIN');
 
-      await client.query(
-        'UPDATE payments_log SET status = $1, updated_at = now() WHERE id = $2',
+      const { rowCount } = await client.query(
+        `UPDATE payments_log SET status = $1, updated_at = now()
+         WHERE id = $2 AND status = 'pending'`,
         [newStatus, paymentLogId]
       );
 
       // When payment succeeds → fund the escrow account for this order
-      if (newStatus === 'successful') {
-        await client.query(
-          `UPDATE escrow_accounts
-           SET status = 'funded', amount = $1, funded_at = now()
-           WHERE order_id = $2`,
-          [payment.amount, payment.order_id]
+      if (newStatus === 'successful' && rowCount) {
+        const escrowResult = await client.query(
+          `INSERT INTO escrow_accounts (order_id, customer_user_id, amount, status, funded_at)
+           VALUES ($1, $2, $3, 'funded', now())
+           ON CONFLICT (order_id) DO UPDATE
+             SET status = 'funded', amount = EXCLUDED.amount, funded_at = now()
+             WHERE escrow_accounts.status = 'pending_funding'`,
+          [payment.order_id, payment.initiated_by, payment.amount]
         );
+        if (escrowResult.rowCount) {
+          await recordEscrowFunding(payment.order_id, payment.initiated_by, payment.amount, client);
+        }
       }
 
       await client.query('COMMIT');
@@ -168,18 +175,23 @@ async function processWebhook(provider, payload) {
     const { rows: [payment] } = await client.query(
       `UPDATE payments_log
        SET status = $1, provider_callback_payload = $2, updated_at = now()
-       WHERE provider_reference = $3 AND provider = $4
+       WHERE provider_reference = $3 AND provider = $4 AND status = 'pending'
        RETURNING *`,
       [newStatus, JSON.stringify(payload), providerReference, provider]
     );
 
     if (payment && newStatus === 'successful') {
-      await client.query(
-        `UPDATE escrow_accounts
-         SET status = 'funded', amount = $1, funded_at = now()
-         WHERE order_id = $2`,
-        [payment.amount, payment.order_id]
+      const escrowResult = await client.query(
+        `INSERT INTO escrow_accounts (order_id, customer_user_id, amount, status, funded_at)
+         VALUES ($1, $2, $3, 'funded', now())
+         ON CONFLICT (order_id) DO UPDATE
+           SET status = 'funded', amount = EXCLUDED.amount, funded_at = now()
+           WHERE escrow_accounts.status = 'pending_funding'`,
+        [payment.order_id, payment.initiated_by, payment.amount]
       );
+      if (escrowResult.rowCount) {
+        await recordEscrowFunding(payment.order_id, payment.initiated_by, payment.amount, client);
+      }
     }
 
     await client.query('COMMIT');

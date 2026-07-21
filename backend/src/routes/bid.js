@@ -328,7 +328,8 @@ router.post('/bids/:bidId/requirements', authenticate, async (req, res) => {
   try {
     // Check if bid exists and belongs to the customer's tenant
     const { rows: [bid] } = await pool.query(
-      `SELECT id FROM bids WHERE id = $1 AND tenant_id = $2`,
+      `SELECT id FROM bids
+       WHERE id = $1 AND tenant_id = $2 AND status = 'open' AND deadline > now()`,
       [bidId, req.user.tenant_id]
     );
 
@@ -671,8 +672,8 @@ router.get('/bids/my-tenant-bids', authenticate, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT id, title, deadline
        FROM bids
-       WHERE tenant_id = $1 AND status IN ('open', 'evaluation', 'awarded')
-       ORDER BY deadline DESC`,
+       WHERE tenant_id = $1 AND status = 'open' AND deadline > now()
+       ORDER BY deadline ASC`,
       [req.user.tenant_id]
     );
     res.json(rows);
