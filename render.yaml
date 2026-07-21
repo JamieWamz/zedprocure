@@ -20,8 +20,9 @@ services:
     branch: main
     rootDir: backend
     buildCommand: npm install
-    preDeployCommand: npm run migrate:up
-    startCommand: node src/index.js
+    # Free-tier web services do not support preDeployCommand. Migrations are
+    # idempotent, so run them immediately before each backend start instead.
+    startCommand: npm run migrate:up && node src/index.js
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
