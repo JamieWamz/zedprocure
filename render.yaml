@@ -50,7 +50,7 @@ services:
     branch: main
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: frontend/build
+    staticPublishPath: build
     routes:
       - type: rewrite
         source: /*
