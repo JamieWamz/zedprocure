@@ -37,6 +37,8 @@ services:
         value: https://zedprocure.onrender.com
       - key: COOKIE_SECURE
         value: "true"
+      - key: COOKIE_SAMESITE
+        value: none
       - key: SYSTEM_ADMIN_PASSWORD
         sync: false
       - key: BUSINESS_ADMIN_PASSWORD
