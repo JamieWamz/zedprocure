@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Button, Col, Form, Input, InputNumber, Modal, Row, Select,
-  Space, Table, Tag, Typography, message, Card
+  Space, Table, Tag, Typography, message, Card, Divider
 } from 'antd';
 import {
   AuditOutlined, BankOutlined, ClockCircleOutlined, FileTextOutlined, ReloadOutlined,
-  SendOutlined, ShoppingCartOutlined,
+  SendOutlined, ShoppingCartOutlined, InfoCircleOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
@@ -14,6 +14,7 @@ import PaymentModal from './PaymentModal';
 import { useAuth } from '../context/AuthContext';
 import EnhancedEmpty from './EnhancedEmpty';
 import DashboardStatistic from './DashboardStatistic';
+import ProcurementStageIndicator from './ProcurementStageIndicator';
 
 const { Text } = Typography;
 
@@ -194,6 +195,10 @@ export default function CustomerDashboard() {
           <Button icon={<ReloadOutlined />} onClick={loadPortal} loading={invoiceLoading}>Refresh</Button>
         </div>
       </div>
+
+      {/* Procurement Stage Indicator */}
+      <ProcurementStageIndicator role="customer" currentStage={0} />
+      <Divider style={{ margin: '0 0 20px' }} />
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} md={8}>

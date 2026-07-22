@@ -276,6 +276,26 @@ router.get('/bids/global', authenticate, async (req, res) => {
   }
 });
 
+// ─── Customer: Get all active bids for my tenant ──────────────────────────────
+router.get('/bids/my-tenant-bids', authenticate, async (req, res) => {
+  if (req.user.role !== 'customer') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, title, deadline
+       FROM bids
+       WHERE tenant_id = $1 AND status = 'open' AND deadline > now()
+       ORDER BY deadline ASC`,
+      [req.user.tenant_id]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error('Error fetching tenant bids:', e);
+    res.status(500).json({ error: 'Failed to fetch tenant bids' });
+  }
+});
+
 // ─── Get bid details – includes line items, suppliers, increments views ──────
 router.get('/bids/:bidId', authenticate, async (req, res) => {
   try {
@@ -660,24 +680,5 @@ router.get('/bids/:bidId/evaluation', authenticate, async (req, res) => {
   }
 });
 
-// ─── Customer: Get all active bids for my tenant ──────────────────────────────
-router.get('/bids/my-tenant-bids', authenticate, async (req, res) => {
-  if (req.user.role !== 'customer') {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-  try {
-    const { rows } = await pool.query(
-      `SELECT id, title, deadline
-       FROM bids
-       WHERE tenant_id = $1 AND status = 'open' AND deadline > now()
-       ORDER BY deadline ASC`,
-      [req.user.tenant_id]
-    );
-    res.json(rows);
-  } catch (e) {
-    console.error('Error fetching tenant bids:', e);
-    res.status(500).json({ error: 'Failed to fetch tenant bids' });
-  }
-});
 
 module.exports = router;
