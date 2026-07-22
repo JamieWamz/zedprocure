@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Button, Card, Col, DatePicker, Empty, Input, Row, Space, Statistic,
-  Table, Tabs, Tag, Typography, message,
+  Tabs, Tag, Typography, message,
 } from 'antd';
+import ExpandableTable from './ExpandableTable';
 import {
   AuditOutlined, BankOutlined, BarChartOutlined, DownloadOutlined,
   FileTextOutlined, ReloadOutlined, SearchOutlined,
@@ -211,7 +212,8 @@ export default function FinancialLedger() {
             />
             <Button icon={<ReloadOutlined />} onClick={load}>Apply</Button>
           </Space>
-          <Table
+          <ExpandableTable
+            title="Journal Entries"
             rowKey="id"
             loading={loading}
             dataSource={journal}
@@ -228,7 +230,7 @@ export default function FinancialLedger() {
       label: 'Chart of Accounts',
       children: (
         <Card className="table-card" extra={<Button icon={<DownloadOutlined />} onClick={exportAccounts}>Export Accounts</Button>}>
-          <Table rowKey="code" loading={loading} dataSource={accounts} columns={accountColumns} pagination={false} scroll={{ x: 760 }} />
+          <ExpandableTable title="Chart of Accounts" rowKey="code" loading={loading} dataSource={accounts} columns={accountColumns} pagination={false} scroll={{ x: 760 }} />
         </Card>
       ),
     },
@@ -241,7 +243,7 @@ export default function FinancialLedger() {
           title={trialBalance?.balanced ? <Tag color="success">Balanced</Tag> : <Tag color="error">Out of balance</Tag>}
           extra={<Space><Text strong>Dr {money(trialBalance?.totalDebit)} / Cr {money(trialBalance?.totalCredit)}</Text><Button icon={<DownloadOutlined />} onClick={exportTrialBalance}>Export</Button></Space>}
         >
-          <Table rowKey="code" loading={loading} dataSource={trialBalance?.lines || []} columns={trialColumns} pagination={false} scroll={{ x: 760 }} />
+          <ExpandableTable title="Trial Balance" rowKey="code" loading={loading} dataSource={trialBalance?.lines || []} columns={trialColumns} pagination={false} scroll={{ x: 760 }} />
         </Card>
       ),
     },

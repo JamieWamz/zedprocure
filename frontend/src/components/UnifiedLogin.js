@@ -67,6 +67,16 @@ export default function UnifiedLogin() {
 
       <div className="login-form-pane">
         <div className="login-card">
+          {/* Mobile brand header — visible only on small screens (class handles visibility) */}
+          <div className="login-mobile-brand" style={{ textAlign: 'center', marginBottom: 16, paddingBottom: 16 }}>
+            <div className="login-mobile-brand-inner">
+              <span className="login-mobile-brand-logo" />
+              <span className="login-mobile-brand-name">Freshstart</span>
+            </div>
+            <div className="login-mobile-brand-tagline">
+              Zambia Procurement Portal — Transparent, multi-tenant public procurement
+            </div>
+          </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
             <Space size={6}><span>Appearance</span><Select size="small" value={appearance} onChange={setAppearance} style={{ width: 100 }} options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'system', label: 'System' }]} /></Space>
           </div>

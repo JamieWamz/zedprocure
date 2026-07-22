@@ -162,6 +162,60 @@ html[data-theme='dark'] body {
   max-width: 400px;
 }
 
+/* Mobile-only brand header for login — visible when hero is hidden */
+.login-mobile-brand {
+  display: none;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.login-mobile-brand-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.login-mobile-brand-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2563eb, #1e3a8a);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.login-mobile-brand-name {
+  font-weight: 700;
+  font-size: 18px;
+  color: #1a1a2e;
+}
+
+.login-mobile-brand-tagline {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.4;
+}
+
+html[data-theme='dark'] .login-mobile-brand {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+html[data-theme='dark'] .login-mobile-brand-name {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+html[data-theme='dark'] .login-mobile-brand-tagline {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+@media (max-width: 768px) {
+  .login-mobile-brand {
+    display: block;
+  }
+}
+
 @media (max-width: 420px) {
   .login-card {
     padding: 20px 16px;
