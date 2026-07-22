@@ -410,7 +410,7 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   font-size: 13px;
 }
 
-.login-form-panel {
+.login-form-pane {
   flex: 1 1 50%;
   display: flex;
   align-items: center;
@@ -419,7 +419,7 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   padding: 40px 24px;
 }
 
-.login-form-box {
+.login-card {
   width: 100%;
   max-width: 420px;
   background: var(--bg-card);
@@ -429,14 +429,14 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   border: 1px solid var(--border-color);
 }
 
-.login-form-box h2 {
+.login-card h2 {
   font-size: 24px;
   font-weight: 700;
   margin: 0 0 4px;
   color: var(--text-primary);
 }
 
-.login-form-box .subtitle {
+.login-card .subtitle {
   color: var(--text-secondary);
   margin-bottom: 28px;
   font-size: 14px;
@@ -495,7 +495,7 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
     font-size: 24px;
   }
 
-  .login-form-box {
+  .login-card {
     padding: 28px 20px;
   }
 }
