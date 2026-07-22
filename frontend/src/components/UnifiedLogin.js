@@ -31,11 +31,24 @@ export default function UnifiedLogin() {
     setRegistering(true);
     try {
       await axios.post('/api/register', values);
-      message.success(values.account_type === 'supplier'
-        ? 'Supplier account created. Business Admin will verify it before bidding access is enabled.'
-        : 'Customer account created. You can sign in now.');
-      registerForm.resetFields();
-      registerForm.setFieldValue('account_type', 'customer');
+      
+      if (values.account_type === 'supplier') {
+        message.success('Supplier account created. Business Admin will verify it before bidding access is enabled.');
+        registerForm.resetFields();
+        registerForm.setFieldValue('account_type', 'customer');
+      } else {
+        message.success('Customer account created. Signing you in now.');
+        registerForm.resetFields();
+        registerForm.setFieldValue('account_type', 'customer');
+        // Auto-login for customer accounts
+        try {
+          const route = await login(values.email, values.password);
+          navigate(route);
+          return;
+        } catch {
+          navigate('/login');
+        }
+      }
     } catch (e) {
       message.error(e.response?.data?.error || 'Registration failed');
     } finally {

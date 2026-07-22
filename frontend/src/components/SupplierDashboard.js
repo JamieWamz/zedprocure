@@ -16,15 +16,21 @@ import DigitalSignatureModal from './DigitalSignatureModal';
 
 const { Text, Title } = Typography;
 
-// Required documents for Zambian suppliers
-const REQUIRED_DOCS = [
+// Mandatory documents for Zambian suppliers
+const MANDATORY_DOCS = [
   { type: 'pacra_certificate',   label: 'PACRA Certificate',      desc: 'Certificate of Incorporation from PACRA' },
   { type: 'zra_tpin',            label: 'ZRA TPIN Certificate',   desc: 'Taxpayer Identification Number from ZRA' },
   { type: 'zra_tax_clearance',   label: 'ZRA Tax Clearance',      desc: 'Tax clearance certificate from ZRA' },
   { type: 'business_license',    label: 'Business License',       desc: 'Local municipal trading license' },
+];
+
+// Optional documents (recommended but not required for full compliance)
+const OPTIONAL_DOCS = [
   { type: 'directors_id',        label: "Directors' ID Copies",   desc: 'ID copies for all company directors' },
   { type: 'bank_reference',      label: 'Bank Reference Letter',  desc: 'Reference letter from your company bank' },
 ];
+
+const REQUIRED_DOCS = [...MANDATORY_DOCS, ...OPTIONAL_DOCS];
 
 function money(v) {
   return `ZMW ${Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -427,9 +433,69 @@ export default function SupplierDashboard() {
 
         <Divider />
 
-        {/* Per-document upload and status */}
-        <Row gutter={[12, 12]}>
-          {REQUIRED_DOCS.map(doc => {
+        {/* Mandatory Documents */}
+        <Text strong style={{ color: '#1677ff' }}>Mandatory Documents</Text>
+        <Row gutter={[12, 12]} style={{ marginTop: 8, marginBottom: 16 }}>
+          {MANDATORY_DOCS.map(doc => {
+            const uploaded = (verificationStatus?.documents || []).find(
+              d => (d.type || d.document_type) === doc.type
+            );
+            const docVerified = uploaded?.verification_status === 'verified';
+            const docRejected = uploaded?.verification_status === 'rejected';
+
+            return (
+              <Col xs={24} sm={12} key={doc.type}>
+                <Card
+                  size="small"
+                  bordered
+                  style={{
+                    borderColor: docVerified ? '#b7eb8f' : docRejected ? '#ffa39e' : '#d9d9d9',
+                    background: docVerified ? '#f6ffed' : docRejected ? '#fff2f0' : '#fafafa',
+                  }}
+                >
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Space>
+                      {docVerified
+                        ? <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                        : docRejected
+                        ? <span style={{ color: '#ff4d4f' }}>✕</span>
+                        : <ClockCircleOutlined style={{ color: '#faad14' }} />}
+                      <Text strong style={{ fontSize: 13 }}>{doc.label}</Text>
+                      {uploaded && (
+                        <Tag color={docVerified ? 'success' : docRejected ? 'error' : 'processing'}>
+                          {uploaded.verification_status || 'pending'}
+                        </Tag>
+                      )}
+                      {!uploaded && <Tag color="warning">Not Uploaded</Tag>}
+                    </Space>
+                    <Text type="secondary" style={{ fontSize: 11 }}>{doc.desc}</Text>
+                    {uploaded?.verification_notes && (
+                      <Alert type="warning" showIcon message={uploaded.verification_notes} style={{ fontSize: 11, padding: '4px 8px' }} />
+                    )}
+                    <Upload
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      showUploadList={false}
+                      beforeUpload={(file) => handleUploadDocument(doc.type, file)}
+                    >
+                      <Button
+                        size="small"
+                        icon={<UploadOutlined />}
+                        loading={uploading[doc.type]}
+                      >
+                        {uploaded ? 'Re-upload' : 'Upload'}
+                      </Button>
+                    </Upload>
+                  </Space>
+                </Card>
+              </Col>
+            );
+          })}
+        </Row>
+
+        {/* Optional Documents */}
+        <Text strong style={{ color: '#8c8c8c' }}>Optional Documents (Recommended)</Text>
+        <Row gutter={[12, 12]} style={{ marginTop: 8 }}>
+          {OPTIONAL_DOCS.map(doc => {
             const uploaded = (verificationStatus?.documents || []).find(
               d => (d.type || d.document_type) === doc.type
             );

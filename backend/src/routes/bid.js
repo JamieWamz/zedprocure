@@ -380,7 +380,7 @@ router.get('/public/bids', async (req, res) => {
   }
 });
 
-// ─── Supplier: list my open invitations + matching global bids ────────────────
+// ─── Supplier: list my open invitations + all global open bids ────────────────
 router.get('/supplier/bids', authenticate, async (req, res) => {
   if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
   try {
@@ -395,9 +395,6 @@ router.get('/supplier/bids', authenticate, async (req, res) => {
               NULL as accepted, NULL as bid_supplier_id
        FROM bids b
        WHERE b.status = 'open' AND b.visibility = 'global'
-         AND b.business_category = (SELECT s.business_category FROM suppliers s
-                                     JOIN supplier_users su ON su.supplier_id = s.id
-                                     WHERE su.id = $1)
        ORDER BY deadline ASC`,
       [req.user.user_id]
     );

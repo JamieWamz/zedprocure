@@ -49,14 +49,12 @@ const upload = multer({
   }
 });
 
-// Required document types for Zambian suppliers
-const REQUIRED_DOCUMENT_TYPES = [
+// Mandatory document types for Zambian suppliers
+const MANDATORY_DOCUMENT_TYPES = [
   'pacra_certificate',
   'zra_tpin',
   'zra_tax_clearance',
   'business_license',
-  'directors_id',
-  'bank_reference'
 ];
 
 // ─── Get Required Document Types ─────────────────────────────────────────────
@@ -93,9 +91,9 @@ router.post('/register-supplier', upload.fields([
   const pwErr = validatePassword(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
 
-  // Check if all required documents are uploaded
+  // Check if all mandatory documents are uploaded
   const uploadedDocs = req.files || {};
-  const missingRequired = REQUIRED_DOCUMENT_TYPES.filter(
+  const missingRequired = MANDATORY_DOCUMENT_TYPES.filter(
     docType => !uploadedDocs[docType]
   );
   

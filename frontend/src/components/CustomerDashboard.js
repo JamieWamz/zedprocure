@@ -136,6 +136,17 @@ export default function CustomerDashboard() {
     { title: 'Action', render: (_, row) => <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningInvoice(row)}>Sign</Button> },
   ];
 
+  const bidColumns = [
+    { title: 'Bid Title', dataIndex: 'title', key: 'title', render: (v, row) => <Text strong>{v}</Text> },
+    { title: 'Deadline', dataIndex: 'deadline', key: 'deadline', render: v => new Date(v).toLocaleString() },
+    { title: 'Action', key: 'action', render: (_, row) => (
+      <Button size="small" type="primary" onClick={() => {
+        form.setFieldsValue({ bid_id: row.id });
+        document.getElementById('requirements-section')?.scrollIntoView({ behavior: 'smooth' });
+      }}>Set Requirements</Button>
+    )},
+  ];
+
   const orderColumns = [
     { title: 'Order', dataIndex: 'id', render: value => <Text code>{value.slice(0, 8)}</Text> },
     { title: 'Supplier', dataIndex: 'supplier_name', render: value => value || '-' },
@@ -199,9 +210,21 @@ export default function CustomerDashboard() {
         </Col>
       </Row>
 
+      {/* Available Bids Section */}
+      <Card title={<span><FileTextOutlined /> Open Bids for Your Organization</span>} className="table-card" style={{ marginBottom: 16 }}>
+        <Table
+          rowKey="id"
+          dataSource={customerBids}
+          columns={bidColumns}
+          pagination={{ pageSize: 5 }}
+          scroll={{ x: 600 }}
+          locale={{ emptyText: <EnhancedEmpty title="No Open Bids" description="There are no open bids for your organization yet. Business Admin creates bids that you can set requirements on." /> }}
+        />
+      </Card>
+
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={10}>
-          <Card title="Submit Requirements" className="table-card">
+          <Card id="requirements-section" title="Submit Requirements" className="table-card">
             <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Budgets remain hidden from suppliers during bid evaluation." />
             <Form form={form} layout="vertical" onFinish={onFinish}>
               <Form.Item name="bid_id" label="Bid" rules={[{ required: true, message: 'Please select a bid' }]}>

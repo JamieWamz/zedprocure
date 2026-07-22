@@ -3,26 +3,34 @@ import { Form, Input, Button, Upload, message, Alert, Steps, Card, Typography, R
 import { UploadOutlined, InboxOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { cdnImages } from '../cdnAssets';
 
 const { Step } = Steps;
 const { Text } = Typography;
 
-// Required document types for Zambian suppliers
-const REQUIRED_DOCUMENTS = [
+// Mandatory document types for Zambian suppliers
+const MANDATORY_DOCUMENTS = [
   { type: 'pacra_certificate', label: 'PACRA Certificate', description: 'Certificate of Incorporation from Patents and Companies Registration Authority' },
   { type: 'zra_tpin', label: 'ZRA TPIN Certificate', description: 'Taxpayer Identification Number certificate from Zambia Revenue Authority' },
   { type: 'zra_tax_clearance', label: 'ZRA Tax Clearance', description: 'Tax clearance certificate from Zambia Revenue Authority' },
   { type: 'business_license', label: 'Business License', description: 'License from local municipal authority' },
+];
+
+// Optional documents (recommended but not required for registration)
+const OPTIONAL_DOCUMENTS = [
   { type: 'directors_id', label: 'Directors ID Copies', description: 'Copies of ID documents for company directors' },
   { type: 'bank_reference', label: 'Bank Reference Letter', description: 'Reference letter from the company bank' }
 ];
+
+const ALL_DOCUMENTS = [...MANDATORY_DOCUMENTS, ...OPTIONAL_DOCUMENTS];
 
 export default function SupplierRegistration() {
   const [form] = Form.useForm();
   const [currentStep, setCurrentStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleRegister = async (values) => {
     setSubmitting(true);
@@ -35,7 +43,7 @@ export default function SupplierRegistration() {
       formData.append('company_name', values.company_name);
       formData.append('registration_number', values.registration_number || '');
 
-      REQUIRED_DOCUMENTS.forEach(doc => {
+      ALL_DOCUMENTS.forEach(doc => {
         const file = values[doc.type]?.[0]?.originFileObj;
         if (file) {
           formData.append(doc.type, file);
@@ -49,7 +57,14 @@ export default function SupplierRegistration() {
       message.success('Supplier account created with documents. Business Admin will review and verify.');
       form.resetFields();
       setCurrentStep(0);
-      navigate('/login');
+      
+      // Auto-login after successful registration
+      try {
+        const route = await login(values.email, values.password);
+        navigate(route);
+      } catch {
+        navigate('/login');
+      }
     } catch (e) {
       message.error(e.response?.data?.error || 'Registration failed');
     } finally {
@@ -112,11 +127,13 @@ export default function SupplierRegistration() {
             type="info"
             showIcon
             message="Required Documents for Zambian Suppliers"
-            description="All documents must be uploaded for your account to be reviewed. Accepted formats: PDF, DOC, DOCX, JPG, PNG (max 10MB each)."
+            description="Mandatory documents (PACRA, ZRA TPIN, ZRA Tax Clearance, Business License) are required. Optional documents (Directors ID, Bank Reference) are recommended but not required."
             style={{ marginBottom: 16 }}
           />
+          {/* Mandatory Documents */}
+          <h4 style={{ marginBottom: 12, color: '#1677ff' }}>Mandatory Documents</h4>
           <Row gutter={[16, 16]}>
-            {REQUIRED_DOCUMENTS.map(doc => (
+            {MANDATORY_DOCUMENTS.map(doc => (
               <Col xs={24} sm={12} key={doc.type}>
                 <Form.Item
                   name={doc.type}
@@ -124,6 +141,32 @@ export default function SupplierRegistration() {
                   valuePropName="fileList"
                   getValueFromEvent={(e) => Array.isArray(e) ? e : e?.fileList}
                   rules={[{ required: true, message: `Please upload your ${doc.label}` }]}
+                  help={doc.description}
+                >
+                  <Upload.Dragger
+                    name={doc.type}
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    beforeUpload={() => false}
+                    maxCount={1}
+                  >
+                    <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                    <p className="ant-upload-text">Click or drag file to upload</p>
+                  </Upload.Dragger>
+                </Form.Item>
+              </Col>
+            ))}
+          </Row>
+          {/* Optional Documents */}
+          <h4 style={{ marginBottom: 12, marginTop: 16, color: '#8c8c8c' }}>Optional Documents (Recommended)</h4>
+          <Row gutter={[16, 16]}>
+            {OPTIONAL_DOCUMENTS.map(doc => (
+              <Col xs={24} sm={12} key={doc.type}>
+                <Form.Item
+                  name={doc.type}
+                  label={doc.label}
+                  valuePropName="fileList"
+                  getValueFromEvent={(e) => Array.isArray(e) ? e : e?.fileList}
+                  rules={[]}
                   help={doc.description}
                 >
                   <Upload.Dragger
@@ -147,7 +190,7 @@ export default function SupplierRegistration() {
   const nextStep = async () => {
     const fields = currentStep === 0
       ? ['company_name', 'registration_number', 'full_name', 'email', 'password']
-      : REQUIRED_DOCUMENTS.map(doc => doc.type);
+      : ALL_DOCUMENTS.map(doc => doc.type);
     try {
       await form.validateFields(fields);
       setCurrentStep(step => Math.min(step + 1, steps.length - 1));
