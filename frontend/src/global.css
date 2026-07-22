@@ -1,9 +1,16 @@
+/* ============================================================
+   Zambia Procurement Portal — Global Styles
+   Fully responsive across phones, tablets, and desktops
+   ============================================================ */
+
 html, body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
   background: #f0f2f5;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
 }
 
 html[data-theme='dark'] body {
@@ -24,6 +31,7 @@ html[data-theme='dark'] body {
   background: transparent;
 }
 
+/* ── Cards ──────────────────────────────────────────────── */
 .ant-card {
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -43,13 +51,17 @@ html[data-theme='dark'] body {
   border-radius: 6px !important;
 }
 
+/* ============================================================
+   LOGIN SPLIT LAYOUT
+   ============================================================ */
 .login-split {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   background: #0f172a;
 }
 
-/* Left hero: image + overlay (hidden on mobile) */
+/* Left hero: image + overlay (hidden on mobile, shown on tablet+) */
 .login-hero {
   position: relative;
   flex: 1 1 50%;
@@ -110,7 +122,7 @@ html[data-theme='dark'] body {
 
 .login-hero-content h1 {
   color: #fff;
-  font-size: 34px;
+  font-size: clamp(22px, 4vw, 34px);
   font-weight: 700;
   line-height: 1.15;
   margin: 0 0 12px;
@@ -118,7 +130,7 @@ html[data-theme='dark'] body {
 
 .login-hero-content p {
   color: rgba(255, 255, 255, 0.85);
-  font-size: 15px;
+  font-size: clamp(13px, 2vw, 15px);
   line-height: 1.55;
   max-width: 380px;
   margin: 0;
@@ -150,6 +162,24 @@ html[data-theme='dark'] body {
   max-width: 400px;
 }
 
+@media (max-width: 420px) {
+  .login-card {
+    padding: 20px 16px;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  }
+
+  .login-form-pane {
+    padding: 12px;
+    align-items: flex-start;
+    padding-top: 32px;
+  }
+
+  .login-split {
+    min-height: 100dvh;
+  }
+}
+
 .login-card h2 {
   text-align: center;
   margin-bottom: 24px;
@@ -157,6 +187,16 @@ html[data-theme='dark'] body {
   font-weight: 600;
 }
 
+@media (max-width: 420px) {
+  .login-card h2 {
+    font-size: 18px;
+    margin-bottom: 16px;
+  }
+}
+
+/* ============================================================
+   APP BACKGROUND & CONTENT
+   ============================================================ */
 .app-bg {
   min-height: 100vh;
   background:
@@ -196,9 +236,24 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   background: #111d2c !important;
 }
 
+/* ============================================================
+   CONTENT WRAPPER
+   ============================================================ */
 .content-wrapper {
   position: relative;
   padding: 24px;
+}
+
+@media (max-width: 768px) {
+  .content-wrapper {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .content-wrapper {
+    padding: 8px;
+  }
 }
 
 .content-wrapper::before {
@@ -222,6 +277,12 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   margin-bottom: 24px;
 }
 
+@media (max-width: 480px) {
+  .page-header {
+    margin-bottom: 12px;
+  }
+}
+
 .page-header h2 {
   margin: 0;
   font-weight: 600;
@@ -240,6 +301,9 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   gap: 16px;
 }
 
+/* ============================================================
+   STAT CARDS
+   ============================================================ */
 .stat-card {
   position: relative;
   overflow: hidden;
@@ -271,6 +335,9 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
+/* ============================================================
+   PAGE MEDIA BANNER
+   ============================================================ */
 .page-media-banner {
   position: relative;
   z-index: 1;
@@ -304,7 +371,7 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
 .page-media-banner h2 {
   margin: 0;
   color: #fff;
-  font-size: 23px;
+  font-size: clamp(18px, 3vw, 23px);
   line-height: 1.2;
   font-weight: 700;
 }
@@ -313,6 +380,7 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   margin: 5px 0 0;
   color: rgba(255, 255, 255, 0.82);
   max-width: 680px;
+  font-size: clamp(12px, 2vw, 14px);
 }
 
 .page-media-banner .ant-btn {
@@ -330,15 +398,42 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   .page-media-banner {
     align-items: flex-start;
     flex-direction: column;
-    min-height: 150px;
-    padding: 18px;
+    min-height: auto;
+    padding: 16px;
   }
 
   .page-media-actions {
     justify-content: flex-start;
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  .page-media-actions .ant-btn {
+    font-size: 12px;
+    padding: 4px 10px;
+    height: auto;
   }
 }
 
+@media (max-width: 480px) {
+  .page-media-banner {
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+
+  .page-media-banner h2 {
+    font-size: 16px;
+  }
+
+  .page-media-actions .ant-btn {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+}
+
+/* ============================================================
+   TABLE STYLES
+   ============================================================ */
 .ant-table-thead > tr > th {
   background: #fafafa !important;
   font-weight: 600;
@@ -352,22 +447,212 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   background: #f0f5ff !important;
 }
 
+/* Responsive table improvements */
+@media (max-width: 768px) {
+  .ant-table {
+    font-size: 12px;
+  }
+
+  .ant-table-thead > tr > th,
+  .ant-table-tbody > tr > td {
+    padding: 8px 6px !important;
+  }
+
+  .ant-table-cell .ant-btn-sm {
+    font-size: 11px;
+    padding: 0 6px;
+    height: 22px;
+  }
+
+  .ant-table-cell .ant-tag {
+    font-size: 10px;
+    padding: 0 4px;
+    margin: 0;
+    line-height: 18px;
+    height: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ant-table-thead > tr > th,
+  .ant-table-tbody > tr > td {
+    padding: 6px 4px !important;
+    font-size: 11px;
+  }
+
+  .ant-table-cell .ant-btn-sm {
+    font-size: 10px;
+    padding: 0 4px;
+    height: 20px;
+  }
+}
+
+/* ============================================================
+   SIDEBAR / SIDER
+   ============================================================ */
 .sidebar-gradient {
   background: linear-gradient(180deg, #001529 0%, #002140 100%);
 }
 
+/* Mobile drawer sider — content underneath needs push when menu is open */
+.ant-layout-sider-zero-width-trigger {
+  top: 12px !important;
+  z-index: 20 !important;
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
 .header-gradient {
   background: linear-gradient(90deg, #001529 0%, #003262 100%) !important;
 }
 
+/* ============================================================
+   APP & HEADER RESPONSIVE - collapse overflowing toolbar items
+   ============================================================ */
+.app-layout-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 24px !important;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  min-height: 64px;
+  height: auto !important;
+}
+
+@media (max-width: 768px) {
+  .app-layout-header {
+    padding: 8px 12px !important;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .app-layout-header-left {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .app-layout-header-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .header-org-picker {
+    min-width: 120px !important;
+  }
+
+  .header-user-email {
+    display: none;
+  }
+
+  .header-appearance-select {
+    width: 90px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-layout-header {
+    padding: 6px 8px !important;
+    gap: 4px;
+  }
+
+  .app-layout-header-left .ant-btn {
+    padding: 0 6px;
+  }
+
+  .app-layout-header-left .header-title {
+    font-size: 14px !important;
+  }
+
+  .app-layout-header-right .ant-btn {
+    font-size: 12px;
+    padding: 4px 8px;
+    height: 32px;
+  }
+
+  .header-org-picker {
+    min-width: 100px !important;
+  }
+
+  .header-appearance-select {
+    width: 80px !important;
+  }
+
+  .ant-select {
+    font-size: 12px;
+  }
+}
+
+/* ============================================================
+   RESPONSIVE GRID UTILITIES
+   ============================================================ */
+@media (max-width: 480px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .hide-on-tablet {
+    display: none !important;
+  }
+}
+
+/* ============================================================
+   GENERIC BUTTON OVERRIDES
+   ============================================================ */
+@media (max-width: 480px) {
+  .ant-btn {
+    font-size: 13px;
+  }
+
+  .ant-btn-lg {
+    font-size: 14px;
+    height: 40px;
+  }
+
+  .ant-form-item-label > label {
+    font-size: 13px;
+  }
+
+  .ant-form-item {
+    margin-bottom: 14px;
+  }
+
+  .ant-modal {
+    max-width: 95vw !important;
+    margin: 8px auto;
+  }
+
+  .ant-modal-content {
+    padding: 16px !important;
+  }
+
+  .ant-modal-header {
+    margin-bottom: 12px !important;
+  }
+}
+
+/* ============================================================
+   CONSOLE OUTPUT
+   ============================================================ */
 .console-output {
   background: #1e1e1e;
   color: #d4d4d4;
   border-radius: 8px;
   font-family: 'Fira Code', 'Consolas', monospace;
+  overflow-x: auto;
 }
 
-/* ===== Splash Screen ===== */
+/* ============================================================
+   SPLASH SCREEN
+   ============================================================ */
 .splash-root {
   position: fixed;
   inset: 0;
@@ -444,7 +729,7 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
 
 .splash-tagline h1 {
   color: #fff;
-  font-size: 30px;
+  font-size: clamp(22px, 5vw, 30px);
   font-weight: 700;
   margin: 0 0 8px;
   line-height: 1.15;
@@ -452,7 +737,7 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
 
 .splash-tagline p {
   color: rgba(255, 255, 255, 0.8);
-  font-size: 15px;
+  font-size: clamp(13px, 2.5vw, 15px);
   margin: 0;
 }
 
@@ -494,9 +779,13 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   color: rgba(255, 255, 255, 0.45);
 }
 
+/* ============================================================
+   ROUTE LOADING
+   ============================================================ */
 .route-loading {
   position: relative;
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -544,13 +833,14 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
 .route-loading-content h1 {
   margin: 0;
   color: #fff;
-  font-size: 24px;
+  font-size: clamp(18px, 4vw, 24px);
   font-weight: 700;
 }
 
 .route-loading-content p {
   margin: 0;
   color: rgba(255, 255, 255, 0.78);
+  font-size: clamp(13px, 2.5vw, 15px);
 }
 
 .route-loading-dots {
@@ -591,72 +881,9 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   50% { opacity: 1; transform: translateY(-4px); }
 }
 
-@media (max-width: 768px) {
-  .content-wrapper {
-    padding: 16px;
-  }
-
-  .page-media-banner {
-    padding: 16px;
-    min-height: auto;
-  }
-
-  .page-media-banner h2 {
-    font-size: 20px;
-  }
-
-  .page-media-banner p {
-    font-size: 13px;
-  }
-
-  .page-media-actions {
-    width: 100%;
-    justify-content: flex-start;
-    margin-top: 12px;
-  }
-
-  .stat-card {
-    margin-bottom: 8px;
-  }
-
-  .ant-table {
-    font-size: 12px;
-  }
-
-  .ant-table-thead > tr > th,
-  .ant-table-tbody > tr > td {
-    padding: 8px 4px;
-  }
-}
-
-@media (max-width: 480px) {
-  .login-card {
-    padding: 24px;
-    border-radius: 12px;
-  }
-
-  .login-card h2 {
-    font-size: 20px;
-  }
-
-  .content-wrapper {
-    padding: 12px;
-  }
-
-  .page-media-banner {
-    padding: 12px;
-  }
-
-  .ant-btn {
-    font-size: 13px;
-  }
-
-  .ant-form-item-label > label {
-    font-size: 13px;
-  }
-}
-
-/* Focus styles for accessibility */
+/* ============================================================
+   FOCUS STYLES FOR ACCESSIBILITY
+   ============================================================ */
 .ant-btn:focus-visible,
 .ant-input:focus-visible,
 .ant-select-selector:focus-visible,
@@ -673,7 +900,9 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   transition: all 0.2s ease;
 }
 
-/* Print styles */
+/* ============================================================
+   PRINT STYLES
+   ============================================================ */
 @media print {
   .ant-layout-header,
   .ant-btn,
@@ -688,5 +917,44 @@ html[data-theme='dark'] .ant-table-tbody > tr:hover > td {
   .ant-card {
     box-shadow: none;
     border: 1px solid #ddd;
+  }
+}
+
+/* ============================================================
+   UTILITY: Force horizontal scroll for code / table-like content
+   ============================================================ */
+.overflow-auto-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================================
+   RESPONSIVE DESCRIPTIONS (Ant Design Descriptions)
+   ============================================================ */
+@media (max-width: 600px) {
+  .ant-descriptions-item-container {
+    flex-direction: column !important;
+  }
+
+  .ant-descriptions-item-label {
+    padding-bottom: 0 !important;
+  }
+}
+
+/* ============================================================
+   MODAL RESPONSIVE SIZING
+   ============================================================ */
+@media (max-width: 576px) {
+  .ant-modal {
+    max-width: calc(100vw - 24px) !important;
+    margin: 12px auto;
+  }
+
+  .ant-modal-content {
+    padding: 16px 12px !important;
+  }
+
+  .ant-modal-confirm-body > .anticon {
+    margin-right: 8px !important;
   }
 }

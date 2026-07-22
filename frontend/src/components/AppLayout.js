@@ -41,25 +41,16 @@ export default function AppLayout({ children, showBack = false }) {
   return (
     <Layout className="app-bg">
       <Header 
-        className="header-gradient" 
-        style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          padding: '0 24px',
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-        }}
+        className="header-gradient app-layout-header" 
         role="banner"
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div className="app-layout-header-left" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {showBack && (
             <Button 
               type="text" 
               icon={<ArrowLeftOutlined />} 
               onClick={handleBack} 
-              style={{ color: '#fff' }}
+              style={{ color: '#fff', whiteSpace: 'nowrap' }}
               aria-label="Go back"
             >
               Back
@@ -67,24 +58,33 @@ export default function AppLayout({ children, showBack = false }) {
           )}
           <Text 
             strong 
-            style={{ color: '#fff', fontSize: 18 }}
+            className="header-title"
+            style={{ color: '#fff', fontSize: 18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
             aria-label={currentTitle}
           >
             Freshstart Procurement Portal
           </Text>
         </div>
-        <Space>
+        <div className="app-layout-header-right" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <Tooltip title="Appearance">
-            <Select aria-label="Appearance" value={appearance} onChange={setAppearance} style={{ width: 118 }} prefix={<BulbOutlined />}
-              options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'system', label: 'System' }]} />
+            <Select 
+              className="header-appearance-select"
+              aria-label="Appearance" 
+              value={appearance} 
+              onChange={setAppearance} 
+              style={{ width: 118 }} 
+              prefix={<BulbOutlined />}
+              options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'system', label: 'System' }]} 
+            />
           </Tooltip>
           {showOrgPicker && (
             <Tooltip title="Select a Workspace/Organization">
               <Select
+                className="header-org-picker"
                 value={activeTenantId}
                 onChange={setActiveTenantId}
-                style={{ minWidth: 200 }}
-                placeholder="Select a Workspace/Organization"
+                style={{ minWidth: 160 }}
+                placeholder="Select Workspace"
                 dropdownMatchSelectWidth={false}
                 prefix={<BankOutlined />}
               >
@@ -97,23 +97,23 @@ export default function AppLayout({ children, showBack = false }) {
             </Tooltip>
           )}
           {!activeTenantId && showOrgPicker && (
-            <Text style={{ color: '#ffd666', fontSize: 12 }}>
-              Select a Workspace/Organization
+            <Text style={{ color: '#ffd666', fontSize: 12, whiteSpace: 'nowrap' }}>
+              Select Workspace
             </Text>
           )}
-          <Text style={{ color: '#fff' }} aria-label={`Logged in as ${user?.email || 'User'}`}>
+          <Text className="header-user-email" style={{ color: '#fff', fontSize: 13, whiteSpace: 'nowrap' }} aria-label={`Logged in as ${user?.email || 'User'}`}>
             {user?.email || 'User'}
           </Text>
           <Button 
             type="text" 
             icon={<LogoutOutlined />} 
             onClick={handleLogout} 
-            style={{ color: '#fff' }}
+            style={{ color: '#fff', whiteSpace: 'nowrap' }}
             aria-label="Logout"
           >
             Logout
           </Button>
-        </Space>
+        </div>
       </Header>
       <Content className="content-wrapper" role="main">
         {children}

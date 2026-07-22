@@ -174,7 +174,7 @@ export default function BidDetail() {
 
       {/* Bid Details */}
       <Card title="Bid Information" style={{ marginBottom: 20 }}>
-        <Descriptions column={2} bordered size="small">
+        <Descriptions column={{ xs: 1, sm: 1, md: 2 }} bordered size="small">
           <Descriptions.Item label="Description" span={2}>{bid.description || 'No description provided'}</Descriptions.Item>
           <Descriptions.Item label="Supplier Deadline">{new Date(bid.deadline).toLocaleString()}</Descriptions.Item>
           <Descriptions.Item label="Evaluation Method">{bid.evaluation_method === 'lowest_price' ? 'Lowest Price' : 'Best Value'}</Descriptions.Item>
@@ -198,6 +198,7 @@ export default function BidDetail() {
             pagination={false}
             size="small"
             bordered
+            scroll={{ x: 500 }}
             columns={[
               { title: '#', width: 40, render: (_, __, idx) => idx + 1 },
               { title: 'Item Description', dataIndex: 'item_description' },

@@ -98,8 +98,8 @@ export default function TenantBidsList() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2>Procurement Bids</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>Procurement Bids</h2>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/admin/bids/new')}>
           Create New Bid
         </Button>
@@ -143,7 +143,7 @@ export default function TenantBidsList() {
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
           allowClear
-          style={{ width: 240 }}
+          style={{ width: 'min(240px, 100%)' }}
         />
         <Select
           value={statusFilter}

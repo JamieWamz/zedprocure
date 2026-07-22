@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Layout, Menu } from 'antd';
+import { Layout, Menu, Drawer, Button } from 'antd';
 import {
   DashboardOutlined,
   FileTextOutlined,
@@ -9,6 +9,7 @@ import {
   DollarOutlined,
   UserOutlined,
   BankOutlined,
+  MenuOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -29,8 +30,21 @@ export default function AdminPortal() {
   const { user } = useAuth();
   const role = user?.role;
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Track viewport size for responsive sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (!mobile) setMobileDrawerOpen(false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const menuItems = useMemo(() => {
     const items = [];
@@ -55,6 +69,12 @@ export default function AdminPortal() {
       navigate(menuItems[0].key, { replace: true });
     }
   }, [location.pathname, menuItems, navigate]);
+
+  // Close mobile drawer on navigation
+  const handleMenuClick = ({ key }) => {
+    navigate(key);
+    if (isMobile) setMobileDrawerOpen(false);
+  };
 
   const renderContent = () => {
     const path = location.pathname;
@@ -86,22 +106,80 @@ export default function AdminPortal() {
     (item.key !== '/admin' && location.pathname.startsWith(`${item.key}/`))
   ))?.key || '/admin';
 
+  const sidebarMenu = (
+    <>
+      <div style={{ height: 32, margin: 16, background: 'rgba(255,255,255,0.1)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#fff' }}>
+        Admin Panel
+      </div>
+      <Menu
+        mode="inline"
+        selectedKeys={[selectedKey]}
+        items={menuItems}
+        onClick={handleMenuClick}
+        style={{ background: 'transparent', color: '#fff', borderRight: 0 }}
+        theme="dark"
+      />
+    </>
+  );
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} theme="light" width={220} className="sidebar-gradient">
-        <div style={{ height: 32, margin: 16, background: 'rgba(255,255,255,0.1)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#fff' }}>
-          Admin Panel
+      {/* Desktop Sider */}
+      {!isMobile && (
+        <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} theme="light" width={220} className="sidebar-gradient">
+          {sidebarMenu}
+        </Sider>
+      )}
+
+      {/* Mobile hamburger button */}
+      {isMobile && (
+        <div style={{
+          position: 'fixed',
+          top: 64,
+          left: 0,
+          zIndex: 100,
+          background: '#001529',
+          borderBottomRightRadius: 8,
+          padding: '4px 8px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        }}>
+          <Button
+            type="text"
+            icon={<MenuOutlined />}
+            onClick={() => setMobileDrawerOpen(true)}
+            style={{ color: '#fff', fontSize: 18 }}
+            aria-label="Open navigation menu"
+          />
         </div>
+      )}
+
+      {/* Mobile Drawer */}
+      <Drawer
+        title="Admin Panel"
+        placement="left"
+        onClose={() => setMobileDrawerOpen(false)}
+        open={mobileDrawerOpen}
+        styles={{ body: { padding: 0, background: '#001529' } }}
+        width={260}
+        headerStyle={{ background: '#001529', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}
+      >
         <Menu
           mode="inline"
           selectedKeys={[selectedKey]}
           items={menuItems}
-          onClick={({ key }) => navigate(key)}
+          onClick={handleMenuClick}
           style={{ background: 'transparent', color: '#fff', borderRight: 0 }}
           theme="dark"
         />
-      </Sider>
-      <Content style={{ padding: '24px', background: 'transparent', minHeight: 280 }}>
+      </Drawer>
+
+      {/* Main Content */}
+      <Content style={{ 
+        padding: isMobile ? '12px' : '24px', 
+        paddingLeft: isMobile ? '52px' : '24px',
+        background: 'transparent', 
+        minHeight: 280 
+      }}>
         {renderContent()}
       </Content>
     </Layout>
