@@ -872,5 +872,4 @@ router.post('/bids/:bidId/invite', authenticate, async (req, res) => {
   }
 });
 
-}
 module.exports = router;
