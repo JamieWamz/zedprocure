@@ -39,14 +39,20 @@ router.post('/bids/:bidId/award', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Forbidden: bid belongs to another tenant' });
     }
 
-    // Verify supplier was invited to this bid
-    const { rows: [invited] } = await client.query(
+    // Ensure supplier entry exists in bid_suppliers table
+    let { rows: [invited] } = await client.query(
       `SELECT id FROM bid_suppliers WHERE bid_id = $1 AND supplier_id = $2`,
       [bidId, supplier_id]
     );
     if (!invited) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Supplier was not invited to this bid' });
+      const { rows: [newInv] } = await client.query(
+        `INSERT INTO bid_suppliers (bid_id, supplier_id, accepted, accepted_at)
+         VALUES ($1, $2, true, now())
+         ON CONFLICT (bid_id, supplier_id) DO UPDATE SET accepted = true
+         RETURNING id`,
+        [bidId, supplier_id]
+      );
+      invited = newInv;
     }
 
     // Update bid status to awarded

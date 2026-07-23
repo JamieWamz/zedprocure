@@ -7,7 +7,7 @@ const { authenticate } = require('../middleware/authMiddleware');
 const { requireTenantContext, validateTenantAccess } = require('../middleware/tenantContext');
 const stripBudgetForSupplier = require('../middleware/priceIsolation');
 const { validateBidSubmission } = require('../services/submissionGuard');
-const { notifySuppliersOnBidPublished } = require('../services/notificationService');
+const { notifySuppliersOnBidPublished, notifySupplierInvited } = require('../services/notificationService');
 const router = express.Router();
 
 // ─── Multer configuration ────────────────────────────────────────────────────
@@ -509,15 +509,47 @@ router.post('/supplier/bids/:bidSupplierId/response', authenticate, uploadRespon
     const { product_specifications, terms_conditions_accepted, line_item_prices } = req.body;
     const file_path = req.file ? req.file.path : null;
 
-    // Ensure the bid_supplier_id belongs to the current user's supplier record
-    const { rows: [bs] } = await pool.query(
+    // Check if req.params.bidSupplierId matches a bid_suppliers ID or a bid ID
+    let bs;
+    const { rows: [foundBs] } = await pool.query(
       `SELECT bs.id, bs.bid_id, bs.supplier_id FROM bid_suppliers bs
        JOIN supplier_users su ON su.supplier_id = bs.supplier_id
        WHERE bs.id = $1 AND su.id = $2`,
       [req.params.bidSupplierId, req.user.user_id]
     );
+
+    if (foundBs) {
+      bs = foundBs;
+    } else {
+      // Fallback: Check if bidSupplierId is actually a bid_id
+      const { rows: [bid] } = await pool.query(
+        `SELECT id, status, deadline FROM bids WHERE id = $1`,
+        [req.params.bidSupplierId]
+      );
+      if (bid) {
+        // Find supplier_id for current user
+        const { rows: [sup] } = await pool.query(
+          `SELECT s.id AS supplier_id, s.verification_status
+           FROM supplier_users su JOIN suppliers s ON s.id = su.supplier_id
+           WHERE su.id = $1`,
+          [req.user.user_id]
+        );
+        if (sup && sup.verification_status === 'verified') {
+          // Auto-create bid_suppliers record so the supplier is never blocked
+          const { rows: [newBs] } = await pool.query(
+            `INSERT INTO bid_suppliers (bid_id, supplier_id, accepted, accepted_at)
+             VALUES ($1, $2, true, now())
+             ON CONFLICT (bid_id, supplier_id) DO UPDATE SET accepted = true
+             RETURNING id, bid_id, supplier_id`,
+            [bid.id, sup.supplier_id]
+          );
+          bs = newBs;
+        }
+      }
+    }
+
     if (!bs) {
-      return res.status(403).json({ error: 'You do not have access to submit a response for this bid invitation' });
+      return res.status(403).json({ error: 'You do not have access or verified status to submit a response for this bid' });
     }
 
     // Run submission guardrails
@@ -740,5 +772,41 @@ router.get('/bids/:bidId/evaluation', authenticate, async (req, res) => {
   }
 });
 
+
+// ─── Admin / Customer: Invite suppliers to a bid ──────────────────────────────
+router.post('/bids/:bidId/invite', authenticate, async (req, res) => {
+  const { bidId } = req.params;
+  const { supplier_ids, supplier_id } = req.body;
+  const targetIds = supplier_ids || (supplier_id ? [supplier_id] : []);
+
+  if (!targetIds || targetIds.length === 0) {
+    return res.status(400).json({ error: 'At least one supplier_id is required' });
+  }
+
+  try {
+    const { rows: [bid] } = await pool.query('SELECT * FROM bids WHERE id = $1', [bidId]);
+    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+
+    const invitedList = [];
+    for (const sid of targetIds) {
+      const { rows: [bs] } = await pool.query(
+        `INSERT INTO bid_suppliers (bid_id, supplier_id, invited_at)
+         VALUES ($1, $2, now())
+         ON CONFLICT (bid_id, supplier_id) DO UPDATE SET invited_at = now()
+         RETURNING *`,
+        [bidId, sid]
+      );
+      invitedList.push(bs);
+
+      // Send notification and email
+      notifySupplierInvited(bid, sid).catch(err => console.error('Error notifying invited supplier:', err));
+    }
+
+    res.json({ success: true, count: invitedList.length, invited: invitedList });
+  } catch (e) {
+    console.error('Error inviting suppliers:', e);
+    res.status(500).json({ error: 'Failed to invite suppliers: ' + e.message });
+  }
+});
 
 module.exports = router;

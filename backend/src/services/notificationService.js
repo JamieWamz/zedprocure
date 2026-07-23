@@ -119,8 +119,101 @@ async function notifyVerificationDecision(supplierId, status, notes, adminName) 
   return supplierUsers.length;
 }
 
+/**
+ * Notify all Business Admin users (platform_admins) about a critical event.
+ */
+async function notifyBusinessAdmins({ type, title, message, link, metadata }) {
+  try {
+    const { rows: admins } = await pool.query(
+      `SELECT id, email, full_name FROM platform_admins WHERE is_active = true`
+    );
+
+    for (const admin of admins) {
+      await createNotification({
+        userId: admin.id,
+        userType: 'platform_admin',
+        type: type || 'admin_alert',
+        title,
+        message,
+        link: link || '/admin',
+        metadata,
+      });
+
+      // Send email if configured
+      await sendMail({
+        to: admin.email,
+        subject: title,
+        html: `
+          <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+            <h2 style="color: #1e3a8a;">${title}</h2>
+            <p>Dear ${admin.full_name},</p>
+            <p>${message}</p>
+            <a href="${process.env.APP_URL || 'http://localhost'}${link || '/admin'}"
+               style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin: 16px 0;">
+              View Dashboard
+            </a>
+          </div>
+        `,
+      }).catch(e => console.error('Error sending admin email:', e.message));
+    }
+    return admins.length;
+  } catch (e) {
+    console.error('Error notifying business admins:', e);
+    return 0;
+  }
+}
+
+/**
+ * Notify a specific supplier when they are invited to a bid.
+ */
+async function notifySupplierInvited(bid, supplierId) {
+  try {
+    const { rows: supplierUsers } = await pool.query(
+      'SELECT id, email, full_name FROM supplier_users WHERE supplier_id = $1',
+      [supplierId]
+    );
+
+    for (const user of supplierUsers) {
+      await createNotification({
+        userId: user.id,
+        userType: 'supplier_user',
+        type: 'bid_invitation',
+        title: `Invited to Bid: ${bid.title}`,
+        message: `You have been invited to bid on "${bid.title}". Deadline: ${new Date(bid.deadline).toLocaleString()}`,
+        link: `/supplier/bids/${bid.id}`,
+        metadata: { bid_id: bid.id, supplier_id: supplierId },
+      });
+
+      await sendMail({
+        to: user.email,
+        subject: `Bid Invitation: ${bid.title}`,
+        html: `
+          <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+            <h2 style="color: #1e3a8a;">Bid Invitation</h2>
+            <p>Dear ${user.full_name},</p>
+            <p>Your company has been explicitly invited to participate in a procurement bid on ZedProcure.</p>
+            <p><strong>${bid.title}</strong></p>
+            <p>Deadline: ${new Date(bid.deadline).toLocaleString()}</p>
+            <a href="${process.env.APP_URL || 'http://localhost'}/supplier/bids/${bid.id}"
+               style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin: 16px 0;">
+              View & Respond
+            </a>
+          </div>
+        `,
+      }).catch(e => console.error('Error sending supplier invite email:', e.message));
+    }
+    return supplierUsers.length;
+  } catch (e) {
+    console.error('Error notifying supplier invite:', e);
+    return 0;
+  }
+}
+
 module.exports = {
   createNotification,
   notifySuppliersOnBidPublished,
   notifyVerificationDecision,
+  notifyBusinessAdmins,
+  notifySupplierInvited,
 };
+

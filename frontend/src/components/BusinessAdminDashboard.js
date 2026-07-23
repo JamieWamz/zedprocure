@@ -63,15 +63,20 @@ export default function BusinessAdminDashboard() {
   const [verifNotes, setVerifNotes] = useState('');
   const [verifSubmitting, setVerifSubmitting] = useState(false);
 
+  // Customer Procurement Requests State
+  const [adminProcurementRequests, setAdminProcurementRequests] = useState([]);
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [summaryRes, walletRes] = await Promise.all([
+      const [summaryRes, walletRes, reqRes] = await Promise.all([
         axios.get('/api/dashboard/summary'),
         axios.get('/api/wallet').catch(() => ({ data: { balance: '0.00', transactions: [] } })),
+        axios.get('/api/admin/procurement-requests').catch(() => ({ data: [] })),
       ]);
       setData(summaryRes.data);
       setWallet(walletRes.data);
+      setAdminProcurementRequests(reqRes.data || []);
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to load dashboard');
     } finally {
@@ -178,6 +183,16 @@ export default function BusinessAdminDashboard() {
       }
     } finally {
       setVerifSubmitting(false);
+    }
+  };
+
+  const handleUpdateProcurementRequestStatus = async (requestId, status) => {
+    try {
+      await axios.put(`/api/admin/procurement-requests/${requestId}/status`, { status });
+      message.success(`Procurement request status updated to ${status}`);
+      fetchData();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Failed to update request');
     }
   };
 
@@ -562,6 +577,63 @@ export default function BusinessAdminDashboard() {
                 ]}
               />
             ) : <Alert type="success" showIcon message="No active bid deadlines need immediate attention" />}
+          </Card>
+        </Col>
+        <Col xs={24} lg={24}>
+          <Card
+            title={<span><SendOutlined /> Customer Procurement Requests & Requirements ({adminProcurementRequests.length})</span>}
+            className="table-card"
+            style={{ marginBottom: 16 }}
+          >
+            {adminProcurementRequests.length > 0 ? (
+              <Table
+                rowKey="id"
+                dataSource={adminProcurementRequests}
+                pagination={{ pageSize: 5 }}
+                size="small"
+                scroll={{ x: 700 }}
+                columns={[
+                  { title: 'Title', dataIndex: 'title', render: v => <Text strong>{v}</Text> },
+                  { title: 'Organization', dataIndex: 'tenant_name', render: v => v || '-' },
+                  { title: 'Customer', dataIndex: 'customer_name', render: (v, r) => <div><div>{v}</div><Text type="secondary" style={{ fontSize: 11 }}>{r.customer_email}</Text></div> },
+                  { title: 'Est. Budget', dataIndex: 'estimated_budget', render: v => v ? money(v) : 'N/A' },
+                  { title: 'Payment Method', dataIndex: 'payment_method', render: v => <Tag>{v || 'N/A'}</Tag> },
+                  {
+                    title: 'Status', dataIndex: 'status',
+                    render: v => (
+                      <Tag color={v === 'approved' || v === 'converted_to_bid' ? 'success' : v === 'rejected' ? 'error' : 'processing'}>
+                        {String(v).replaceAll('_', ' ')}
+                      </Tag>
+                    ),
+                  },
+                  {
+                    title: 'Actions',
+                    render: (_, record) => (
+                      <Space size="small">
+                        {record.status === 'pending' && (
+                          <>
+                            <Button size="small" type="primary" onClick={() => handleUpdateProcurementRequestStatus(record.id, 'approved')}>
+                              Approve
+                            </Button>
+                            <Button size="small" onClick={() => navigate('/admin/bids/new')}>
+                              Convert to Bid
+                            </Button>
+                            <Button size="small" danger onClick={() => handleUpdateProcurementRequestStatus(record.id, 'rejected')}>
+                              Reject
+                            </Button>
+                          </>
+                        )}
+                        {record.status !== 'pending' && (
+                          <Button size="small" onClick={() => navigate('/admin/bids/new')}>
+                            Create Tender
+                          </Button>
+                        )}
+                      </Space>
+                    ),
+                  },
+                ]}
+              />
+            ) : <Alert type="info" showIcon message="No custom customer procurement requests submitted yet" />}
           </Card>
         </Col>
       </Row>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Descriptions, Tag, List, Typography, Spin, Alert, Button, message, Input, Divider, Space, Steps, Table, InputNumber } from 'antd';
+import { Card, Descriptions, Tag, List, Typography, Spin, Alert, Button, message, Input, Divider, Space, Steps, Table, InputNumber, Modal, Select } from 'antd';
 import { useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
@@ -27,9 +27,33 @@ export default function BidDetail() {
   const [responseFile, setResponseFile] = useState(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [submittingResponse, setSubmittingResponse] = useState(false);
+  const [lineItemPrices, setLineItemPrices] = useState({});
 
-  // ─── Line-item pricing state ──────────────────────────────────────────────
-  const [lineItemPrices, setLineItemPrices] = useState({}); // { [bid_line_item_id]: unit_price }
+  // Invite suppliers state
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [allSuppliers, setAllSuppliers] = useState([]);
+  const [selectedSuppliersToInvite, setSelectedSuppliersToInvite] = useState([]);
+  const [invitingLoading, setInvitingLoading] = useState(false);
+
+  const handleSendInvitations = async () => {
+    if (!selectedSuppliersToInvite || selectedSuppliersToInvite.length === 0) {
+      return message.error('Please select at least one supplier to invite');
+    }
+    setInvitingLoading(true);
+    try {
+      await axios.post(`/api/bids/${bidId}/invite`, {
+        supplier_ids: selectedSuppliersToInvite,
+      });
+      message.success('Invitations sent successfully!');
+      setInviteModalOpen(false);
+      setSelectedSuppliersToInvite([]);
+      fetchBid();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Failed to send invitations');
+    } finally {
+      setInvitingLoading(false);
+    }
+  };
 
   const isSupplier = () => user?.role === 'supplier_user';
 
@@ -241,7 +265,31 @@ export default function BidDetail() {
       )}
 
       {/* Invited Suppliers */}
-      <Card title={`Invited Suppliers (${bid.suppliers?.length || 0})`} style={{ marginBottom: 20 }}>
+      <Card
+        title={`Invited Suppliers (${bid.suppliers?.length || 0})`}
+        extra={
+          (user?.role === 'business_admin' || user?.role === 'system_admin' || user?.role === 'customer') && (
+            <Button
+              type="primary"
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={async () => {
+                setInviteModalOpen(true);
+                try {
+                  const { data } = await axios.get('/api/admin/suppliers/pending');
+                  setAllSuppliers(data || []);
+                } catch (_) {
+                  // Fallback
+                  setAllSuppliers([]);
+                }
+              }}
+            >
+              Invite Suppliers
+            </Button>
+          )
+        }
+        style={{ marginBottom: 20 }}
+      >
         {bid.suppliers && bid.suppliers.length > 0 ? (
           <List
             dataSource={bid.suppliers}
@@ -261,7 +309,7 @@ export default function BidDetail() {
               </List.Item>
             )}
           />
-        ) : <Text type="secondary">No suppliers invited yet.</Text>}
+        ) : <Text type="secondary">No suppliers invited yet. Click "Invite Suppliers" above to invite companies to bid.</Text>}
       </Card>
 
       {/* Customer Requirements */}
@@ -409,6 +457,42 @@ export default function BidDetail() {
           )}
         </Card>
       )}
+
+      {/* Invite Suppliers Modal */}
+      <Modal
+        title={
+          <Space>
+            <PlusOutlined style={{ color: '#1677ff' }} />
+            <span>Invite Suppliers to Bid: {bid.title}</span>
+          </Space>
+        }
+        open={inviteModalOpen}
+        onCancel={() => setInviteModalOpen(false)}
+        onOk={handleSendInvitations}
+        confirmLoading={invitingLoading}
+        okText="Send Invitations"
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="Selected suppliers will receive an in-app notification and email invitation to view and bid on this opportunity."
+          style={{ marginBottom: 16 }}
+        />
+        <Select
+          mode="multiple"
+          style={{ width: '100%' }}
+          placeholder="Select verified suppliers to invite"
+          value={selectedSuppliersToInvite}
+          onChange={setSelectedSuppliersToInvite}
+          optionFilterProp="children"
+        >
+          {allSuppliers.map(s => (
+            <Select.Option key={s.id} value={s.id}>
+              {s.company_name} ({s.verification_status || 'Pending'})
+            </Select.Option>
+          ))}
+        </Select>
+      </Modal>
     </div>
   );
 }

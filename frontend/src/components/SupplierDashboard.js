@@ -246,11 +246,38 @@ export default function SupplierDashboard() {
     },
   ];
 
+function getOrderProgress(status) {
+  switch (status) {
+    case 'pending_acceptance': return { percent: 15, status: 'active', label: 'Pending Acceptance', color: '#faad14' };
+    case 'accepted': return { percent: 40, status: 'active', label: 'Accepted — Ready for Delivery', color: '#1677ff' };
+    case 'delivery_in_progress': return { percent: 70, status: 'active', label: 'Delivery in Progress', color: '#13c2c2' };
+    case 'delivered': return { percent: 88, status: 'active', label: 'Delivered — Awaiting Inspection', color: '#722ed1' };
+    case 'completed': return { percent: 100, status: 'success', label: 'Completed & Funds Released', color: '#52c41a' };
+    case 'disputed': return { percent: 50, status: 'exception', label: 'Order Disputed', color: '#ff4d4f' };
+    default: return { percent: 10, status: 'active', label: 'Initiated', color: '#d9d9d9' };
+  }
+}
+
   const orderColumns = [
     { title: 'Order', dataIndex: 'id', render: v => <Text code>{v.slice(0, 8)}</Text> },
     { title: 'Tenant', dataIndex: 'tenant_name', render: v => v || '-' },
     { title: 'Total', dataIndex: 'total_amount', render: v => money(v) },
-    { title: 'Status', dataIndex: 'status', render: v => <Tag>{String(v).replaceAll('_', ' ')}</Tag> },
+    {
+      title: 'Fulfillment Stage',
+      key: 'progress',
+      width: 200,
+      render: (_, row) => {
+        const prog = getOrderProgress(row.status);
+        return (
+          <Tooltip title={prog.label}>
+            <div>
+              <Progress percent={prog.percent} status={prog.status} strokeColor={prog.color} size="small" />
+              <Text style={{ fontSize: 11, color: '#8c8c8c' }}>{prog.label}</Text>
+            </div>
+          </Tooltip>
+        );
+      },
+    },
     {
       title: 'Escrow',
       render: (_, row) => <Tag color={['funded', 'released'].includes(row.escrow_status) ? 'success' : 'warning'}>{row.escrow_status || 'not funded'}</Tag>,
