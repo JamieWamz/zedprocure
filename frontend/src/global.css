@@ -9,15 +9,19 @@ html, body {
   padding: 0;
   min-height: 100vh;
   font-family: var(--font-family-sans);
-  -webkit-text-size-adjust: 100%;
-  -ms-text-size-adjust: 100%;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background: var(--bg-color-light);
   color: var(--text-color-light);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 html[data-theme='dark'] body {
-  background: var(--bg-color-dark);
+  background-color: var(--bg-color-dark);
+  background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 20px 20px;
   color: var(--text-color-dark);
 }
 
@@ -30,14 +34,24 @@ html[data-theme='dark'] body {
   background: transparent;
 }
 
+.ant-layout-header {
+  background: var(--card-bg-light);
+  border-bottom: 1px solid var(--border-color-light);
+}
+html[data-theme='dark'] .ant-layout-header {
+  background: var(--card-bg-dark);
+  border-bottom: 1px solid var(--border-color-dark);
+}
+
+
 .ant-layout-content {
   background: transparent;
 }
 
 /* ── Cards ──────────────────────────────────────────────── */
 .ant-card {
-  border-radius: var(--border-radius-md);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
   background-color: var(--card-bg-light);
   border: 1px solid var(--border-color-light);
 }
@@ -47,23 +61,75 @@ html[data-theme='dark'] .ant-card {
   border: 1px solid var(--border-color-dark);
 }
 
-.ant-table {
-  border-radius: var(--border-radius-md);
+.ant-card-head {
+  font-weight: 600;
+  border-color: var(--border-color-light) !important;
+}
+html[data-theme='dark'] .ant-card-head {
+  border-color: var(--border-color-dark) !important;
+}
+
+.ant-table-wrapper {
+  border-radius: var(--border-radius-lg);
   overflow: hidden;
+  border: 1px solid var(--border-color-light);
+}
+html[data-theme='dark'] .ant-table-wrapper {
+  border-color: var(--border-color-dark);
 }
 
 .ant-btn-primary {
   background: var(--primary-color-light);
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--border-radius-md);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.1);
+  font-weight: 600;
 }
 
 html[data-theme='dark'] .ant-btn-primary {
   background: var(--primary-color-dark);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+html[data-theme='dark'] .ant-btn-primary:hover {
+  background: #4f8ff7;
 }
 
 
-.ant-input, .ant-picker, .ant-select-selector {
-  border-radius: var(--border-radius-sm) !important;
+.ant-input, .ant-picker, .ant-select-selector, .ant-input-number {
+  border-radius: var(--border-radius-md) !important;
+  background-color: var(--bg-color-light) !important;
+  border-color: var(--border-color-light) !important;
+}
+
+html[data-theme='dark'] .ant-input, 
+html[data-theme='dark'] .ant-picker, 
+html[data-theme='dark'] .ant-select-selector,
+html[data-theme='dark'] .ant-input-number {
+  background-color: var(--bg-color-dark) !important;
+  border-color: var(--border-color-dark) !important;
+  color: var(--text-color-dark) !important;
+}
+
+.ant-select-dropdown, .ant-picker-dropdown {
+  border-radius: var(--border-radius-lg) !important;
+  background-color: var(--card-bg-light) !important;
+  border: 1px solid var(--border-color-light) !important;
+}
+html[data-theme='dark'] .ant-select-dropdown, html[data-theme='dark'] .ant-picker-dropdown {
+  background-color: var(--card-bg-dark) !important;
+  border-color: var(--border-color-dark) !important;
+}
+html[data-theme='dark'] .ant-select-item-option-active {
+  background-color: rgba(59, 130, 246, 0.2) !important;
+}
+html[data-theme='dark'] .ant-select-item-option-selected {
+  background-color: var(--primary-color-dark) !important;
+  color: #fff !important;
+}
+html[data-theme='dark'] .ant-picker-cell-in-view.ant-picker-cell-selected .ant-picker-cell-inner {
+  background-color: var(--primary-color-dark) !important;
+}
+html[data-theme='dark'] .ant-picker-cell-in-view.ant-picker-cell-today .ant-picker-cell-inner::before {
+  border-color: var(--primary-color-dark) !important;
 }
 
 /* ============================================================

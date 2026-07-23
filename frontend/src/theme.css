@@ -2,18 +2,18 @@
 
 :root {
   /* ─── Light Theme ────────────────────────────────────────────────── */
-  --bg-color-light: #f8f9fa;
-  --text-color-light: #212529;
-  --primary-color-light: #0052cc;
+  --bg-color-light: #f7f8fc;
+  --text-color-light: #1f2937;
+  --primary-color-light: #2563eb;
   --card-bg-light: #ffffff;
-  --border-color-light: #dee2e6;
+  --border-color-light: #e5e7eb;
 
   /* ─── Dark Theme ─────────────────────────────────────────────────── */
-  --bg-color-dark: #0d1117;
-  --text-color-dark: #c9d1d9;
-  --primary-color-dark: #58a6ff;
-  --card-bg-dark: #161b22;
-  --border-color-dark: #30363d;
+  --bg-color-dark: #111827;
+  --text-color-dark: #d1d5db;
+  --primary-color-dark: #3b82f6;
+  --card-bg-dark: #1f2937;
+  --border-color-dark: #374151;
 
   /* ─── Typography ─────────────────────────────────────────────────── */
   --font-family-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;

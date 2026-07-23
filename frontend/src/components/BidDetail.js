@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Card, Descriptions, Tag, List, Typography, Spin, Alert, Button, message, Input, Divider, Space, Steps, Table, InputNumber } from 'antd';
 import { useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined, ShoppingCartOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
+
 import axios from 'axios';
 
 const { Text, Title } = Typography;
@@ -11,7 +12,7 @@ export default function BidDetail() {
   // Extract bidId from either route params (for /supplier/bids/:bidId) or from pathname (for /admin/bids/:bidId)
   const params = useParams();
   const location = useLocation();
-  const bidId = params.bidId || location.pathname.split('/').pop();
+  const bidId = params.bidId;
 
   const { user } = useAuth();
   const [bid, setBid] = useState(null);
@@ -21,6 +22,7 @@ export default function BidDetail() {
   // Supplier actions
   const [acceptLoading, setAcceptLoading] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
+  const [expressInterestLoading, setExpressInterestLoading] = useState(false);
   const [responseSpecs, setResponseSpecs] = useState('');
   const [responseFile, setResponseFile] = useState(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -52,6 +54,19 @@ export default function BidDetail() {
       fetchBid();
     } catch { message.error('Action failed'); }
     finally { setAcceptLoading(false); }
+  };
+
+  const handleExpressInterest = async () => {
+    setExpressInterestLoading(true);
+    try {
+      await axios.post(`/api/supplier/bids/${bidId}/express-interest`);
+      message.success('Interest expressed! You can now submit your response.');
+      fetchBid();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Failed to express interest');
+    } finally {
+      setExpressInterestLoading(false);
+    }
   };
 
   const handlePayFee = async () => {
@@ -157,23 +172,22 @@ export default function BidDetail() {
         <Tag color={statusColor[bid.status] || 'default'} style={{ fontSize: 14, padding: '2px 12px' }}>{bid.status.toUpperCase()}</Tag>
       </Space>
 
-      {/* Bid Progress Steps */}
-      <Card size="small" style={{ marginBottom: 20 }}>
-        <Steps
-          size="small"
-          current={['draft', 'open', 'evaluation', 'awarded', 'closed'].indexOf(bid.status)}
-          items={[
-            { title: 'Draft' },
-            { title: 'Open for Bids' },
-            { title: 'Under Evaluation' },
-            { title: 'Awarded' },
-            { title: 'Closed' },
-          ]}
-        />
-      </Card>
-
       {/* Bid Details */}
       <Card title="Bid Information" style={{ marginBottom: 20 }}>
+        {/* Bid Progress Steps */}
+        <div style={{ marginBottom: 24, padding: '0 8px' }}>
+          <Steps
+            current={['draft', 'open', 'evaluation', 'awarded', 'closed'].indexOf(bid.status)}
+            items={[
+              { title: 'Draft', description: 'Initial creation' },
+              { title: 'Open', description: 'Accepting supplier bids' },
+              { title: 'Evaluation', description: 'Reviewing submissions' },
+              { title: 'Awarded', description: 'Supplier has been selected' },
+              { title: 'Closed', description: 'Procurement complete' },
+            ]}
+          />
+        </div>
+
         <Descriptions column={{ xs: 1, sm: 1, md: 2 }} bordered size="small">
           <Descriptions.Item label="Description" span={2}>{bid.description || 'No description provided'}</Descriptions.Item>
           <Descriptions.Item label="Supplier Deadline">{new Date(bid.deadline).toLocaleString()}</Descriptions.Item>
@@ -370,7 +384,28 @@ export default function BidDetail() {
               </div>
             </>
           ) : (
-            <Text type="secondary">You are not invited to this bid.</Text>
+            // ─── No invitation yet — show Express Interest for global bids ─────────
+            bid.visibility === 'global' ? (
+              <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                <InfoCircleOutlined style={{ fontSize: 48, color: '#1677ff', marginBottom: 16 }} />
+                <Title level={4}>This is an open global bid</Title>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 20, maxWidth: 480, margin: '0 auto 20px' }}>
+                  You have not yet been invited to this bid. Click below to express interest — this will create an invitation
+                  so you can submit your pricing and technical response.
+                </Text>
+                <Button 
+                  type="primary" 
+                  size="large" 
+                  icon={<PlusOutlined />} 
+                  onClick={handleExpressInterest} 
+                  loading={expressInterestLoading}
+                >
+                  Express Interest
+                </Button>
+              </div>
+            ) : (
+              <Text type="secondary">You are not invited to this bid.</Text>
+            )
           )}
         </Card>
       )}
