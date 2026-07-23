@@ -257,25 +257,6 @@ router.put('/bids/:bidId/publish', authenticate, async (req, res) => {
   }
 });
 
-// ─── Get global open bids (marketplace listing for suppliers) ─────────────────
-router.get('/bids/global', authenticate, async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      `SELECT b.id, b.title, b.description, b.deadline, b.evaluation_method,
-              b.bidding_fee_amount, b.business_category, b.views_count,
-              b.created_at, t.name AS tenant_name
-       FROM bids b
-       JOIN tenants t ON t.id = b.tenant_id
-       WHERE b.status = 'open' AND b.visibility = 'global'
-       ORDER BY b.created_at DESC`
-    );
-    res.json(rows);
-  } catch (e) {
-    console.error('Error fetching global bids:', e);
-    res.status(500).json({ error: 'Failed to fetch global bids' });
-  }
-});
-
 // ─── Customer: Get all active bids for my tenant ──────────────────────────────
 router.get('/bids/my-tenant-bids', authenticate, async (req, res) => {
   if (req.user.role !== 'customer') {
@@ -293,6 +274,25 @@ router.get('/bids/my-tenant-bids', authenticate, async (req, res) => {
   } catch (e) {
     console.error('Error fetching tenant bids:', e);
     res.status(500).json({ error: 'Failed to fetch tenant bids' });
+  }
+});
+
+// ─── Get global open bids (marketplace listing for suppliers) ─────────────────
+router.get('/bids/global', authenticate, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT b.id, b.title, b.description, b.deadline, b.evaluation_method,
+              b.bidding_fee_amount, b.business_category, b.views_count,
+              b.created_at, t.name AS tenant_name
+       FROM bids b
+       JOIN tenants t ON t.id = b.tenant_id
+       WHERE b.status = 'open' AND b.visibility = 'global'
+       ORDER BY b.created_at DESC`
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error('Error fetching global bids:', e);
+    res.status(500).json({ error: 'Failed to fetch global bids' });
   }
 });
 
@@ -439,6 +439,66 @@ router.post('/supplier/bids/:bidSupplierId/respond', authenticate, async (req, r
   } catch (e) {
     console.error('Error responding to bid:', e);
     res.status(500).json({ error: 'Failed to respond to bid' });
+  }
+});
+
+// ─── Supplier: express interest in a global bid (creates invitation) ───────────
+// Allows a verified supplier to join a global open bid by creating a bid_suppliers
+// record, which is required before they can submit a response.
+router.post('/supplier/bids/:bidId/express-interest', authenticate, async (req, res) => {
+  if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { bidId } = req.params;
+
+    // 1. Bid exists, is open, and deadline hasn't passed
+    const { rows: [bid] } = await pool.query(
+      `SELECT id, status, deadline, title FROM bids WHERE id = $1`,
+      [bidId]
+    );
+    if (!bid) {
+      return res.status(404).json({ error: 'Bid not found' });
+    }
+    if (bid.status !== 'open') {
+      return res.status(422).json({ error: 'This bid is not currently accepting submissions' });
+    }
+    if (new Date() > new Date(bid.deadline)) {
+      return res.status(422).json({ error: 'The deadline for this bid has passed' });
+    }
+
+    // 2. Supplier is verified
+    const { rows: [supplierUser] } = await pool.query(
+      `SELECT s.id AS supplier_id, s.verification_status, s.company_name
+       FROM supplier_users su
+       JOIN suppliers s ON s.id = su.supplier_id
+       WHERE su.id = $1`,
+      [req.user.user_id]
+    );
+    if (!supplierUser) {
+      return res.status(403).json({ error: 'Supplier record not found' });
+    }
+    if (supplierUser.verification_status !== 'verified') {
+      return res.status(403).json({
+        error: 'Your supplier account must be VERIFIED before you can express interest in bids',
+      });
+    }
+
+    // 3. Create bid_suppliers record if it doesn't already exist
+    const { rows: [bidSupplier] } = await pool.query(
+      `INSERT INTO bid_suppliers (bid_id, supplier_id, accepted, accepted_at)
+       VALUES ($1, $2, NULL, NULL)
+       ON CONFLICT (bid_id, supplier_id) DO UPDATE SET accepted = EXCLUDED.accepted
+       RETURNING id, bid_id, supplier_id, accepted, accepted_at, invited_at`,
+      [bidId, supplierUser.supplier_id]
+    );
+
+    res.status(201).json({
+      success: true,
+      bid_supplier_id: bidSupplier.id,
+      message: `Interest expressed in "${bid.title}". You can now submit your response.`,
+    });
+  } catch (e) {
+    console.error('Error expressing interest in bid:', e);
+    res.status(500).json({ error: 'Failed to express interest: ' + e.message });
   }
 });
 
