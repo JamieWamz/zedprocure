@@ -5,13 +5,13 @@ function envImage(key, fallback) {
 }
 
 export const cdnImages = {
-  loginHero: envImage('LOGIN_HERO', `${UNSPLASH}/photo-1497366754035-f200968a6e3b?auto=format&fit=crop&w=1600&q=75`),
+  loginHero: envImage('LOGIN_HERO', `${UNSPLASH}/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1920&q=80`),
   splash: [
-    envImage('SPLASH_1', `${UNSPLASH}/photo-1497366754035-f200968a6e3b?auto=format&fit=crop&w=1920&q=75`),
-    envImage('SPLASH_2', `${UNSPLASH}/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1920&q=75`),
-    envImage('SPLASH_3', `${UNSPLASH}/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1920&q=75`),
-    envImage('SPLASH_4', `${UNSPLASH}/photo-1497215842964-222b430dc094?auto=format&fit=crop&w=1920&q=75`),
-    envImage('SPLASH_5', `${UNSPLASH}/photo-1559136555-9303baea8ebd?auto=format&fit=crop&w=1920&q=75`),
+    envImage('SPLASH_1', `${UNSPLASH}/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1920&q=80`),
+    envImage('SPLASH_2', `${UNSPLASH}/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=1920&q=80`),
+    envImage('SPLASH_3', `${UNSPLASH}/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1920&q=80`),
+    envImage('SPLASH_4', `${UNSPLASH}/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1920&q=80`),
+    envImage('SPLASH_5', `${UNSPLASH}/photo-1559136555-9303baea8ebd?auto=format&fit=crop&w=1920&q=80`),
   ],
   admin: envImage('ADMIN', `${UNSPLASH}/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1600&q=75`),
   invoices: envImage('INVOICES', `${UNSPLASH}/photo-1554224154-26032ffc0d07?auto=format&fit=crop&w=1600&q=75`),
