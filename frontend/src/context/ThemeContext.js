@@ -31,7 +31,18 @@ export function ThemeProvider({ children }) {
   }, []);
   const value = useMemo(() => ({ appearance, resolvedTheme, setAppearance }), [appearance, resolvedTheme, setAppearance]);
 
-  return <ThemeContext.Provider value={value}><ConfigProvider theme={{ algorithm: resolvedTheme === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm }}>{children}</ConfigProvider></ThemeContext.Provider>;
+  return <ThemeContext.Provider value={value}>
+      <ConfigProvider theme={{
+        algorithm: resolvedTheme === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+        token: {
+          colorPrimary: resolvedTheme === 'dark' ? 'var(--primary-color-dark)' : 'var(--primary-color-light)',
+          colorBgBase: resolvedTheme === 'dark' ? 'var(--bg-color-dark)' : 'var(--bg-color-light)',
+          colorTextBase: resolvedTheme === 'dark' ? 'var(--text-color-dark)' : 'var(--text-color-light)',
+        }
+      }}>
+        {children}
+      </ConfigProvider>
+    </ThemeContext.Provider>;
 }
 
 export function useTheme() {
