@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Descriptions, Tag, List, Typography, Spin, Alert, Button, message, Input, Divider, Space, Steps, Table, InputNumber, Modal, Select } from 'antd';
+import { Card, Descriptions, Tag, List, Typography, Spin, Alert, Button, message, Input, Divider, Space, Steps, Table, InputNumber, Modal, Select, Form } from 'antd';
 import { useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined, EditOutlined } from '@ant-design/icons';
 
 import axios from 'axios';
 
@@ -34,6 +34,47 @@ export default function BidDetail() {
   const [allSuppliers, setAllSuppliers] = useState([]);
   const [selectedSuppliersToInvite, setSelectedSuppliersToInvite] = useState([]);
   const [invitingLoading, setInvitingLoading] = useState(false);
+
+  // Edit customer requirements state & handlers
+  const [editReqModalOpen, setEditReqModalOpen] = useState(false);
+  const [selectedReq, setSelectedReq] = useState(null);
+  const [editReqLoading, setEditReqLoading] = useState(false);
+  const [editForm] = Form.useForm();
+
+  const isAdmin = () => user?.role === 'business_admin' || user?.role === 'system_admin' || user?.role === 'tenant_admin';
+
+  const handleEditRequirementClick = (req) => {
+    setSelectedReq(req);
+    editForm.setFieldsValue({
+      budget_amount: req.budget_amount,
+      expected_delivery_time: req.expected_delivery_time,
+      payment_method: req.payment_method,
+      certification_standards: req.certification_standards,
+      specifications_file_path: req.specifications_file_path,
+    });
+    setEditReqModalOpen(true);
+  };
+
+  const handleEditRequirementSubmit = async (values) => {
+    if (!selectedReq) return;
+    setEditReqLoading(true);
+    try {
+      await axios.put(`/api/bids/${bidId}/requirements/${selectedReq.id}`, {
+        budget_amount: values.budget_amount,
+        expected_delivery_time: values.expected_delivery_time,
+        payment_method: values.payment_method,
+        certification_standards: values.certification_standards,
+        specifications_file_path: values.specifications_file_path,
+      });
+      message.success('Requirements updated successfully!');
+      setEditReqModalOpen(false);
+      fetchBid();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Failed to update requirements');
+    } finally {
+      setEditReqLoading(false);
+    }
+  };
 
   const handleSendInvitations = async () => {
     if (!selectedSuppliersToInvite || selectedSuppliersToInvite.length === 0) {
@@ -316,13 +357,27 @@ export default function BidDetail() {
       <Card title="Customer Requirements" style={{ marginBottom: 20 }}>
         {bid.requirements && bid.requirements.length > 0 ? (
           bid.requirements.map((req, idx) => (
-            <Descriptions key={idx} column={2} bordered size="small" style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="Budget (ZMW)">{req.budget_amount != null ? Number(req.budget_amount).toLocaleString() : 'Not specified'}</Descriptions.Item>
-              <Descriptions.Item label="Expected Delivery">{req.expected_delivery_time || 'N/A'}</Descriptions.Item>
-              <Descriptions.Item label="Payment Method">{req.payment_method || 'N/A'}</Descriptions.Item>
-              <Descriptions.Item label="Certification Standards">{req.certification_standards || 'N/A'}</Descriptions.Item>
-              {req.specifications_file_path && <Descriptions.Item label="Specifications File" span={2}><a href={req.specifications_file_path} target="_blank" rel="noreferrer">View File</a></Descriptions.Item>}
-            </Descriptions>
+            <div key={idx} style={{ marginBottom: 16 }}>
+              {isAdmin() && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                  <Button
+                    size="small"
+                    type="primary"
+                    icon={<EditOutlined />}
+                    onClick={() => handleEditRequirementClick(req)}
+                  >
+                    Edit Requirements
+                  </Button>
+                </div>
+              )}
+              <Descriptions column={2} bordered size="small">
+                <Descriptions.Item label="Budget (ZMW)">{req.budget_amount != null ? Number(req.budget_amount).toLocaleString() : 'Not specified'}</Descriptions.Item>
+                <Descriptions.Item label="Expected Delivery">{req.expected_delivery_time || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Payment Method">{req.payment_method || 'N/A'}</Descriptions.Item>
+                <Descriptions.Item label="Certification Standards">{req.certification_standards || 'N/A'}</Descriptions.Item>
+                {req.specifications_file_path && <Descriptions.Item label="Specifications File" span={2}><a href={req.specifications_file_path} target="_blank" rel="noreferrer">View File</a></Descriptions.Item>}
+              </Descriptions>
+            </div>
           ))
         ) : <Text type="secondary">No customer requirements submitted yet.</Text>}
       </Card>
@@ -492,6 +547,54 @@ export default function BidDetail() {
             </Select.Option>
           ))}
         </Select>
+      </Modal>
+
+      {/* Edit Requirements Modal */}
+      <Modal
+        title={
+          <Space>
+            <EditOutlined style={{ color: '#1677ff' }} />
+            <span>Edit Customer Requirements</span>
+          </Space>
+        }
+        open={editReqModalOpen}
+        onCancel={() => setEditReqModalOpen(false)}
+        footer={[
+          <Button key="back" onClick={() => setEditReqModalOpen(false)}>
+            Cancel
+          </Button>,
+          <Button key="submit" type="primary" loading={editReqLoading} onClick={() => editForm.submit()}>
+            Save Changes
+          </Button>
+        ]}
+      >
+        <Form form={editForm} layout="vertical" onFinish={handleEditRequirementSubmit}>
+          <Form.Item name="budget_amount" label="Budget Amount (ZMW)">
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="e.g. 150000" />
+          </Form.Item>
+          
+          <Form.Item name="expected_delivery_time" label="Expected Delivery Timeline">
+            <Input placeholder="e.g. 14 business days" />
+          </Form.Item>
+
+          <Form.Item name="payment_method" label="Preferred Payment Method">
+            <Select placeholder="Select preferred payment method">
+              <Select.Option value="mtn">MTN Mobile Money (MoMo)</Select.Option>
+              <Select.Option value="airtel">Airtel Money</Select.Option>
+              <Select.Option value="zamtel">Zamtel Kwacha</Select.Option>
+              <Select.Option value="bank_transfer">Bank Transfer (Zanaco / Stanbic / FNB)</Select.Option>
+              <Select.Option value="escrow">Direct Escrow Account</Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item name="certification_standards" label="Technical Specifications & Quality Standards">
+            <Input.TextArea rows={4} placeholder="Detailed specs, quality criteria, warranty requirements, etc." />
+          </Form.Item>
+
+          <Form.Item name="specifications_file_path" label="Specifications Document URL">
+            <Input placeholder="e.g. Link to PDF document" />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

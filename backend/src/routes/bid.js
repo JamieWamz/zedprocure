@@ -381,6 +381,67 @@ router.post('/bids/:bidId/requirements', authenticate, async (req, res) => {
   } catch (e) {
     console.error('Error submitting bid requirements:', e);
     res.status(500).json({ error: 'Failed to submit bid requirements: ' + e.message });
+// Admin or Tenant Admin: Edit/Update bid requirements details
+router.put('/bids/:bidId/requirements/:requirementId', authenticate, async (req, res) => {
+  // Only admins can edit requirements
+  if (req.user.role !== 'business_admin' && req.user.role !== 'system_admin' && req.user.role !== 'tenant_admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const { bidId, requirementId } = req.params;
+  const { budget_amount, expected_delivery_time, payment_method, certification_standards, specifications_file_path } = req.body;
+
+  try {
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (budget_amount !== undefined) {
+      updates.push(`budget_amount = $${paramIndex++}`);
+      values.push(budget_amount !== null ? Number(budget_amount) : null);
+    }
+    if (expected_delivery_time !== undefined) {
+      updates.push(`expected_delivery_time = $${paramIndex++}`);
+      values.push(expected_delivery_time);
+    }
+    if (payment_method !== undefined) {
+      updates.push(`payment_method = $${paramIndex++}`);
+      values.push(payment_method);
+    }
+    if (certification_standards !== undefined) {
+      updates.push(`certification_standards = $${paramIndex++}`);
+      values.push(certification_standards);
+    }
+    if (specifications_file_path !== undefined) {
+      updates.push(`specifications_file_path = $${paramIndex++}`);
+      values.push(specifications_file_path);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    values.push(requirementId);
+    const reqIdParam = `$${paramIndex++}`;
+    values.push(bidId);
+    const bidIdParam = `$${paramIndex++}`;
+
+    const queryText = `
+      UPDATE bid_requirements
+      SET ${updates.join(', ')}
+      WHERE id = ${reqIdParam} AND bid_id = ${bidIdParam}
+      RETURNING *`;
+
+    const { rows: [updated] } = await pool.query(queryText, values);
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Requirement not found for this bid' });
+    }
+
+    res.json(updated);
+  } catch (e) {
+    console.error('Error updating bid requirement:', e);
+    res.status(500).json({ error: 'Failed to update bid requirement: ' + e.message });
   }
 });
 

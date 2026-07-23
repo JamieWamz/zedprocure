@@ -30,11 +30,11 @@ const customerSteps = [
 ];
 
 const PAYMENT_METHOD_OPTIONS = [
-  { value: 'mtn', label: 'MTN Mobile Money (MoMo)', icon: '🟡' },
-  { value: 'airtel', label: 'Airtel Money', icon: '🔴' },
-  { value: 'zamtel', label: 'Zamtel Kwacha', icon: '🟢' },
-  { value: 'bank_transfer', label: 'Bank Transfer (Zanaco / Stanbic / FNB)', icon: '🏦' },
-  { value: 'escrow', label: 'Direct Escrow Account', icon: '🛡️' },
+  { value: 'mtn', label: 'MTN Mobile Money (MoMo)' },
+  { value: 'airtel', label: 'Airtel Money' },
+  { value: 'zamtel', label: 'Zamtel Kwacha' },
+  { value: 'bank_transfer', label: 'Bank Transfer (Zanaco / Stanbic / FNB)' },
+  { value: 'escrow', label: 'Direct Escrow Account' },
 ];
 
 function money(value) {
@@ -432,7 +432,7 @@ ${values.warranty || 'No specific warranty requirements.'}
                         <Select placeholder="Select preferred payment provider">
                           {PAYMENT_METHOD_OPTIONS.map(opt => (
                             <Option key={opt.value} value={opt.value}>
-                              <Space><span>{opt.icon}</span><span>{opt.label}</span></Space>
+                              {opt.label}
                             </Option>
                           ))}
                         </Select>

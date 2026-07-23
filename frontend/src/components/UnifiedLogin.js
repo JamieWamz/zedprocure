@@ -155,28 +155,6 @@ export default function UnifiedLogin() {
             <p>Access your procurement dashboard, active bids, and escrow records.</p>
           </div>
 
-          {/* Quick Demo Login Preset Buttons */}
-          <div className="login-quick-fill">
-            <span className="login-quick-label">Quick Demo Access:</span>
-            <div className="login-quick-buttons">
-              <Tooltip title="Log in as Business Admin">
-                <Tag color="purple" style={{ cursor: 'pointer', padding: '4px 10px', borderRadius: 6 }} onClick={() => fillQuickLogin('admin@freshstart.zm', 'admin123456')}>
-                  👑 Admin
-                </Tag>
-              </Tooltip>
-              <Tooltip title="Log in as Buyer / Customer">
-                <Tag color="blue" style={{ cursor: 'pointer', padding: '4px 10px', borderRadius: 6 }} onClick={() => fillQuickLogin('buyer@lusaka.gov.zm', 'buyer123456')}>
-                  🏢 Buyer
-                </Tag>
-              </Tooltip>
-              <Tooltip title="Log in as Supplier">
-                <Tag color="green" style={{ cursor: 'pointer', padding: '4px 10px', borderRadius: 6 }} onClick={() => fillQuickLogin('contact@zambiabuild.zm', 'supplier123456')}>
-                  🚚 Supplier
-                </Tag>
-              </Tooltip>
-            </div>
-          </div>
-
           {/* Form Tabs: Sign In / Create Account */}
           <Tabs
             defaultActiveKey="login"
@@ -238,8 +216,8 @@ export default function UnifiedLogin() {
                       <Select
                         size="large"
                         options={[
-                          { value: 'customer', label: '🏢 Customer / Buyer (Procurement Officer)' },
-                          { value: 'supplier', label: '🚚 Supplier / Vendor (Bidding Contractor)' },
+                          { value: 'customer', label: 'Customer / Buyer (Procurement Officer)' },
+                          { value: 'supplier', label: 'Supplier / Vendor (Bidding Contractor)' },
                         ]}
                       />
                     </Form.Item>
