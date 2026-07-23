@@ -167,9 +167,19 @@ export default function CustomerDashboard() {
   const onFinishCustomRequest = async (values) => {
     setRequestLoading(true);
     try {
+      const structuredDescription = `### Specifications
+${values.description || 'No detailed specifications provided.'}
+
+### Quantity & Unit of Measure
+Quantity: ${values.quantity || 1} ${values.unit_of_measure || 'each'}
+
+### Warranty & Support Requirements
+${values.warranty || 'No specific warranty requirements.'}
+`.trim();
+
       await axios.post('/api/customer/procurement-requests', {
         title: values.title,
-        description: values.description,
+        description: structuredDescription,
         estimated_budget: values.estimated_budget,
         payment_method: values.payment_method,
         required_delivery_date: values.required_delivery_date ? values.required_delivery_date.toISOString() : null,
@@ -428,8 +438,8 @@ export default function CustomerDashboard() {
                         </Select>
                       </Form.Item>
 
-                      <Form.Item name="certification_standards" label="Certification & Quality Standards">
-                        <Input.TextArea rows={2} placeholder="e.g. ISO 9001, ZBS standards, warranty requirement..." />
+                      <Form.Item name="certification_standards" label="Detailed Technical Specifications & Quality Standards" rules={[{ required: true, message: 'Please provide detailed specifications and quality standards' }]}>
+                        <Input.TextArea rows={4} placeholder="Please provide specific detailed specifications, warranty duration, and quality standards (e.g. ISO 9001, ZBS standards, etc.) to ensure suppliers have clear guidelines." />
                       </Form.Item>
                       <Button type="primary" htmlType="submit" loading={loading} disabled={!customerBids.length} icon={<SendOutlined />}>
                         Submit Requirements to Admin
@@ -463,6 +473,25 @@ export default function CustomerDashboard() {
                   dataSource={procurementRequests}
                   columns={requestColumns}
                   pagination={{ pageSize: 5 }}
+                  expandable={{
+                    expandedRowRender: record => (
+                      <div style={{ margin: 0, padding: '12px 16px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                        <p style={{ margin: '0 0 6px 0' }}><strong>Detailed Specifications & Requirements:</strong></p>
+                        <div style={{ whiteSpace: 'pre-wrap', color: '#334155', marginBottom: 12 }}>{record.description || 'No description provided.'}</div>
+                        {record.required_delivery_date && (
+                          <p style={{ margin: '0 0 4px 0' }}>
+                            <strong>Required Delivery Date:</strong> {new Date(record.required_delivery_date).toLocaleDateString()}
+                          </p>
+                        )}
+                        {record.admin_notes && (
+                          <p style={{ margin: '0 0 4px 0', color: '#b91c1c' }}>
+                            <strong>Admin Notes:</strong> {record.admin_notes}
+                          </p>
+                        )}
+                      </div>
+                    ),
+                    rowExpandable: record => !!record.description || !!record.required_delivery_date,
+                  }}
                   locale={{ emptyText: <EnhancedEmpty title="No Requests Yet" description="Submit your first procurement request to Business Admin." /> }}
                 />
               </Card>
@@ -517,13 +546,39 @@ export default function CustomerDashboard() {
         onCancel={() => setCreateReqModal(false)}
         footer={null}
       >
-        <Form form={reqForm} layout="vertical" onFinish={onFinishCustomRequest}>
+        <Form form={reqForm} layout="vertical" onFinish={onFinishCustomRequest} initialValues={{ quantity: 1, unit_of_measure: 'each' }}>
           <Form.Item name="title" label="Request Title / Item Required" rules={[{ required: true, message: 'Title is required' }]}>
             <Input placeholder="e.g. Supply of 50 Laptops for Lusaka Office" />
           </Form.Item>
-          <Form.Item name="description" label="Detailed Description & Specifications">
-            <Input.TextArea rows={3} placeholder="Provide technical specifications, quantities, and requirements..." />
+          
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="quantity" label="Quantity" rules={[{ required: true, message: 'Quantity is required' }]}>
+                <InputNumber min={1} style={{ width: '100%' }} placeholder="e.g. 50" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="unit_of_measure" label="Unit of Measure" rules={[{ required: true }]}>
+                <Select placeholder="Select UoM">
+                  <Option value="each">Each / Piece</Option>
+                  <Option value="boxes">Boxes</Option>
+                  <Option value="kg">Kilograms (kg)</Option>
+                  <Option value="liters">Liters</Option>
+                  <Option value="lump_sum">Lump Sum</Option>
+                  <Option value="hours">Hours</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item name="description" label="Detailed Technical Specifications" rules={[{ required: true, message: 'Specifications are required' }]}>
+            <Input.TextArea rows={3} placeholder="Provide technical specifications, dimensions, brand preferences, etc." />
           </Form.Item>
+
+          <Form.Item name="warranty" label="Warranty & Support Requirement">
+            <Input placeholder="e.g. 1 Year Local Warranty and onsite support" />
+          </Form.Item>
+
           <Row gutter={12}>
             <Col span={12}>
               <Form.Item name="estimated_budget" label="Estimated Budget (ZMW)">

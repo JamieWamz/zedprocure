@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Form, Input, DatePicker, InputNumber, Switch, Select, Button, message, Alert, Space, Upload } from 'antd';
 import { PlusOutlined, DeleteOutlined, UploadOutlined, InboxOutlined, MenuOutlined } from '@ant-design/icons';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 
@@ -58,12 +58,28 @@ const businessCategories = [
 export default function CreateBidWizard() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, activeTenantId, setActiveTenantId, tenants } = useAuth();
   const [form] = Form.useForm();
   const visibility = Form.useWatch('visibility', form);
 
   const [techSpecFile, setTechSpecFile] = useState(null);
   const [saveAsDraft, setSaveAsDraft] = useState(false);
+
+  useEffect(() => {
+    const requestData = location.state?.request;
+    if (requestData) {
+      form.setFieldsValue({
+        title: requestData.title,
+        description: requestData.description,
+        tenant_id: requestData.tenant_id,
+        bidding_fee_amount: 0,
+      });
+      if (requestData.tenant_id) {
+        setActiveTenantId(requestData.tenant_id);
+      }
+    }
+  }, [location.state, form, setActiveTenantId]);
 
   const onFinish = async (values) => {
     const tid = values.tenant_id || activeTenantId;

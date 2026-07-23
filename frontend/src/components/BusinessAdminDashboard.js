@@ -592,6 +592,25 @@ export default function BusinessAdminDashboard() {
                 pagination={{ pageSize: 5 }}
                 size="small"
                 scroll={{ x: 700 }}
+                expandable={{
+                  expandedRowRender: record => (
+                    <div style={{ margin: 0, padding: '12px 16px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                      <p style={{ margin: '0 0 6px 0' }}><strong>Detailed Specifications & Requirements:</strong></p>
+                      <div style={{ whiteSpace: 'pre-wrap', color: '#334155', marginBottom: 12 }}>{record.description || 'No description provided.'}</div>
+                      {record.required_delivery_date && (
+                        <p style={{ margin: '0 0 4px 0' }}>
+                          <strong>Required Delivery Date:</strong> {new Date(record.required_delivery_date).toLocaleDateString()}
+                        </p>
+                      )}
+                      {record.admin_notes && (
+                        <p style={{ margin: '0 0 4px 0', color: '#b91c1c' }}>
+                          <strong>Admin Notes:</strong> {record.admin_notes}
+                        </p>
+                      )}
+                    </div>
+                  ),
+                  rowExpandable: record => !!record.description || !!record.required_delivery_date,
+                }}
                 columns={[
                   { title: 'Title', dataIndex: 'title', render: v => <Text strong>{v}</Text> },
                   { title: 'Organization', dataIndex: 'tenant_name', render: v => v || '-' },
@@ -615,7 +634,7 @@ export default function BusinessAdminDashboard() {
                             <Button size="small" type="primary" onClick={() => handleUpdateProcurementRequestStatus(record.id, 'approved')}>
                               Approve
                             </Button>
-                            <Button size="small" onClick={() => navigate('/admin/bids/new')}>
+                            <Button size="small" onClick={() => navigate('/admin/bids/new', { state: { request: record } })}>
                               Convert to Bid
                             </Button>
                             <Button size="small" danger onClick={() => handleUpdateProcurementRequestStatus(record.id, 'rejected')}>
@@ -624,7 +643,7 @@ export default function BusinessAdminDashboard() {
                           </>
                         )}
                         {record.status !== 'pending' && (
-                          <Button size="small" onClick={() => navigate('/admin/bids/new')}>
+                          <Button size="small" onClick={() => navigate('/admin/bids/new', { state: { request: record } })}>
                             Create Tender
                           </Button>
                         )}
