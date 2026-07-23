@@ -31,14 +31,23 @@ export function ThemeProvider({ children }) {
   }, []);
   const value = useMemo(() => ({ appearance, resolvedTheme, setAppearance }), [appearance, resolvedTheme, setAppearance]);
 
+  const themeToken = useMemo(() => {
+    const isDark = resolvedTheme === 'dark';
+    return {
+      colorPrimary: isDark ? '#2dd4bf' : '#0d9488',
+      colorBgBase: isDark ? '#030712' : '#f8fafc',
+      colorTextBase: isDark ? '#f8fafc' : '#0f172a',
+      colorBorder: isDark ? '#1e293b' : '#cbd5e1',
+      colorBgContainer: isDark ? '#0f172a' : '#ffffff',
+      colorBgLayout: isDark ? '#030712' : '#f8fafc',
+      colorTextSecondary: isDark ? '#94a3b8' : '#475569',
+    };
+  }, [resolvedTheme]);
+
   return <ThemeContext.Provider value={value}>
       <ConfigProvider theme={{
         algorithm: resolvedTheme === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-        token: {
-          colorPrimary: resolvedTheme === 'dark' ? 'var(--primary-color-dark)' : 'var(--primary-color-light)',
-          colorBgBase: resolvedTheme === 'dark' ? 'var(--bg-color-dark)' : 'var(--bg-color-light)',
-          colorTextBase: resolvedTheme === 'dark' ? 'var(--text-color-dark)' : 'var(--text-color-light)',
-        }
+        token: themeToken
       }}>
         {children}
       </ConfigProvider>
