@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, Form, Input, Button, Select, Tabs, message, Space, Tag, Tooltip } from 'antd';
 import {
-  MailOutlined, LockOutlined, UserOutlined, BuildingOutlined,
+  MailOutlined, LockOutlined, UserOutlined, BankOutlined,
   SafetyCertificateOutlined, CheckCircleFilled,
   ThunderboltOutlined, SunOutlined, MoonOutlined, DesktopOutlined,
   ArrowRightOutlined
@@ -266,7 +266,7 @@ export default function UnifiedLogin() {
                     </Form.Item>
 
                     <Form.Item name="organization" label={accountType === 'supplier' ? 'Company Name' : 'Organization Name'} rules={[{ required: true, message: 'Organization name required' }]}>
-                      <Input prefix={<BuildingOutlined style={{ color: '#94a3b8' }} />} size="large" placeholder="e.g. Freshstart Enterprises Ltd" />
+                      <Input prefix={<BankOutlined style={{ color: '#94a3b8' }} />} size="large" placeholder="e.g. Freshstart Enterprises Ltd" />
                     </Form.Item>
 
                     <Form.Item name="registration_number" label="PACRA Registration # (Optional)">
