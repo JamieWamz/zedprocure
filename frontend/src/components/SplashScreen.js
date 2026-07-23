@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cdnImages } from '../cdnAssets';
 
-const MIN_SPLASH_MS = 2000; // minimum time to show splash
+const MIN_SPLASH_MS = 1500; // minimum time to show splash
 
-export default function SplashScreen({ onFinish }) {
-  const [progress, setProgress] = useState(0);
+export default function SplashScreen({ onFinish, isRouteLoading = false }) {
+  const [progress, setProgress] = useState(isRouteLoading ? 75 : 0);
   const [currentBg, setCurrentBg] = useState(0);
   const [fadeOut, setFadeOut] = useState(false);
   const loadedRef = useRef(0);
@@ -16,17 +16,23 @@ export default function SplashScreen({ onFinish }) {
     let cancelled = false;
     const total = cdnImages.splash.length;
 
+    // Hard safety timer: guarantee splash screen progresses and completes within 1.8s
+    const hardSafetyTimer = setTimeout(() => {
+      if (!cancelled && loadedRef.current < total) {
+        loadedRef.current = total;
+        setProgress(100);
+      }
+    }, 1800);
+
     cdnImages.splash.forEach((url, idx) => {
       const img = new Image();
       img.onload = () => {
         if (cancelled) return;
         loadedRef.current += 1;
         setProgress(Math.round((loadedRef.current / total) * 100));
-        // Rotate background as each image loads
         setCurrentBg(idx);
       };
       img.onerror = () => {
-        // Still count errored images as "loaded" so we don't hang
         if (cancelled) return;
         loadedRef.current += 1;
         setProgress(Math.round((loadedRef.current / total) * 100));
@@ -34,11 +40,15 @@ export default function SplashScreen({ onFinish }) {
       img.src = url;
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clearTimeout(hardSafetyTimer);
+    };
   }, []);
 
   // When all images loaded + minimum time elapsed, trigger fade-out
   useEffect(() => {
+    if (isRouteLoading) return;
     if (readyRef.current) return;
     if (loadedRef.current < cdnImages.splash.length) return;
 
@@ -48,19 +58,22 @@ export default function SplashScreen({ onFinish }) {
     const timer = setTimeout(() => {
       readyRef.current = true;
       setFadeOut(true);
-      // Wait for fade-out animation to complete before calling onFinish
-      setTimeout(onFinish, 600);
+      if (onFinish) {
+        setTimeout(onFinish, 500);
+      }
     }, remaining);
 
     return () => clearTimeout(timer);
-  }, [progress, onFinish]);
+  }, [progress, onFinish, isRouteLoading]);
+
+  const activeBgUrl = cdnImages.splash[currentBg] || cdnImages.loginHero;
 
   return (
     <div className={`splash-root ${fadeOut ? 'splash-fade-out' : ''}`}>
       {/* Rotating background image */}
       <div
         className="splash-bg"
-        style={{ backgroundImage: `url(${cdnImages.splash[currentBg]})` }}
+        style={{ backgroundImage: `url(${activeBgUrl})` }}
       />
 
       {/* Overlay */}
@@ -75,19 +88,28 @@ export default function SplashScreen({ onFinish }) {
 
         <div className="splash-tagline">
           <h1>Zambia Procurement Portal</h1>
-          <p>Transparent, multi-tenant public procurement</p>
+          <p>{isRouteLoading ? 'Preparing your secure workspace...' : 'Transparent, multi-tenant public procurement'}</p>
         </div>
 
         <div className="splash-loader">
           <div className="splash-progress-track">
             <div
               className="splash-progress-fill"
-              style={{ width: `${progress}%` }}
+              style={{ width: `${isRouteLoading ? 100 : progress}%` }}
             />
           </div>
           <span className="splash-progress-text">
-            {progress < 100 ? `Loading assets\u2026 ${progress}%` : 'Initializing\u2026'}
+            {isRouteLoading
+              ? 'Authenticating & loading environment\u2026'
+              : progress < 100
+                ? `Loading assets\u2026 ${progress}%`
+                : 'Initializing\u2026'}
           </span>
+          {isRouteLoading && (
+            <div className="route-loading-dots">
+              <span /><span /><span />
+            </div>
+          )}
         </div>
 
         <div className="splash-footer">
@@ -97,3 +119,4 @@ export default function SplashScreen({ onFinish }) {
     </div>
   );
 }
+

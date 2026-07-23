@@ -384,3 +384,248 @@ html[data-theme='dark'] .login-quick-label {
   box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
 }
 
+/* ============================================================
+   SPLASH SCREEN & ROUTE LOADING EXPERIENCE
+   ============================================================ */
+.splash-root, .route-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #090d16;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s ease;
+}
+
+.splash-root.splash-fade-out {
+  opacity: 0;
+  transform: scale(1.04);
+  pointer-events: none;
+}
+
+.splash-bg, .route-loading-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition: background-image 0.8s ease-in-out, opacity 0.5s ease-in;
+  transform: scale(1.04);
+  filter: brightness(0.55) contrast(1.1);
+  will-change: transform, opacity;
+}
+
+.splash-overlay, .route-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(15, 23, 42, 0.65) 0%, rgba(2, 6, 23, 0.92) 100%);
+  backdrop-filter: blur(8px);
+}
+
+.splash-content, .route-loading-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: 480px;
+  width: 90%;
+  padding: 40px 32px;
+  text-align: center;
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(16px);
+  animation: splashContentPop 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes splashContentPop {
+  0% { opacity: 0; transform: scale(0.94); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.splash-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.splash-logo, .route-loading-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  box-shadow: 0 0 25px rgba(37, 99, 235, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.splash-logo::before, .route-loading-mark::before {
+  content: '';
+  width: 20px;
+  height: 20px;
+  border: 3px solid #ffffff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: splashSpin 1.2s linear infinite;
+}
+
+@keyframes splashSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.splash-name {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: #ffffff;
+}
+
+.splash-tagline h1, .route-loading-content h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+}
+
+.splash-tagline p, .route-loading-content p {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.75);
+  margin: 0 0 24px 0;
+  line-height: 1.5;
+}
+
+.splash-loader {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.splash-progress-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.splash-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #60a5fa, #3b82f6);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
+}
+
+.splash-progress-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.splash-footer {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.5px;
+}
+
+/* Animated dots for route loading */
+.route-loading-dots {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.route-loading-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #3b82f6;
+  animation: routeDotPulse 1.4s infinite ease-in-out both;
+}
+
+.route-loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+.route-loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes routeDotPulse {
+  0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* ============================================================
+   PAGE MEDIA BANNER
+   ============================================================ */
+.page-media-banner {
+  position: relative;
+  width: 100%;
+  min-height: 140px;
+  padding: 28px 32px;
+  margin-bottom: 24px;
+  border-radius: var(--border-radius-lg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: #1e293b;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  color: #ffffff;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+}
+
+.page-media-banner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.88) 0%, rgba(30, 58, 138, 0.78) 60%, rgba(2, 6, 23, 0.92) 100%);
+  backdrop-filter: blur(3px);
+  z-index: 1;
+}
+
+.page-media-banner > * {
+  position: relative;
+  z-index: 2;
+}
+
+.page-media-banner h2 {
+  color: #ffffff !important;
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 6px 0;
+  letter-spacing: -0.5px;
+}
+
+.page-media-banner p {
+  color: rgba(255, 255, 255, 0.85) !important;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 620px;
+}
+
+.page-media-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+

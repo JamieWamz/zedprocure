@@ -46,7 +46,7 @@ function LoadingExperience() {
 
 function PrivateRoute({ children, requiredRoute }) {
   const { user, dashboardRoute, loading } = useAuth();
-  if (loading) return <LoadingExperience />;
+  if (loading) return <SplashScreen isRouteLoading={true} />;
   if (!user) return <Navigate to="/login" replace />;
 
   // Check if the required route is compatible with the user's dashboard route
