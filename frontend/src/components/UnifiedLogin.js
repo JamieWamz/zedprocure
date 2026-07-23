@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Alert, Form, Input, Button, Select, Tabs, message, Space, Tag, Tooltip } from 'antd';
 import {
   MailOutlined, LockOutlined, UserOutlined, BuildingOutlined,
-  SafetyCertificateOutlined, ShieldCheckOutlined, CheckCircleFilled,
+  SafetyCertificateOutlined, CheckCircleFilled,
   ThunderboltOutlined, SunOutlined, MoonOutlined, DesktopOutlined,
   ArrowRightOutlined
 } from '@ant-design/icons';
@@ -78,7 +78,7 @@ export default function UnifiedLogin() {
           <div className="login-hero-top">
             <div className="login-hero-brand">
               <span className="login-hero-logo">
-                <ShieldCheckOutlined style={{ fontSize: 20, color: '#ffffff' }} />
+                <SafetyCertificateOutlined style={{ fontSize: 20, color: '#ffffff' }} />
               </span>
               <span className="login-hero-title">Freshstart</span>
               <Tag color="blue" style={{ borderRadius: 12, padding: '0 10px', fontSize: 11, border: 'none', background: 'rgba(37, 99, 235, 0.4)', color: '#93c5fd' }}>
@@ -131,7 +131,7 @@ export default function UnifiedLogin() {
           <div className="login-card-header">
             <div className="login-brand-small">
               <div className="login-brand-icon">
-                <ShieldCheckOutlined style={{ fontSize: 18, color: '#2563eb' }} />
+                <SafetyCertificateOutlined style={{ fontSize: 18, color: '#2563eb' }} />
               </div>
               <span className="login-brand-text">Freshstart</span>
             </div>
