@@ -50,7 +50,7 @@ export default function AppLayout({ children, showBack = false }) {
               type="text" 
               icon={<ArrowLeftOutlined />} 
               onClick={handleBack} 
-              style={{ color: '#fff', whiteSpace: 'nowrap' }}
+              style={{ whiteSpace: 'nowrap' }}
               aria-label="Go back"
             >
               Back
@@ -59,7 +59,7 @@ export default function AppLayout({ children, showBack = false }) {
           <Text 
             strong 
             className="header-title"
-            style={{ color: '#fff', fontSize: 18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            style={{ fontSize: 18, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
             aria-label={currentTitle}
           >
             Freshstart Procurement Portal
@@ -101,14 +101,15 @@ export default function AppLayout({ children, showBack = false }) {
               Select Workspace
             </Text>
           )}
-          <Text className="header-user-email" style={{ color: '#fff', fontSize: 13, whiteSpace: 'nowrap' }} aria-label={`Logged in as ${user?.email || 'User'}`}>
+          <Text className="header-user-email" style={{ fontSize: 13, whiteSpace: 'nowrap' }} aria-label={`Logged in as ${user?.email || 'User'}`}>
             {user?.email || 'User'}
           </Text>
-          <Button 
+          <Button
+            className="logout-button"
             type="text" 
             icon={<LogoutOutlined />} 
             onClick={handleLogout} 
-            style={{ color: '#fff', whiteSpace: 'nowrap' }}
+            style={{ whiteSpace: 'nowrap' }}
             aria-label="Logout"
           >
             Logout

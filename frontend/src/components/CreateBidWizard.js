@@ -104,7 +104,9 @@ export default function CreateBidWizard() {
       formData.append('delivery_start', values.delivery_start?.toISOString() || '');
       formData.append('delivery_end', values.delivery_end?.toISOString() || '');
       formData.append('visibility', values.visibility || 'global');
-      formData.append('business_category', values.business_category || '');
+      if (values.business_category) {
+        formData.append('business_category', values.business_category);
+      }
       formData.append('requires_large_contract', values.requires_large_contract ? 'true' : 'false');
       formData.append('evaluation_method', values.evaluation_method || 'lowest_price');
       formData.append('bidding_fee_amount', String(values.bidding_fee_amount || 0));

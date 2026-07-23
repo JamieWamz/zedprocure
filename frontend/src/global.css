@@ -170,14 +170,12 @@ html[data-theme='dark'] .login-split {
   object-fit: cover;
   transform: scale(1.03);
   transition: transform 10s ease;
-  filter: brightness(0.65) contrast(1.1);
 }
 
 .login-hero-overlay {
   position: absolute;
   inset: 0;
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.82) 0%, rgba(30, 58, 138, 0.75) 50%, rgba(2, 6, 23, 0.92) 100%);
-  backdrop-filter: blur(4px);
 }
 
 .login-hero-content {
@@ -414,7 +412,6 @@ html[data-theme='dark'] .login-quick-label {
   background-repeat: no-repeat;
   transition: background-image 0.8s ease-in-out, opacity 0.5s ease-in;
   transform: scale(1.04);
-  filter: brightness(0.55) contrast(1.1);
   will-change: transform, opacity;
 }
 
@@ -432,7 +429,7 @@ html[data-theme='dark'] .login-quick-label {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  max-width: 480px;
+  max-width: 440px;
   width: 90%;
   padding: 40px 32px;
   text-align: center;
@@ -595,8 +592,7 @@ html[data-theme='dark'] .login-quick-label {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.88) 0%, rgba(30, 58, 138, 0.78) 60%, rgba(2, 6, 23, 0.92) 100%);
-  backdrop-filter: blur(3px);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.7) 0%, rgba(30, 58, 138, 0.6) 60%, rgba(2, 6, 23, 0.7) 100%);
   z-index: 1;
 }
 
@@ -811,4 +807,27 @@ html[data-theme='dark'] .ant-tag {
 }
 
 
+html[data-theme='light'] .app-layout-header .ant-btn-text {
+  color: var(--text-color-light);
+}
 
+html[data-theme='dark'] .app-layout-header .ant-btn-text {
+  color: var(--text-color-dark);
+}
+
+html[data-theme='light'] .app-layout-header-right .ant-btn-text {
+  color: var(--text-color-light);
+}
+
+html[data-theme='dark'] .app-layout-header-right .ant-btn-text {
+  color: var(--text-color-dark);
+}
+
+/* Ensure logout button has correct color */
+html[data-theme='light'] .logout-button {
+  color: var(--text-color-light) !important;
+}
+
+html[data-theme='dark'] .logout-button {
+  color: var(--text-color-dark) !important;
+}
