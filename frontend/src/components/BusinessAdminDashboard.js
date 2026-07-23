@@ -12,8 +12,28 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReChartTooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { cdnImages } from '../cdnAssets';
+import ProgressSteps from './ProgressSteps';
 
 const { Text } = Typography;
+
+const adminSteps = [
+  {
+    title: 'Create Bids',
+    description: 'Create and publish bids to the marketplace.',
+  },
+  {
+    title: 'Verify Suppliers',
+    description: 'Verify suppliers to ensure they meet the requirements.',
+  },
+  {
+    title: 'Award Bids',
+    description: 'Award bids to the best suppliers.',
+  },
+  {
+    title: 'Manage Orders',
+    description: 'Manage orders and track their status.',
+  },
+];
 
 function money(value) {
   return `ZMW ${Number(value || 0).toLocaleString(undefined, {
@@ -184,6 +204,11 @@ export default function BusinessAdminDashboard() {
   const urgentBids = procurement.urgentBids || [];
   const topSuppliers = procurement.topSuppliers || [];
 
+  let adminCurrentStep = 0;
+  if (stats.totalBids > 0) adminCurrentStep = 1;
+  if (stats.verifiedSuppliers > 0) adminCurrentStep = 2;
+  if (stats.totalOrders > 0) adminCurrentStep = 3;
+
   const transactionColumns = [
     { title: 'Ref', dataIndex: 'ref', key: 'ref', render: (v) => <Text code style={{ fontSize: 11 }}>{v?.slice(0, 16)}</Text> },
     { title: 'From', dataIndex: 'fromName', key: 'fromName' },
@@ -227,6 +252,10 @@ export default function BusinessAdminDashboard() {
           </Button>
         </div>
       </div>
+
+      <Card title="Getting Started" style={{ marginBottom: 16 }}>
+        <ProgressSteps steps={adminSteps} current={adminCurrentStep} />
+      </Card>
 
       {/* Revenue & Profit Cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>

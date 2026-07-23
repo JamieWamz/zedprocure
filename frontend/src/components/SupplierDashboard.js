@@ -13,6 +13,7 @@ import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { cdnImages } from '../cdnAssets';
 import DigitalSignatureModal from './DigitalSignatureModal';
+import ProgressSteps from './ProgressSteps';
 
 const { Text, Title } = Typography;
 
@@ -31,6 +32,21 @@ const OPTIONAL_DOCS = [
 ];
 
 const REQUIRED_DOCS = [...MANDATORY_DOCS, ...OPTIONAL_DOCS];
+
+const verificationSteps = [
+  {
+    title: 'Upload Documents',
+    description: 'Upload all mandatory documents.',
+  },
+  {
+    title: 'Admin Verification',
+    description: 'Awaiting review from the admin.',
+  },
+  {
+    title: 'Verified',
+    description: 'Your account is verified.',
+  },
+];
 
 function money(v) {
   return `ZMW ${Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -192,6 +208,14 @@ export default function SupplierDashboard() {
       .map(d => d.type || d.document_type)
   );
   const verifiedCount = REQUIRED_DOCS.filter(d => verifiedDocTypes.has(d.type)).length;
+  const mandatoryDocsUploaded = MANDATORY_DOCS.every(d => uploadedDocTypes.has(d.type));
+
+  let currentStep = 0;
+  if (isVerified) {
+    currentStep = 2;
+  } else if (mandatoryDocsUploaded) {
+    currentStep = 1;
+  }
 
   const bidColumns = [
     { title: 'Bid Title', dataIndex: 'title', key: 'title' },
@@ -406,6 +430,9 @@ export default function SupplierDashboard() {
         ]}
         width={720}
       >
+        <div style={{ marginBottom: 24 }}>
+          <ProgressSteps steps={verificationSteps} current={currentStep} />
+        </div>
         {/* Overall status */}
         <Alert
           type={isVerified ? 'success' : verificationStatus?.verification_status === 'rejected' ? 'error' : 'warning'}

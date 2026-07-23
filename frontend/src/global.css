@@ -19,9 +19,9 @@ html, body {
 
 html[data-theme='dark'] body {
   background-color: var(--bg-color-dark);
-  background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 20px 20px;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.01) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255, 255, 255, 0.01) 1px, transparent 1px);
+  background-size: 25px 25px;
   color: var(--text-color-dark);
 }
 
@@ -66,6 +66,7 @@ html[data-theme='dark'] .ant-card {
   border-color: var(--border-color-light) !important;
 }
 html[data-theme='dark'] .ant-card-head {
+  background-color: var(--card-header-bg-dark);
   border-color: var(--border-color-dark) !important;
 }
 

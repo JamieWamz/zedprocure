@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Form, Input, DatePicker, InputNumber, Switch, Select, Button, message, Alert, Space, Upload } from 'antd';
-import { PlusOutlined, DeleteOutlined, UploadOutlined, InboxOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, UploadOutlined, InboxOutlined, MenuOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 
 const { Dragger } = Upload;
 
@@ -125,6 +126,14 @@ export default function CreateBidWizard() {
     }
   };
 
+  const handleDragEnd = (result) => {
+    if (!result.destination) return;
+    const items = Array.from(form.getFieldValue('line_items'));
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+    form.setFieldsValue({ line_items: items });
+  };
+  
   return (
     <div style={{ maxWidth: 960, margin: 'auto' }}>
       <h2>Create New Bid — Bill of Quantities</h2>
@@ -219,59 +228,80 @@ export default function CreateBidWizard() {
           <h3>Bill of Quantities (BoQ) — Line Items</h3>
           <p style={{ color: '#666', fontSize: 13 }}>
             Define the line items for this bid. Each item must have a description, unit of measure, and quantity.
-            At least one line item is required before publishing.
+            At least one line item is required before publishing. You can drag and drop to reorder the items.
           </p>
-          <Form.List name="line_items">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'item_description']}
-                      rules={[{ required: true, message: 'Description is required' }]}
-                      style={{ width: '300px' }}
-                    >
-                      <Input placeholder="Item Description" />
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'unit_of_measure']}
-                      rules={[{ required: true, message: 'UoM is required' }]}
-                       style={{ width: '150px' }}
-                    >
-                      <Select placeholder="Unit of Measure">
-                        {UNIT_OF_MEASURE.map(uom => (
-                          <Select.Option key={uom.value} value={uom.value}>{uom.label}</Select.Option>
+          <DragDropContext onDragEnd={handleDragEnd}>
+            <Droppable droppableId="line_items">
+              {(provided) => (
+                <div {...provided.droppableProps} ref={provided.innerRef}>
+                  <Form.List name="line_items">
+                    {(fields, { add, remove }) => (
+                      <>
+                        {fields.map(({ key, name, ...restField }, index) => (
+                          <Draggable key={key} draggableId={`item-${key}`} index={index}>
+                            {(provided) => (
+                              <Space
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                style={{ display: 'flex', marginBottom: 8, ...provided.draggableProps.style }}
+                                align="baseline"
+                              >
+                                <div {...provided.dragHandleProps} style={{ cursor: 'grab' }}>
+                                  <MenuOutlined style={{ marginRight: 8 }} />
+                                </div>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'item_description']}
+                                  rules={[{ required: true, message: 'Description is required' }]}
+                                  style={{ width: '300px' }}
+                                >
+                                  <Input placeholder="Item Description" />
+                                </Form.Item>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'unit_of_measure']}
+                                  rules={[{ required: true, message: 'UoM is required' }]}
+                                   style={{ width: '150px' }}
+                                >
+                                  <Select placeholder="Unit of Measure">
+                                    {UNIT_OF_MEASURE.map(uom => (
+                                      <Select.Option key={uom.value} value={uom.value}>{uom.label}</Select.Option>
+                                    ))}
+                                  </Select>
+                                </Form.Item>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'quantity']}
+                                  rules={[{ required: true, message: 'Quantity is required' }]}
+                                   style={{ width: '100px' }}
+                                >
+                                  <InputNumber min={0.0001} placeholder="Quantity" style={{width: '100%'}} />
+                                </Form.Item>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'unit_price_estimate']}
+                                   style={{ width: '130px' }}
+                                >
+                                  <InputNumber min={0} placeholder="Est. Price" style={{width: '100%'}} />
+                                </Form.Item>
+                                <DeleteOutlined onClick={() => remove(name)} />
+                              </Space>
+                            )}
+                          </Draggable>
                         ))}
-                      </Select>
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'quantity']}
-                      rules={[{ required: true, message: 'Quantity is required' }]}
-                       style={{ width: '100px' }}
-                    >
-                      <InputNumber min={0.0001} placeholder="Quantity" style={{width: '100%'}} />
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'unit_price_estimate']}
-                       style={{ width: '130px' }}
-                    >
-                      <InputNumber min={0} placeholder="Est. Price" style={{width: '100%'}} />
-                    </Form.Item>
-                    <DeleteOutlined onClick={() => remove(name)} />
-                  </Space>
-                ))}
-                <Form.Item>
-                  <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-                    Add Line Item
-                  </Button>
-                </Form.Item>
-              </>
-            )}
-          </Form.List>
+                        {provided.placeholder}
+                        <Form.Item>
+                          <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                            Add Line Item
+                          </Button>
+                        </Form.Item>
+                      </>
+                    )}
+                  </Form.List>
+                </div>
+              )}
+            </Droppable>
+          </DragDropContext>
         </div>
 
         <div style={{ marginBottom: 16 }}>

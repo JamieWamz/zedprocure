@@ -13,10 +13,25 @@ import DigitalSignatureModal from './DigitalSignatureModal';
 import PaymentModal from './PaymentModal';
 import { useAuth } from '../context/AuthContext';
 import EnhancedEmpty from './EnhancedEmpty';
+import ProgressSteps from './ProgressSteps';
 import DashboardStatistic from './DashboardStatistic';
 
 const { Text } = Typography;
 
+const customerSteps = [
+  {
+    title: 'Select Bid',
+    description: 'Choose an open bid for your organization.',
+  },
+  {
+    title: 'Set Requirements',
+    description: 'Provide budget, delivery, and payment details.',
+  },
+  {
+    title: 'Submit',
+    description: 'Submit your requirements for evaluation.',
+  },
+];
 function money(value) {
   return `ZMW ${Number(value || 0).toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -225,6 +240,9 @@ export default function CustomerDashboard() {
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={10}>
           <Card id="requirements-section" title="Submit Requirements" className="table-card">
+            <div style={{ marginBottom: 24 }}>
+              <ProgressSteps steps={customerSteps} current={0} />
+            </div>
             <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Budgets remain hidden from suppliers during bid evaluation." />
             <Form form={form} layout="vertical" onFinish={onFinish}>
               <Form.Item name="bid_id" label="Bid" rules={[{ required: true, message: 'Please select a bid' }]}>
