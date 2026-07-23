@@ -1,47 +1,50 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Modal, Form, Select, Input, Button, Steps, Result, Alert, Divider,
-  Space, Typography, Tag, Spin, List, Empty,
+  Modal, Form, Input, Button, Steps, Result, Alert, Divider,
+  Space, Typography, Tag, Spin, List, Card,
 } from 'antd';
 import {
   MobileOutlined, BankOutlined, CheckCircleFilled, CloseCircleFilled,
-  LoadingOutlined,
+  LoadingOutlined, DollarOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 
-const { Option } = Select;
 const { Text, Title } = Typography;
 
 const PROVIDERS = [
   {
     value: 'mtn',
     label: 'MTN Mobile Money',
-    icon: '🟡',
-    hint: 'Instantly deducted from your MTN wallet. Enter your MTN number (260 97...)',
+    color: '#ffeb00',
+    iconBg: '#1e3a8a',
+    hint: 'Instantly deducted from your MTN Mobile Money wallet.',
     prefix: '260 97/96',
     type: 'mobile',
   },
   {
     value: 'airtel',
     label: 'Airtel Money',
-    icon: '🔴',
-    hint: 'Instantly deducted from your Airtel Money wallet. Enter your Airtel number (260 97/77...)',
+    color: '#e63946',
+    iconBg: '#e63946',
+    hint: 'Instantly deducted from your Airtel Money wallet.',
     prefix: '260 97/77',
     type: 'mobile',
   },
   {
     value: 'zamtel',
     label: 'Zamtel Kwacha',
-    icon: '🟢',
-    hint: 'Instantly deducted from your Zamtel Kwacha wallet. Enter your Zamtel number (260 96...)',
+    color: '#2a9d8f',
+    iconBg: '#2a9d8f',
+    hint: 'Instantly deducted from your Zamtel Kwacha wallet.',
     prefix: '260 96',
     type: 'mobile',
   },
   {
     value: 'bank',
     label: 'Bank Transfer',
-    icon: '🏦',
-    hint: 'Payment processed within 1–2 business days. You will receive bank details after confirmation.',
+    color: '#1677ff',
+    iconBg: '#1677ff',
+    hint: 'Payment processed within 1–2 business days. Bank details sent to your email.',
     prefix: null,
     type: 'bank',
   },
@@ -77,6 +80,7 @@ export default function PaymentModal({ open, onClose, orderId, amount, orderLabe
       setPaymentLogId(null);
       setFinalStatus(null);
       setError(null);
+      setSelectedProvider(null);
       form.resetFields();
       fetchHistory();
     }
@@ -159,7 +163,7 @@ export default function PaymentModal({ open, onClose, orderId, amount, orderLabe
     <Modal
       title={
         <Space>
-          <MobileOutlined style={{ color: '#1677ff' }} />
+          <DollarOutlined style={{ color: '#1677ff' }} />
           <span>Pay for Order</span>
           {orderLabel && <Tag color="blue">{orderLabel}</Tag>}
         </Space>
@@ -167,7 +171,7 @@ export default function PaymentModal({ open, onClose, orderId, amount, orderLabe
       open={open}
       onCancel={handleClose}
       footer={null}
-      width={560}
+      width={600}
       maskClosable={step !== 1} // Can't accidentally close while waiting
     >
       {/* Amount banner */}
@@ -198,52 +202,105 @@ export default function PaymentModal({ open, onClose, orderId, amount, orderLabe
           {error && (
             <Alert type="error" message={error} showIcon closable onClose={() => setError(null)} style={{ marginBottom: 16 }} />
           )}
+
           <Form form={form} layout="vertical" onFinish={handleSubmit}>
-            <Form.Item name="provider" label="Payment Method" rules={[{ required: true, message: 'Please select a payment method' }]}>
-              <Select
-                size="large"
-                placeholder="Choose how you want to pay"
-                onChange={v => { setSelectedProvider(v); form.setFieldValue('msisdn', ''); }}
-              >
-                {PROVIDERS.map(p => (
-                  <Option key={p.value} value={p.value}>
-                    <Space>
-                      <span>{p.icon}</span>
-                      <span>{p.label}</span>
-                    </Space>
-                  </Option>
-                ))}
-              </Select>
+            <Form.Item
+              name="provider"
+              label="Payment Method"
+              rules={[{ required: true, message: 'Please select a payment method' }]}
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                {PROVIDERS.map(p => {
+                  const isSelected = selectedProvider === p.value;
+                  return (
+                    <Card
+                      key={p.value}
+                      size="small"
+                      variant={isSelected ? 'filled' : 'outlined'}
+                      style={{
+                        cursor: 'pointer',
+                        borderColor: isSelected ? p.color : '#d9d9d9',
+                        backgroundColor: isSelected ? `${p.color}10` : '#fff',
+                        transition: 'all 0.2s ease',
+                        borderWidth: 2,
+                      }}
+                      onClick={() => {
+                        setSelectedProvider(p.value);
+                        form.setFieldValue('provider', p.value);
+                        form.setFieldValue('msisdn', '');
+                      }}
+                      hoverable
+                    >
+                      <Space style={{ width: '100%', justifyContent: 'flex-start' }}>
+                        <div style={{
+                          width: 36, height: 36, borderRadius: '50%',
+                          backgroundColor: p.iconBg, display: 'flex',
+                          alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0,
+                        }}>
+                          {p.type === 'bank' ? (
+                            <BankOutlined style={{ color: '#fff', fontSize: 18 }} />
+                          ) : (
+                            <MobileOutlined style={{ color: '#fff', fontSize: 18 }} />
+                          )}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <Text strong style={{ fontSize: 13, display: 'block' }}>{p.label}</Text>
+                          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>{p.hint}</Text>
+                        </div>
+                        {isSelected && (
+                          <CheckCircleFilled style={{ color: p.color, fontSize: 18, marginLeft: 'auto' }} />
+                        )}
+                      </Space>
+                    </Card>
+                  );
+                })}
+              </div>
             </Form.Item>
 
-            {providerMeta && (
-              <Alert
-                type="info"
-                showIcon={false}
-                message={providerMeta.hint}
-                style={{ marginBottom: 16, fontSize: 12 }}
-              />
-            )}
-
-            {providerMeta?.type === 'mobile' && (
-              <Form.Item
-                name="msisdn"
-                label="Mobile Number"
-                rules={[
-                  { required: true, message: 'Enter your mobile number' },
-                  { pattern: /^260\d{9}$/, message: 'Must be in format 260XXXXXXXXX (12 digits)' },
-                ]}
-              >
-                <Input
-                  size="large"
-                  placeholder="260971234567"
-                  prefix={<MobileOutlined style={{ color: '#999' }} />}
-                  maxLength={12}
+            {providerMeta && providerMeta.type === 'mobile' && (
+              <>
+                <Alert
+                  type="info"
+                  showIcon={false}
+                  message={
+                    <Space direction="vertical" size={2}>
+                      <Text style={{ fontSize: 12 }}>{providerMeta.hint}</Text>
+                      <Text style={{ fontSize: 11, color: '#888' }}>
+                        Enter your number in format {providerMeta.prefix}XXXXXXXXX (12 digits total)
+                      </Text>
+                    </Space>
+                  }
+                  style={{ marginBottom: 16, fontSize: 12 }}
                 />
-              </Form.Item>
+
+                <Form.Item
+                  name="msisdn"
+                  label="Mobile Number"
+                  rules={[
+                    { required: true, message: 'Enter your mobile number' },
+                    { pattern: /^260\d{9}$/, message: 'Must be in format 260XXXXXXXXX (12 digits)' },
+                  ]}
+                >
+                  <Input
+                    size="large"
+                    placeholder="260971234567"
+                    prefix={<MobileOutlined style={{ color: '#999' }} />}
+                    maxLength={12}
+                    onChange={(e) => {
+                      // Auto-strip non-digits and ensure 260 prefix
+                      let val = e.target.value.replace(/\D/g, '');
+                      if (val.length > 0 && !val.startsWith('260')) {
+                        val = '260' + val.replace(/^260/, '');
+                      }
+                      form.setFieldValue('msisdn', val.slice(0, 12));
+                    }}
+                  />
+                </Form.Item>
+              </>
             )}
 
-            {providerMeta?.type === 'bank' && (
+            {providerMeta && providerMeta.type === 'bank' && (
               <Alert
                 type="warning"
                 showIcon
