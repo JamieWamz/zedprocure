@@ -114,11 +114,11 @@ export default function UnifiedLogin() {
 
           <div className="login-hero-foot">
             <Space size={16}>
-              <span>🔒 Encrypted TLS 1.3</span>
+              <span> Encrypted TLS 1.3</span>
               <span>•</span>
-              <span>⚡ Real-Time Ledger</span>
+              <span> Real-Time Ledger</span>
               <span>•</span>
-              <span>🇿🇲 GRZ Standard</span>
+              <span> GRZ Standard</span>
             </Space>
           </div>
         </div>
