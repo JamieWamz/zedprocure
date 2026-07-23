@@ -11,6 +11,7 @@ import {
   BankOutlined,
   MenuOutlined,
 } from '@ant-design/icons';
+import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import BusinessAdminDashboard from './BusinessAdminDashboard';
@@ -28,12 +29,20 @@ const { Sider, Content } = Layout;
 
 export default function AdminPortal() {
   const { user } = useAuth();
+  const { appearance } = useTheme();
   const role = user?.role;
   const [collapsed, setCollapsed] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const effectiveTheme = useMemo(() => {
+    if (appearance === 'system') {
+      return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light';
+    }
+    return appearance || 'light';
+  }, [appearance]);
 
   // Track viewport size for responsive sidebar
   useEffect(() => {
@@ -108,7 +117,7 @@ export default function AdminPortal() {
 
   const sidebarMenu = (
     <>
-      <div style={{ height: 32, margin: 16, background: 'rgba(255,255,255,0.1)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#fff' }}>
+      <div style={{ height: 32, margin: 16, background: 'rgba(128, 128, 128, 0.1)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
         Admin Panel
       </div>
       <Menu
@@ -116,17 +125,16 @@ export default function AdminPortal() {
         selectedKeys={[selectedKey]}
         items={menuItems}
         onClick={handleMenuClick}
-        style={{ background: 'transparent', color: '#fff', borderRight: 0 }}
-        theme="dark"
+        theme={effectiveTheme}
       />
     </>
   );
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ minHeight: '100vh' }} hasSider>
       {/* Desktop Sider */}
       {!isMobile && (
-        <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} theme="light" width={220} className="sidebar-gradient">
+        <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} theme={effectiveTheme} width={220}>
           {sidebarMenu}
         </Sider>
       )}
@@ -159,18 +167,10 @@ export default function AdminPortal() {
         placement="left"
         onClose={() => setMobileDrawerOpen(false)}
         open={mobileDrawerOpen}
-        styles={{ body: { padding: 0, background: '#001529' } }}
+        styles={{ body: { padding: 0 } }}
         width={260}
-        headerStyle={{ background: '#001529', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)' }}
       >
-        <Menu
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={menuItems}
-          onClick={handleMenuClick}
-          style={{ background: 'transparent', color: '#fff', borderRight: 0 }}
-          theme="dark"
-        />
+        {sidebarMenu}
       </Drawer>
 
       {/* Main Content */}

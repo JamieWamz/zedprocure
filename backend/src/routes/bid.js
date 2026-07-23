@@ -381,6 +381,8 @@ router.post('/bids/:bidId/requirements', authenticate, async (req, res) => {
   } catch (e) {
     console.error('Error submitting bid requirements:', e);
     res.status(500).json({ error: 'Failed to submit bid requirements: ' + e.message });
+  }
+});
 // Admin or Tenant Admin: Edit/Update bid requirements details
 router.put('/bids/:bidId/requirements/:requirementId', authenticate, async (req, res) => {
   // Only admins can edit requirements
@@ -870,4 +872,5 @@ router.post('/bids/:bidId/invite', authenticate, async (req, res) => {
   }
 });
 
+}
 module.exports = router;
