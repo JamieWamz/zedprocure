@@ -101,7 +101,7 @@ export default function CustomerDashboard() {
         axios.get('/api/invoices?type=AR'),
         axios.get('/api/invoices/summary'),
         axios.get('/api/orders').catch(() => ({ data: [] })),
-        axios.get('/api/customer/procurement-requests').catch(() => ({ data: [] })),
+        axios.get('/api/procurement-requests').catch(() => ({ data: [] })),
       ]);
       setInvoices(invoiceRes.data);
       setSummary(summaryRes.data);
@@ -115,7 +115,7 @@ export default function CustomerDashboard() {
 
     if (user?.role === 'customer') {
       try {
-        const bidsRes = await axios.get('/api/tenant/bids');
+        const bidsRes = await axios.get('/api/bids/organization');
         setCustomerBids(bidsRes.data);
       } catch (e) {
         setCustomerBids([]);
@@ -177,7 +177,7 @@ Quantity: ${values.quantity || 1} ${values.unit_of_measure || 'each'}
 ${values.warranty || 'No specific warranty requirements.'}
 `.trim();
 
-      await axios.post('/api/customer/procurement-requests', {
+      await axios.post('/api/procurement-requests', {
         title: values.title,
         description: structuredDescription,
         estimated_budget: values.estimated_budget,
