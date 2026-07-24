@@ -280,6 +280,40 @@ router.get('/bids/my-tenant-bids', authenticate, async (req, res) => {
   }
 });
 
+// ─── Get Bids for User's Organization (Customer or Admin) ───────────────────
+router.get('/bids/organization', authenticate, async (req, res) => {
+  if (req.user.role !== 'business_admin' && req.user.role !== 'customer') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    let rows;
+    // Business admin without a specific tenant context sees ALL bids.
+    if (req.user.role === 'business_admin' && !req.user.tenant_id) {
+      const result = await pool.query(
+        `SELECT b.*, t.name AS tenant_name FROM bids b
+         JOIN tenants t ON t.id = b.tenant_id ORDER BY b.created_at DESC`
+      );
+      rows = result.rows;
+    } else {
+      // Customer or Admin with tenant context sees bids for their organization.
+      const tenantId = req.user.tenant_id;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Organization context not set. Please select a workspace.' });
+      }
+      const result = await pool.query(
+        'SELECT * FROM bids WHERE tenant_id = $1 ORDER BY created_at DESC',
+        [tenantId]
+      );
+      rows = result.rows;
+    }
+    res.json(rows);
+  } catch (e) {
+    console.error('Error fetching organization bids:', e);
+    res.status(500).json({ error: 'Failed to fetch organization bids' });
+  }
+});
+
 // ─── Get global open bids (marketplace listing for suppliers) ─────────────────
 router.get('/bids/global', authenticate, async (req, res) => {
   try {
@@ -872,6 +906,104 @@ router.post('/bids/:bidId/invite', authenticate, async (req, res) => {
   } catch (e) {
     console.error('Error inviting suppliers:', e);
     res.status(500).json({ error: 'Failed to invite suppliers: ' + e.message });
+  }
+});
+
+// Award bid (create order with BoQ data and audit trail)
+router.post('/bids/:bidId/award', authenticate, async (req, res) => {
+  if (req.user.role !== 'business_admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { bidId } = req.params;
+  const { supplier_id, total_amount, contract_file_path, award_notes } = req.body;
+
+  if (!supplier_id || !total_amount) {
+    return res.status(400).json({ error: 'supplier_id and total_amount are required' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verify bid belongs to tenant
+    const { rows: [bid] } = await client.query(
+      'SELECT tenant_id, status, title FROM bids WHERE id = $1 FOR UPDATE',
+      [bidId]
+    );
+    if (!bid) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Bid not found' });
+    }
+    if (bid.status !== 'evaluation' && bid.status !== 'open') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Bid is not in awardable state. Must be in evaluation or open status.' });
+    }
+
+    // Verify tenant access
+    if (req.user.tenant_id && bid.tenant_id !== req.user.tenant_id) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Forbidden: bid belongs to another tenant' });
+    }
+
+    // Ensure supplier entry exists in bid_suppliers table
+    let { rows: [invited] } = await client.query(
+      `SELECT id FROM bid_suppliers WHERE bid_id = $1 AND supplier_id = $2`,
+      [bidId, supplier_id]
+    );
+    if (!invited) {
+      const { rows: [newInv] } = await client.query(
+        `INSERT INTO bid_suppliers (bid_id, supplier_id, accepted, accepted_at)
+         VALUES ($1, $2, true, now())
+         ON CONFLICT (bid_id, supplier_id) DO UPDATE SET accepted = true
+         RETURNING id`,
+        [bidId, supplier_id]
+      );
+      invited = newInv;
+    }
+
+    // Update bid status to awarded
+    await client.query('UPDATE bids SET status = $1 WHERE id = $2', ['awarded', bidId]);
+
+    // Create order with award metadata
+    const { rows: [order] } = await client.query(
+      `INSERT INTO orders (bid_id, awarded_supplier_id, total_amount, contract_file_path,
+        award_decision_notes, awarded_by, awarded_at)
+       VALUES ($1,$2,$3,$4,$5,$6,now()) RETURNING *`,
+      [bidId, supplier_id, total_amount, contract_file_path || null,
+       award_notes || null, req.user.user_id]
+    );
+
+    // Log the award in system_logs
+    await client.query(
+      `INSERT INTO system_logs (actor_id, actor_type, action, entity_type, entity_id, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.user.user_id, 'platform_admin', 'bid_awarded', 'bid', bidId,
+       JSON.stringify({
+         title: bid.title,
+         awarded_supplier_id: supplier_id,
+         total_amount,
+         award_notes: award_notes || null,
+       })]
+    );
+
+    await client.query('COMMIT');
+
+    // Fetch the complete order with supplier name
+    const { rows: [completeOrder] } = await pool.query(
+      `SELECT o.*, s.company_name AS supplier_name
+       FROM orders o
+       JOIN suppliers s ON s.id = o.awarded_supplier_id
+       WHERE o.id = $1`,
+      [order.id]
+    );
+
+    res.status(201).json(completeOrder);
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('Error awarding bid:', e);
+    res.status(500).json({ error: 'Failed to award bid: ' + e.message });
+  } finally {
+    client.release();
   }
 });
 
