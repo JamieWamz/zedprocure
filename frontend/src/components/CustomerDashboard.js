@@ -115,7 +115,7 @@ export default function CustomerDashboard() {
 
     if (user?.role === 'customer') {
       try {
-        const bidsRes = await axios.get('/api/bids/tenant');
+        const bidsRes = await axios.get('/api/tenant/bids');
         setCustomerBids(bidsRes.data);
       } catch (e) {
         setCustomerBids([]);
