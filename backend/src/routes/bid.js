@@ -3,11 +3,12 @@ const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
 const pool = require('../config/db');
-const { authenticate } = require('../middleware/authMiddleware');
+const { authenticate, requireRole } = require('../middleware/authMiddleware');
 const { requireTenantContext, validateTenantAccess } = require('../middleware/tenantContext');
 const stripBudgetForSupplier = require('../middleware/priceIsolation');
+const { getOrganizationBids } = require('../services/bidService');
 const { validateBidSubmission } = require('../services/submissionGuard');
-const { notifySuppliersOnBidPublished, notifySupplierInvited } = require('../services/notificationService');
+const { notifySuppliersOnBidPublished, notifySupplierInvited, notifyBusinessAdmins } = require('../services/notificationService');
 const router = express.Router();
 
 // ─── Multer configuration ────────────────────────────────────────────────────
@@ -69,12 +70,7 @@ router.use('/bids', authenticate, stripBudgetForSupplier);
 
 // ─── Create bid – BoQ line items, Incoterms, tech specs ──────────────────────
 // Bids are created as 'draft' and must be explicitly published.
-router.post('/tenants/:tid/bids', uploadSpec.single('technical_specifications_file'), async (req, res) => {
-  // if (!['business_admin', 'system_admin'].includes(req.user.role)) {
-  //   return res.status(403).json({ error: 'Forbidden' });
-  // }
-
-  req.user = { user_id: '00000000-0000-0000-0000-000000000099', role: 'business_admin' };
+router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), uploadSpec.single('technical_specifications_file'), async (req, res) => {
   const tenantId = req.params.tid;
   const {
     title, description, deadline, delivery_start, delivery_end,
@@ -128,7 +124,6 @@ router.post('/tenants/:tid/bids', uploadSpec.single('technical_specifications_fi
 
   const isLargeContract = requires_large_contract === true || requires_large_contract === 'true';
   const evalMethod = (evaluation_method === 'best_value') ? 'best_value' : 'lowest_price';
-  const bidVisibility = visibility === 'restricted' ? 'restricted' : 'global';
   const techSpecPath = req.file ? req.file.path : null;
 
   const client = await pool.connect();
@@ -138,12 +133,12 @@ router.post('/tenants/:tid/bids', uploadSpec.single('technical_specifications_fi
     const bidRes = await client.query(
       `INSERT INTO bids (tenant_id, title, description, deadline, delivery_start, delivery_end,
         requires_large_contract, evaluation_method, bidding_fee_amount, created_by,
-        status, visibility, business_category,
+        status, business_category,
         delivery_terms, technical_specifications_path, technical_specifications)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'draft',$11,$12,$13,$14,$15) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'draft',$11,$12,$13,$14) RETURNING *`,
       [tenantId, title, description, deadline, delivery_start, delivery_end,
        isLargeContract, evalMethod, bidding_fee_amount, req.user.user_id,
-       bidVisibility, business_category || null,
+       business_category || null,
        delivery_terms, techSpecPath, technical_specifications || null]
     );
     const bid = bidRes.rows[0];
@@ -164,7 +159,7 @@ router.post('/tenants/:tid/bids', uploadSpec.single('technical_specifications_fi
       `INSERT INTO system_logs (actor_id, actor_type, action, entity_type, entity_id, metadata)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [req.user.user_id, req.user.role, 'bid_created', 'bid', bid.id,
-       JSON.stringify({ title: bid.title, visibility: bid.visibility, line_items_count: parsedLineItems.length })]
+       JSON.stringify({ title: bid.title, line_items_count: parsedLineItems.length })]
     );
 
     await client.query('COMMIT');
@@ -287,30 +282,13 @@ router.get('/bids/organization', authenticate, async (req, res) => {
   }
 
   try {
-    let rows;
-    // Business admin without a specific tenant context sees ALL bids.
-    if (req.user.role === 'business_admin' && !req.user.tenant_id) {
-      const result = await pool.query(
-        `SELECT b.*, t.name AS tenant_name FROM bids b
-         JOIN tenants t ON t.id = b.tenant_id ORDER BY b.created_at DESC`
-      );
-      rows = result.rows;
-    } else {
-      // Customer or Admin with tenant context sees bids for their organization.
-      const tenantId = req.user.tenant_id;
-      if (!tenantId) {
-        return res.status(400).json({ error: 'Organization context not set. Please select a workspace.' });
-      }
-      const result = await pool.query(
-        'SELECT * FROM bids WHERE tenant_id = $1 ORDER BY created_at DESC',
-        [tenantId]
-      );
-      rows = result.rows;
-    }
+    const rows = await getOrganizationBids(req.user);
     res.json(rows);
   } catch (e) {
     console.error('Error fetching organization bids:', e);
-    res.status(500).json({ error: 'Failed to fetch organization bids' });
+    // Use a 400 for context errors, 500 for others
+    const statusCode = e.message.includes('context') ? 400 : 500;
+    res.status(statusCode).json({ error: e.message || 'Failed to fetch organization bids' });
   }
 });
 
@@ -368,56 +346,51 @@ router.get('/bids/:bidId', authenticate, async (req, res) => {
 });
 
 // ─── Customer: Submit bid requirements ───────────────────────────────────────
-router.post('/bids/:bidId/requirements', authenticate, async (req, res) => {
-  // Only customer users can submit requirements
-  if (req.user.role !== 'customer') {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
+router.post('/bids/:bidId/requirements', authenticate, requireRole('customer'), async (req, res) => {
   const { bidId } = req.params;
-  const { budget_amount, expected_delivery_time, payment_method, certification_standards } = req.body;
-
-  // Basic validation
-  if (!bidId) {
-    return res.status(400).json({ error: 'Bid ID is required' });
-  }
+  const { budget_amount, expected_delivery_time, payment_method, certification_standards, file_path } = req.body;
 
   try {
-    // Check if bid exists and belongs to the customer's tenant
-    const { rows: [bid] } = await pool.query(
-      `SELECT id FROM bids
-       WHERE id = $1 AND tenant_id = $2 AND status = 'open' AND deadline > now()`,
-      [bidId, req.user.tenant_id]
+    // Verify user's tenant matches the bid's tenant and fetch bid title
+    const authCheck = await pool.query(
+      `SELECT b.id, b.title FROM bids b
+       JOIN tenant_users tu ON b.tenant_id = tu.tenant_id
+       WHERE b.id = $1 AND tu.id = $2`,
+      [bidId, req.user.user_id]
     );
 
-    if (!bid) {
-      return res.status(404).json({ error: 'Bid not found or you do not have access' });
+    if (authCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Forbidden: You do not have access to this bid.' });
     }
 
-    // Insert or update bid requirements
-    const { rows: [requirement] } = await pool.query(
-      `INSERT INTO bid_requirements (bid_id, customer_user_id, budget_amount, expected_delivery_time, payment_method, certification_standards)
-       VALUES ($1, $2, $3, $4, $5, $6)
+    const bidTitle = authCheck.rows[0].title;
+
+    const { rows } = await pool.query(
+      `INSERT INTO bid_requirements (bid_id, customer_user_id, budget_amount, expected_delivery_time, payment_method, certification_standards, specifications_file_path)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT (bid_id, customer_user_id) DO UPDATE SET
          budget_amount = EXCLUDED.budget_amount,
          expected_delivery_time = EXCLUDED.expected_delivery_time,
          payment_method = EXCLUDED.payment_method,
-         certification_standards = EXCLUDED.certification_standards
+         certification_standards = EXCLUDED.certification_standards,
+         specifications_file_path = COALESCE(EXCLUDED.specifications_file_path, bid_requirements.specifications_file_path)
        RETURNING *`,
-      [
-        bidId,
-        req.user.user_id,
-        budget_amount ? Number(budget_amount) : null,
-        expected_delivery_time || null, // Assuming INTERVAL is handled as text for now
-        payment_method || null,
-        certification_standards || null,
-      ]
+      [bidId, req.user.user_id, budget_amount, expected_delivery_time, payment_method, certification_standards, file_path]
     );
 
-    res.status(200).json(requirement);
+    // Notify Business Admin immediately
+    notifyBusinessAdmins({
+      type: 'customer_requirement',
+      title: `Customer Requirement Submitted: ${bidTitle}`,
+      message: `Customer ${req.user.full_name || req.user.email} submitted procurement requirements for bid "${bidTitle}". Budget: ZMW ${budget_amount || 'N/A'}. Payment method: ${payment_method || 'N/A'}.`,
+      link: `/bids/${bidId}`,
+      metadata: { bid_id: bidId, customer_user_id: req.user.user_id },
+    }).catch(err => console.error('Failed to send admin notification:', err));
+
+    res.status(201).json(rows[0]);
   } catch (e) {
-    console.error('Error submitting bid requirements:', e);
-    res.status(500).json({ error: 'Failed to submit bid requirements: ' + e.message });
+    console.error('Error creating bid requirement:', e);
+    res.status(500).json({ error: 'Failed to create requirement: ' + e.message });
   }
 });
 // Admin or Tenant Admin: Edit/Update bid requirements details
@@ -876,11 +849,10 @@ router.get('/bids/:bidId/evaluation', authenticate, async (req, res) => {
 // ─── Admin / Customer: Invite suppliers to a bid ──────────────────────────────
 router.post('/bids/:bidId/invite', authenticate, async (req, res) => {
   const { bidId } = req.params;
-  const { supplier_ids, supplier_id } = req.body;
-  const targetIds = supplier_ids || (supplier_id ? [supplier_id] : []);
+  const { supplier_ids } = req.body;
 
-  if (!targetIds || targetIds.length === 0) {
-    return res.status(400).json({ error: 'At least one supplier_id is required' });
+  if (!supplier_ids || !Array.isArray(supplier_ids) || supplier_ids.length === 0) {
+    return res.status(400).json({ error: '`supplier_ids` must be a non-empty array.' });
   }
 
   try {
@@ -888,7 +860,7 @@ router.post('/bids/:bidId/invite', authenticate, async (req, res) => {
     if (!bid) return res.status(404).json({ error: 'Bid not found' });
 
     const invitedList = [];
-    for (const sid of targetIds) {
+    for (const sid of supplier_ids) {
       const { rows: [bs] } = await pool.query(
         `INSERT INTO bid_suppliers (bid_id, supplier_id, invited_at)
          VALUES ($1, $2, now())

@@ -5,7 +5,6 @@ const cors = require('cors');
 const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
-const { authenticate } = require('./middleware/authMiddleware');
 const { TOKEN_COOKIE } = require('./config/auth');
 const { init } = require('./db/init');
 
@@ -42,7 +41,7 @@ app.use('/api', require('./routes/registration'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api', require('./routes/supplier'));
 app.use('/api', require('./routes/bid'));
-app.use('/api', require('./routes/requirement'));
+
 app.use('/api', require('./routes/procurementRequest'));
 app.use('/api', require('./routes/order'));
 app.use('/api', require('./routes/payment'));
@@ -53,28 +52,11 @@ app.use('/api/signatures', require('./routes/signatures'));
 app.use('/api', require('./routes/supplierList'));
 app.use('/api', require('./routes/tenant'));
 app.use('/api', require('./routes/system'));
+app.use('/api/me', require('./routes/me'));
+app.use('/api/wallet', require('./routes/wallet'));
 app.use('/api', require('./routes/dashboard'));
 app.use('/api', require('./routes/verification'));
 app.use('/api', require('./routes/notifications'));
-
-app.get('/api/me', authenticate, async (req, res) => {
-  let route = '/login';
-  let tenantId = req.user.tenant_id;
-
-  if (req.user.user_type === 'platform_admin' && req.user.role === 'system_admin') route = '/system-health';
-  else if (req.user.user_type === 'platform_admin') route = '/admin';
-  else if (req.user.user_type === 'tenant_user') route = '/customer';
-  else if (req.user.user_type === 'supplier_user') route = '/supplier';
-
-  res.json({
-    dashboardRoute: route,
-    tenantId,
-    role: req.user.role,
-    user_type: req.user.user_type,
-    email: req.user.email,
-    full_name: req.user.full_name,
-  });
-});
 
 // Start background schedulers (only in server process, not during migrations)
 if (process.env.NODE_ENV !== 'migration') {

@@ -344,6 +344,7 @@ router.post('/reset-password', async (req, res) => {
 });
 
 // ─── Admin Invitation ────────────────────────────────────────────────────────
+/** @deprecated */
 router.post('/invite', authenticate, async (req, res) => {
   const validRoles = ['customer', 'supplier_user'];
   const { email, role, tenant_id, supplier_id } = req.body;
@@ -369,6 +370,7 @@ router.post('/invite', authenticate, async (req, res) => {
 });
 
 // ─── Accept Invitation ───────────────────────────────────────────────────────
+/** @deprecated */
 router.post('/accept-invite', async (req, res) => {
   const { token, password, full_name } = req.body;
   if (!token || !password || !full_name) return res.status(400).json({ error: 'Token, password, and name required' });

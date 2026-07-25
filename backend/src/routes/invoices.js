@@ -12,7 +12,7 @@ const { authenticate } = require('../middleware/authMiddleware');
 const { recordInvoiceIssue, recordInvoicePayment } = require('../services/ledgerService');
 const { sendMail } = require('../services/emailService');
 
-const router = express.Router();
+const router = express.Router({ strict: false });
 
 const OPEN_STATUSES = ['sent', 'partially_paid'];
 

@@ -5,6 +5,8 @@ const { authenticate } = require('../middleware/authMiddleware');
 const { validatePassword } = require('../utils/validation');
 const router = express.Router();
 
+const { getOrganizationBids } = require('../services/bidService');
+
 // Get bids - business_admin sees all; customers see their own organization's bids.
 router.get('/tenant/bids', authenticate, async (req, res) => {
   if (req.user.role !== 'business_admin' && req.user.role !== 'customer') {
@@ -12,26 +14,13 @@ router.get('/tenant/bids', authenticate, async (req, res) => {
   }
 
   try {
-    let rows;
-    if (req.user.role === 'business_admin' && !req.user.tenant_id) {
-      // Business admin without tenant context sees ALL bids across all tenants
-      const result = await pool.query(
-        'SELECT b.*, t.name AS tenant_name FROM bids b JOIN tenants t ON t.id = b.tenant_id ORDER BY b.created_at DESC'
-      );
-      rows = result.rows;
-    } else {
-      const tenantId = req.user.tenant_id;
-      if (!tenantId) return res.status(400).json({ error: 'Select a Workspace/Organization before proceeding. Please choose an organization from the header dropdown.' });
-      const result = await pool.query(
-        'SELECT * FROM bids WHERE tenant_id = $1 ORDER BY created_at DESC',
-        [tenantId]
-      );
-      rows = result.rows;
-    }
+    const rows = await getOrganizationBids(req.user);
     res.json(rows);
   } catch (e) {
     console.error('Error fetching bids:', e);
-    res.status(500).json({ error: 'Failed to fetch bids' });
+    // Use a 400 for context errors, 500 for others
+    const statusCode = e.message.includes('context') ? 400 : 500;
+    res.status(statusCode).json({ error: e.message || 'Failed to fetch bids' });
   }
 });
 
@@ -215,7 +204,9 @@ router.get('/admin/suppliers', authenticate, async (req, res) => {
   }
 });
 
-// Audit log: record admin actions
+// Audit log: record admin actions from the frontend, if needed.
+// Most audit logging is now handled internally by dedicated services, but this
+// endpoint is retained as a generic utility for client-side logging.
 router.post('/admin/audit-log', authenticate, async (req, res) => {
   if (req.user.role !== 'business_admin' && req.user.role !== 'system_admin') {
     return res.status(403).json({ error: 'Forbidden' });
