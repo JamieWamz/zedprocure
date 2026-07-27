@@ -18,6 +18,7 @@ import BusinessAdminDashboard from './BusinessAdminDashboard';
 import TenantBidsList from './TenantBidsList';
 import CreateBidWizard from './CreateBidWizard';
 import BidDetail from './BidDetail';
+import BidEvaluation from './BidEvaluation';
 import SupplierVerification from './SupplierVerification';
 import FinancialLedger from './FinancialLedger';
 import FinanceInvoices from './FinanceInvoices';
@@ -92,6 +93,8 @@ export default function AdminPortal() {
     }
     if (path === '/admin/bids') return <TenantBidsList />;
     if (path === '/admin/bids/new') return <CreateBidWizard />;
+    // /admin/bids/:id/evaluate — must check before the generic :id route
+    if (path.startsWith('/admin/bids/') && path.endsWith('/evaluate')) return <BidEvaluation />;
     if (path.startsWith('/admin/bids/') && path.split('/').length === 4) return <BidDetail />;
     if (path === '/admin/orders') return <OrdersList />;
     if (path === '/admin/invoices') return <FinanceInvoices />;

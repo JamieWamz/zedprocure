@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Descriptions, Tag, List, Typography, Spin, Alert, Button, message, Input, Divider, Space, Steps, Table, InputNumber, Modal, Select, Form } from 'antd';
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined, EditOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined, EditOutlined, AuditOutlined } from '@ant-design/icons';
 
 import axios from 'axios';
 
@@ -12,6 +12,7 @@ export default function BidDetail() {
   // Extract bidId from either route params (for /supplier/bids/:bidId) or from pathname (for /admin/bids/:bidId)
   const params = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const bidId = params.bidId;
 
   const { user } = useAuth();
@@ -232,9 +233,19 @@ export default function BidDetail() {
 
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto' }}>
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
         <Title level={3} style={{ margin: 0 }}>{bid.title}</Title>
         <Tag color={statusColor[bid.status] || 'default'} style={{ fontSize: 14, padding: '2px 12px' }}>{bid.status.toUpperCase()}</Tag>
+        {/* Admin-only: Evaluate & Award button — visible only during evaluation stage */}
+        {isAdmin() && (
+          <Button
+            type="primary"
+            icon={<AuditOutlined />}
+            onClick={() => navigate(`/admin/bids/${bidId}/evaluate`)}
+          >
+            Evaluate &amp; Award
+          </Button>
+        )}
       </Space>
 
       {/* Bid Details */}

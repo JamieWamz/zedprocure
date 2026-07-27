@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Table, Tag, Typography, Spin, Alert, Button, message, Modal, Form, Input, InputNumber, Select, Space, Descriptions, Divider, Tabs, Statistic } from 'antd';
+import { Card, Table, Tag, Typography, Spin, Alert, Button, message, Modal, Form, Input, InputNumber, Select, Space, Descriptions, Divider, Tabs, Statistic, Result } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, TrophyOutlined, FileTextOutlined, DollarOutlined, StarOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const { Text, Title } = Typography;
 
@@ -20,6 +21,7 @@ const EVALUATION_CRITERIA = [
 export default function BidEvaluation() {
   const { bidId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [bid, setBid] = useState(null);
@@ -55,7 +57,19 @@ export default function BidEvaluation() {
     }
   };
 
-  useEffect(() => { if (bidId) fetchData(); }, [bidId]);
+  useEffect(() => { if (bidId && user?.role === 'business_admin') fetchData(); }, [bidId, user]);
+
+  // Role guard — placed after all hooks to satisfy Rules of Hooks
+  if (user && user.role !== 'business_admin') {
+    return (
+      <Result
+        status="403"
+        title="Access Restricted"
+        subTitle="Bid evaluation results are only available to Business Administrators."
+        extra={<Button type="primary" onClick={() => navigate(-1)}>Go Back</Button>}
+      />
+    );
+  }
 
   // ─── Scoring ──────────────────────────────────────────────────────────────
   const openScoreModal = (supplierId, supplierName) => {

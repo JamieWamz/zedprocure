@@ -90,7 +90,10 @@ CREATE TABLE bids (
         CHECK (status IN ('draft','open','evaluation','awarded','closed')),
     views_count INTEGER NOT NULL DEFAULT 0,
     created_by UUID NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    delivery_terms VARCHAR(10) CHECK (delivery_terms IN ('EXW','FCA','FAS','FOB','CFR','CIF','CPT','CIP','DPU','DAP','DDP')),
+    technical_specifications_path VARCHAR(500),
+    technical_specifications TEXT
 );
 
 CREATE TABLE bid_suppliers (
@@ -102,6 +105,22 @@ CREATE TABLE bid_suppliers (
     accepted_at TIMESTAMPTZ,
     UNIQUE (bid_id, supplier_id)
 );
+
+CREATE TABLE IF NOT EXISTS bid_line_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    bid_id UUID NOT NULL REFERENCES bids(id) ON DELETE CASCADE,
+    item_description TEXT NOT NULL,
+    unit_of_measure VARCHAR(20) NOT NULL CHECK (unit_of_measure IN (
+        'each','kg','g','ton','meters','cm','liters','ml','sqm','sqft',
+        'hours','days','months','lump_sum','boxes','pairs','sets'
+    )),
+    quantity DECIMAL(15,4) NOT NULL CHECK (quantity > 0),
+    unit_price_estimate DECIMAL(15,2),
+    line_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_bid_line_items_bid ON bid_line_items(bid_id);
 
 CREATE TABLE bid_requirements (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

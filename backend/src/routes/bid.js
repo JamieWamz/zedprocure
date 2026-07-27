@@ -75,12 +75,9 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
   const {
     title, description, deadline, delivery_start, delivery_end,
     requires_large_contract, evaluation_method, bidding_fee_amount,
-    visibility, business_category,
     delivery_terms, technical_specifications,
     line_items
   } = req.body;
-
-  console.log('Received business_category:', business_category);
 
   // Validate required fields
   if (!title || !title.trim()) {
@@ -133,13 +130,10 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
     const bidRes = await client.query(
       `INSERT INTO bids (tenant_id, title, description, deadline, delivery_start, delivery_end,
         requires_large_contract, evaluation_method, bidding_fee_amount, created_by,
-        status, business_category,
-        delivery_terms, technical_specifications_path, technical_specifications)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'draft',$11,$12,$13,$14) RETURNING *`,
+        status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'draft') RETURNING *`,
       [tenantId, title, description, deadline, delivery_start, delivery_end,
-       isLargeContract, evalMethod, bidding_fee_amount, req.user.user_id,
-       business_category || null,
-       delivery_terms, techSpecPath, technical_specifications || null]
+       isLargeContract, evalMethod, bidding_fee_amount, req.user.user_id]
     );
     const bid = bidRes.rows[0];
 
@@ -185,7 +179,7 @@ router.put('/bids/:bidId/publish', authenticate, async (req, res) => {
 
     // Validate bid exists and is in draft state
     const { rows: [existing] } = await client.query(
-      `SELECT id, title, status, visibility, business_category, delivery_terms
+      `SELECT id, title, status, visibility, delivery_terms
        FROM bids WHERE id = $1 AND status = 'draft'`,
       [req.params.bidId]
     );
@@ -230,7 +224,6 @@ router.put('/bids/:bidId/publish', authenticate, async (req, res) => {
        JSON.stringify({
          title: bid.title,
          visibility: bid.visibility,
-         business_category: bid.business_category,
          line_items_count: lineCount.cnt,
          delivery_terms: bid.delivery_terms
        })]
@@ -297,7 +290,7 @@ router.get('/bids/global', authenticate, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT b.id, b.title, b.description, b.deadline, b.evaluation_method,
-              b.bidding_fee_amount, b.business_category, b.views_count,
+              b.bidding_fee_amount, b.views_count,
               b.created_at, t.name AS tenant_name
        FROM bids b
        JOIN tenants t ON t.id = b.tenant_id
@@ -462,7 +455,7 @@ router.get('/public/bids', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT b.id, b.title, b.description, b.deadline, b.evaluation_method,
-              b.business_category, b.delivery_terms, b.views_count, t.name AS tenant_name
+              b.delivery_terms, b.views_count, t.name AS tenant_name
        FROM bids b JOIN tenants t ON t.id = b.tenant_id
        WHERE b.status = 'open' ORDER BY b.created_at DESC`
     );

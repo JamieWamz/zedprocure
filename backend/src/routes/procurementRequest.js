@@ -56,4 +56,42 @@ router.get('/procurement-requests', authenticate, requireRole('customer'), async
   }
 });
 
+// Admin gets all procurement requests
+router.get('/admin/procurement-requests', authenticate, requireRole('business_admin', 'system_admin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT pr.*, tu.full_name AS customer_name, tu.email AS customer_email, t.name AS tenant_name
+       FROM procurement_requests pr
+       JOIN tenant_users tu ON tu.id = pr.customer_user_id
+       JOIN tenants t ON t.id = pr.tenant_id
+       ORDER BY pr.created_at DESC LIMIT 500`
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error('Error fetching all procurement requests:', e);
+    res.status(500).json({ error: 'Failed to fetch procurement requests' });
+  }
+});
+
+// Admin updates a procurement request status
+router.put('/admin/procurement-requests/:id/status', authenticate, requireRole('business_admin', 'system_admin'), async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  if (!['pending', 'approved', 'rejected', 'fulfilled'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE procurement_requests SET status = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      [status, id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Procurement request not found' });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error('Error updating procurement request status:', e);
+    res.status(500).json({ error: 'Failed to update procurement request status' });
+  }
+});
+
 module.exports = router;

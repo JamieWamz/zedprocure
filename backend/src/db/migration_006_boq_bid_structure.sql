@@ -38,10 +38,27 @@ ALTER TABLE bids ADD COLUMN IF NOT EXISTS technical_specifications TEXT;
 ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS verified_date TIMESTAMPTZ;
 
 -- ─── Supplier Documents: add category and notes ─────────────────────────────
--- NOTE: These columns were first added in migration_004 with different types.
--- IF NOT EXISTS prevents conflicts. The CHECK constraint will only be applied
--- if the column is actually created here.
-ALTER TABLE supplier_documents ADD COLUMN IF NOT EXISTS document_category VARCHAR(20) DEFAULT 'required'
+-- Drop the old constraint from migration_004 and add a new one to allow 'supplementary'
+ALTER TABLE supplier_documents DROP CONSTRAINT IF EXISTS supplier_documents_document_category_check;
+ALTER TABLE supplier_documents DROP CONSTRAINT IF EXISTS supplier_documents_document_category_check1;
+
+ALTER TABLE supplier_documents ADD COLUMN IF NOT EXISTS document_category VARCHAR(50) DEFAULT 'optional';
+
+-- Try dropping it again in case it had a different auto-generated name
+DO $$
+DECLARE constraint_name text;
+BEGIN
+    SELECT conname INTO constraint_name
+    FROM pg_constraint
+    WHERE conrelid = 'supplier_documents'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%document_category%';
+      
+    IF constraint_name IS NOT NULL THEN
+        EXECUTE 'ALTER TABLE supplier_documents DROP CONSTRAINT ' || constraint_name;
+    END IF;
+END $$;
+
+ALTER TABLE supplier_documents ADD CONSTRAINT supplier_documents_document_category_check 
     CHECK (document_category IN ('required','optional','supplementary'));
 
 ALTER TABLE supplier_documents ADD COLUMN IF NOT EXISTS verification_notes TEXT;
