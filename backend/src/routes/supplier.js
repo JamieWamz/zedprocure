@@ -206,4 +206,28 @@ router.get('/admin/suppliers/pending', authenticate, requireRole('business_admin
   }
 });
 
+// ─── Secure Document Download Endpoint ────────────────────────────────────────
+router.get('/documents/download', authenticate, (req, res) => {
+  const filePath = req.query.path;
+  if (!filePath) {
+    return res.status(400).json({ error: 'Path parameter is required' });
+  }
+  
+  // Basic path traversal prevention - only allow paths within uploads directory
+  const normalizedPath = path.normalize(filePath);
+  if (!normalizedPath.includes('uploads')) {
+    return res.status(403).json({ error: 'Forbidden: Invalid file path' });
+  }
+  
+  res.download(normalizedPath, (err) => {
+    if (err) {
+      if (err.code === 'ENOENT') {
+        res.status(404).json({ error: 'File not found' });
+      } else {
+        res.status(500).json({ error: 'Failed to download file' });
+      }
+    }
+  });
+});
+
 module.exports = router;

@@ -4,6 +4,7 @@ import { CheckCircleOutlined, CloseCircleOutlined, TrophyOutlined, FileTextOutli
 import axios from 'axios';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getFileUrl } from '../utils/fileUrl';
 
 const { Text, Title } = Typography;
 
@@ -347,11 +348,13 @@ export default function BidEvaluation() {
                     <Divider />
                     <Text strong>Product Specifications:</Text>
                     <p>{resp.product_specifications || 'No specifications provided'}</p>
-                    {resp.response_file_path && (
-                      <a href={resp.response_file_path} target="_blank" rel="noreferrer">
-                        <FileTextOutlined /> View Attached Document
-                      </a>
-                    )}
+                    <div style={{ marginTop: 12 }}>
+                      {resp.response_file_path && (
+                        <a href={getFileUrl(resp.response_file_path)} target="_blank" rel="noreferrer">
+                          <Button type="default" size="small" icon={<FileTextOutlined />}>View Attached Response Document</Button>
+                        </a>
+                      )}
+                    </div>
                     <div style={{ marginTop: 8 }}>
                       <Text strong>Total Bid Value: </Text>
                       <Text strong style={{ color: '#389e0d', fontSize: 16 }}>

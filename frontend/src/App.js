@@ -9,6 +9,7 @@ import AdminPortal from './components/AdminPortal';
 import CustomerDashboard from './components/CustomerDashboard';
 import SupplierDashboard from './components/SupplierDashboard';
 import SupplierRegistration from './components/SupplierRegistration';
+import AcceptInvite from './components/AcceptInvite';
 import BidDetail from './components/BidDetail';
 import PublicNoticeboard from './components/PublicNoticeboard';
 import AppLayout from './components/AppLayout';
@@ -69,6 +70,7 @@ function AppContent() {
     <Routes>
           <Route path="/login" element={<UnifiedLogin />} />
           <Route path="/register/supplier" element={<SupplierRegistration />} />
+          <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route path="/system-health" element={
             <PrivateRoute requiredRoute="/system-health"><SystemHealthPortal /></PrivateRoute>
           } />

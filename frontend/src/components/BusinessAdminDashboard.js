@@ -6,7 +6,7 @@ import {
   ArrowUpOutlined, ArrowDownOutlined, WalletOutlined, SendOutlined,
   ReloadOutlined, CreditCardOutlined, CheckCircleOutlined, ClockCircleOutlined,
   ExclamationCircleOutlined, BellOutlined, CheckOutlined, CloseOutlined,
-  FlagOutlined, TrophyOutlined, UserSwitchOutlined,
+  FlagOutlined, TrophyOutlined, UserSwitchOutlined, UserAddOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -62,6 +62,11 @@ export default function BusinessAdminDashboard() {
   const [verifAction, setVerifAction] = useState(null); // 'verified' or 'rejected'
   const [verifNotes, setVerifNotes] = useState('');
   const [verifSubmitting, setVerifSubmitting] = useState(false);
+
+  // Invite Supplier State
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [inviteForm] = Form.useForm();
+  const [inviteLoading, setInviteLoading] = useState(false);
 
   // Customer Procurement Requests State
   const [adminProcurementRequests, setAdminProcurementRequests] = useState([]);
@@ -208,6 +213,20 @@ export default function BusinessAdminDashboard() {
     }
   };
 
+  const handleInviteSupplier = async (values) => {
+    setInviteLoading(true);
+    try {
+      await axios.post('/api/admin/invitations', { email: values.email, role: 'supplier' });
+      message.success('Invitation sent successfully');
+      setInviteModalOpen(false);
+      inviteForm.resetFields();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Failed to send invitation');
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
   if (loading) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
   if (error) return <Alert type="error" message={error} showIcon style={{ margin: 24 }} />;
   if (!data) return null;
@@ -259,6 +278,7 @@ export default function BusinessAdminDashboard() {
               <Button icon={<BellOutlined />} />
             </Badge>
           </Popover>
+          <Button icon={<UserAddOutlined />} onClick={() => setInviteModalOpen(true)}>Invite Supplier</Button>
           <Button icon={<ReloadOutlined />} onClick={fetchData} style={{ marginRight: 12 }}>Refresh</Button>
           <Button icon={<FileTextOutlined />} onClick={() => navigate('/admin/invoices')}>Invoices</Button>
           <Button icon={<DollarOutlined />} onClick={() => navigate('/admin/ledger')}>Ledger</Button>
@@ -793,6 +813,26 @@ export default function BusinessAdminDashboard() {
                 ? 'e.g. Missing mandatory Tax Compliance document (ZRA Tax Clearance). Please upload before re-applying.'
                 : 'e.g. All documents verified and compliant with procurement standards'}
             />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modal: Invite Supplier */}
+      <Modal
+        title={
+          <Space>
+            <UserAddOutlined style={{ color: '#1677ff' }} />
+            <span>Invite Supplier</span>
+          </Space>
+        }
+        open={inviteModalOpen}
+        onCancel={() => { setInviteModalOpen(false); inviteForm.resetFields(); }}
+        onOk={() => inviteForm.submit()}
+        confirmLoading={inviteLoading}
+      >
+        <Form form={inviteForm} layout="vertical" onFinish={handleInviteSupplier}>
+          <Form.Item name="email" label="Supplier Email" rules={[{ required: true, type: 'email' }]}>
+            <Input size="large" placeholder="supplier@example.com" />
           </Form.Item>
         </Form>
       </Modal>

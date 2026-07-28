@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Button, Upload, message, Alert, Steps, Card, Typography, Row, Col } from 'antd';
+import { Form, Input, Select, Button, Upload, message, Alert, Steps, Card, Typography, Row, Col } from 'antd';
 import { UploadOutlined, InboxOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -24,6 +24,19 @@ const OPTIONAL_DOCUMENTS = [
 ];
 
 const ALL_DOCUMENTS = [...MANDATORY_DOCUMENTS, ...OPTIONAL_DOCUMENTS];
+
+const BUSINESS_CATEGORIES = [
+  'Construction & Infrastructure',
+  'ICT & Software',
+  'Healthcare & Medical',
+  'Agriculture & Food',
+  'Transport & Logistics',
+  'Education & Training',
+  'Professional Services',
+  'Manufacturing',
+  'Energy & Utilities',
+  'Other'
+];
 
 export default function SupplierRegistration() {
   const [form] = Form.useForm();
@@ -91,6 +104,18 @@ export default function SupplierRegistration() {
             extra="PACRA registration number (e.g., 120190000123)"
           >
             <Input size="large" placeholder="120190000123" />
+          </Form.Item>
+          <Form.Item
+            name="business_category"
+            label="Business Category"
+            rules={[{ required: true, message: 'Please select your primary business category' }]}
+            extra="Your primary industry for bid notifications"
+          >
+            <Select size="large" placeholder="Select category">
+              {BUSINESS_CATEGORIES.map(cat => (
+                <Select.Option key={cat} value={cat}>{cat}</Select.Option>
+              ))}
+            </Select>
           </Form.Item>
           <Form.Item 
             name="full_name" 

@@ -3,6 +3,7 @@ import { Card, Descriptions, Tag, List, Typography, Spin, Alert, Button, message
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined, EditOutlined, AuditOutlined } from '@ant-design/icons';
+import { getFileUrl } from '../utils/fileUrl';
 
 import axios from 'axios';
 
@@ -390,7 +391,7 @@ export default function BidDetail() {
                 <Descriptions.Item label="Expected Delivery">{req.expected_delivery_time || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Payment Method">{req.payment_method || 'N/A'}</Descriptions.Item>
                 <Descriptions.Item label="Certification Standards">{req.certification_standards || 'N/A'}</Descriptions.Item>
-                {req.specifications_file_path && <Descriptions.Item label="Specifications File" span={2}><a href={req.specifications_file_path} target="_blank" rel="noreferrer">View File</a></Descriptions.Item>}
+                {req.specifications_file_path && <Descriptions.Item label="Specifications File" span={2}><a href={getFileUrl(req.specifications_file_path)} target="_blank" rel="noreferrer">View File</a></Descriptions.Item>}
               </Descriptions>
             </div>
           ))

@@ -441,7 +441,9 @@ router.get('/supplier/bids', authenticate, async (req, res) => {
        SELECT b.id, b.title, b.description, b.deadline, b.visibility,
               NULL as accepted, NULL as bid_supplier_id
        FROM bids b
+       CROSS JOIN (SELECT business_category FROM suppliers WHERE id = (SELECT supplier_id FROM supplier_users WHERE id = $1)) s
        WHERE b.status = 'open' AND b.visibility = 'global'
+       AND (s.business_category IS NULL OR s.business_category = '' OR b.business_category = s.business_category OR b.business_category IS NULL)
        ORDER BY deadline ASC`,
       [req.user.user_id]
     );

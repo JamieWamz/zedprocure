@@ -81,11 +81,11 @@ router.post('/register-supplier', upload.fields([
   { name: 'directors_id', maxCount: 1 },
   { name: 'bank_reference', maxCount: 1 }
 ]), async (req, res) => {
-  const { email, password, full_name, company_name, registration_number } = req.body;
+  const { email, password, full_name, company_name, registration_number, business_category } = req.body;
   
   // Validate required fields
-  if (!email || !password || !full_name || !company_name) {
-    return res.status(400).json({ error: 'Email, password, full name, and company name are required' });
+  if (!email || !password || !full_name || !company_name || !business_category) {
+    return res.status(400).json({ error: 'Email, password, full name, company name, and business category are required' });
   }
   
   const pwErr = validatePassword(password);
@@ -126,10 +126,10 @@ router.post('/register-supplier', upload.fields([
 
     // Create supplier with documents_submitted status
     const { rows: [supplier] } = await client.query(
-      `INSERT INTO suppliers (id, company_name, registration_number, verification_status, is_active, verification_method)
-       VALUES ($1, $2, $3, 'documents_submitted', false, 'manual')
+      `INSERT INTO suppliers (id, company_name, registration_number, business_category, verification_status, is_active, verification_method)
+       VALUES ($1, $2, $3, $4, 'documents_submitted', false, 'manual')
        RETURNING id, company_name, verification_status`,
-      [supplierId, company_name, registration_number || null]
+      [supplierId, company_name, registration_number || null, business_category]
     );
 
     // Create supplier user
@@ -238,6 +238,76 @@ router.post('/reset-password', async (req, res) => {
   } catch (e) {
     console.error('Reset password error:', e);
     res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// ─── Accept Invitation ──────────────────────────────────────────────────────────
+router.post('/accept-invitation', async (req, res) => {
+  const { token, password, full_name, company_name } = req.body;
+  if (!token || !password || !full_name) {
+    return res.status(400).json({ error: 'Token, password, and full name are required' });
+  }
+  
+  const pwErr = validatePassword(password);
+  if (pwErr) return res.status(400).json({ error: pwErr });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Find invitation
+    const { rows: [invitation] } = await client.query(
+      `SELECT * FROM invitations WHERE token=$1 AND expires_at > NOW() AND accepted=false FOR UPDATE`,
+      [token]
+    );
+    if (!invitation) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Invalid or expired invitation token' });
+    }
+
+    const hash = await bcrypt.hash(password, 12);
+    
+    if (invitation.role === 'supplier') {
+      if (!company_name) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Company name is required for supplier accounts' });
+      }
+      const supplierId = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO suppliers (id, company_name, verification_status, is_active, verification_method)
+         VALUES ($1, $2, 'verified', true, 'manual')`,
+        [supplierId, company_name]
+      );
+      await client.query(
+        `INSERT INTO supplier_users (id, supplier_id, email, password_hash, full_name)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [crypto.randomUUID(), supplierId, invitation.email, hash, full_name]
+      );
+    } else if (invitation.role === 'customer') {
+      await client.query(
+        `INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role)
+         VALUES ($1, (SELECT id FROM tenants LIMIT 1), $2, $3, $4, 'customer')`,
+        [crypto.randomUUID(), invitation.email, hash, full_name]
+      );
+    } else {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Unknown role in invitation' });
+    }
+
+    // Mark as accepted
+    await client.query(
+      `UPDATE invitations SET accepted=true WHERE id=$1`,
+      [invitation.id]
+    );
+
+    await client.query('COMMIT');
+    res.json({ message: 'Account created successfully. You can now log in.' });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('Accept invitation error:', e);
+    res.status(500).json({ error: 'Failed to accept invitation: ' + e.message });
+  } finally {
+    client.release();
   }
 });
 
