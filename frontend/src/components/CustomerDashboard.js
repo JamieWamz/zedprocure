@@ -14,6 +14,7 @@ import { cdnImages } from '../cdnAssets';
 import DigitalSignatureModal from './DigitalSignatureModal';
 import PaymentModal from './PaymentModal';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import EnhancedEmpty from './EnhancedEmpty';
 import ProgressSteps from './ProgressSteps';
 import DashboardStatistic from './DashboardStatistic';
@@ -93,6 +94,7 @@ export default function CustomerDashboard() {
   const [reqForm] = Form.useForm();
   const [customerBids, setCustomerBids] = useState([]);
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const loadPortal = useCallback(async () => {
     setInvoiceLoading(true);
@@ -235,7 +237,11 @@ ${values.warranty || 'No specific warranty requirements.'}
           renderItem={(item) => (
             <List.Item
               style={{ background: item.is_read ? 'transparent' : '#f0f5ff', cursor: 'pointer' }}
-              onClick={() => { markAsRead(item.id); setNotifOpen(false); }}
+              onClick={() => {
+                markAsRead(item.id);
+                if (item.link) navigate(item.link);
+                setNotifOpen(false);
+              }}
             >
               <List.Item.Meta
                 title={<Text strong={!item.is_read} style={{ fontSize: 13 }}>{item.title}</Text>}
@@ -262,10 +268,13 @@ ${values.warranty || 'No specific warranty requirements.'}
     { title: 'Bid Title', dataIndex: 'title', key: 'title', render: (v) => <Text strong>{v}</Text> },
     { title: 'Deadline', dataIndex: 'deadline', key: 'deadline', render: v => new Date(v).toLocaleString() },
     { title: 'Action', key: 'action', render: (_, row) => (
-      <Button size="small" type="primary" onClick={() => {
-        form.setFieldsValue({ bid_id: row.id });
-        document.getElementById('requirements-section')?.scrollIntoView({ behavior: 'smooth' });
-      }}>Set Requirements</Button>
+      <Space size="small">
+        <Button size="small" onClick={() => navigate(`/supplier/bids/${row.id}`)}>View Details</Button>
+        <Button size="small" type="primary" onClick={() => {
+          form.setFieldsValue({ bid_id: row.id });
+          document.getElementById('requirements-section')?.scrollIntoView({ behavior: 'smooth' });
+        }}>Set Requirements</Button>
+      </Space>
     )},
   ];
 

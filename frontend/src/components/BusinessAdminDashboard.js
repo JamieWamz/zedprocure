@@ -432,11 +432,14 @@ export default function BusinessAdminDashboard() {
         <Col xs={24} lg={8}>
           <Card title={<span><FlagOutlined /> Bid Pipeline</span>} className="table-card" style={{ height: '100%' }}>
             {bidPipeline.length ? (
-              <List
+          <List
                 size="small"
                 dataSource={bidPipeline}
                 renderItem={(item) => (
-                  <List.Item>
+                  <List.Item
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate('/admin/bids')}
+                  >
                     <List.Item.Meta
                       title={<Text style={{ textTransform: 'capitalize' }}>{item.status}</Text>}
                       description={`${item.count} bid${item.count === 1 ? '' : 's'}`}
@@ -455,7 +458,7 @@ export default function BusinessAdminDashboard() {
         <Col xs={24} lg={8}>
           <Card title={<span><ShoppingCartOutlined /> Order Control</span>} className="table-card" style={{ height: '100%' }}>
             {orderPipeline.length ? (
-              <List
+          <List
                 size="small"
                 dataSource={orderPipeline}
                 renderItem={(item) => (
@@ -464,9 +467,14 @@ export default function BusinessAdminDashboard() {
                       title={<Text style={{ textTransform: 'capitalize' }}>{item.status.replaceAll('_', ' ')}</Text>}
                       description={`${item.count} order${item.count === 1 ? '' : 's'} · ${money(item.total)}`}
                     />
-                    <Tag color={item.status === 'disputed' ? 'error' : item.status === 'completed' ? 'success' : 'processing'}>
-                      {item.status === 'disputed' ? 'Action' : 'Track'}
-                    </Tag>
+                    <Button
+                      type="link"
+                      size="small"
+                      style={{ color: item.status === 'disputed' ? '#cf1322' : item.status === 'completed' ? '#389e0d' : '#1677ff', padding: 0 }}
+                      onClick={() => navigate('/admin/orders')}
+                    >
+                      {item.status === 'disputed' ? 'Action ↗' : 'Track ↗'}
+                    </Button>
                   </List.Item>
                 )}
               />

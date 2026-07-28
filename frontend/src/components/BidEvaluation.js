@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, Table, Tag, Typography, Spin, Alert, Button, message, Modal, Form, Input, InputNumber, Select, Space, Descriptions, Divider, Tabs, Statistic, Result } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, TrophyOutlined, FileTextOutlined, DollarOutlined, StarOutlined } from '@ant-design/icons';
 import axios from 'axios';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const { Text, Title } = Typography;
@@ -19,7 +19,15 @@ const EVALUATION_CRITERIA = [
 ];
 
 export default function BidEvaluation() {
-  const { bidId } = useParams();
+  // useParams().bidId is only populated when mounted under a Route with :bidId.
+  // AdminPortal renders BidEvaluation inline (no nested Route), so fall back to
+  // parsing the UUID from the pathname: /admin/bids/<uuid>/evaluate
+  const rawParams = useParams();
+  const location = useLocation();
+  const bidId = rawParams.bidId ||
+    location.pathname.split('/').filter(Boolean).find(
+      (seg, i, arr) => arr[i - 1] === 'bids' && seg !== 'new' && seg !== 'evaluate'
+    );
   const navigate = useNavigate();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
