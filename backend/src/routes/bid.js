@@ -168,10 +168,7 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
 });
 
 // ─── Publish bid – validates line items > 0, then draft → open ───────────────
-router.put('/bids/:bidId/publish', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin') {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
+router.put('/bids/:bidId/publish', authenticate, requireRole('business_admin'), async (req, res) => {
 
   const client = await pool.connect();
   try {
@@ -265,42 +262,6 @@ router.get('/bids/my-tenant-bids', authenticate, async (req, res) => {
   } catch (e) {
     console.error('Error fetching tenant bids:', e);
     res.status(500).json({ error: 'Failed to fetch tenant bids' });
-  }
-});
-
-// ─── Get Bids for User's Organization (Customer or Admin) ───────────────────
-router.get('/bids/organization', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin' && req.user.role !== 'customer') {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  try {
-    const rows = await getOrganizationBids(req.user);
-    res.json(rows);
-  } catch (e) {
-    console.error('Error fetching organization bids:', e);
-    // Use a 400 for context errors, 500 for others
-    const statusCode = e.message.includes('context') ? 400 : 500;
-    res.status(statusCode).json({ error: e.message || 'Failed to fetch organization bids' });
-  }
-});
-
-// ─── Get global open bids (marketplace listing for suppliers) ─────────────────
-router.get('/bids/global', authenticate, async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      `SELECT b.id, b.title, b.description, b.deadline, b.evaluation_method,
-              b.bidding_fee_amount, b.views_count,
-              b.created_at, t.name AS tenant_name
-       FROM bids b
-       JOIN tenants t ON t.id = b.tenant_id
-       WHERE b.status = 'open' AND b.visibility = 'global'
-       ORDER BY b.created_at DESC`
-    );
-    res.json(rows);
-  } catch (e) {
-    console.error('Error fetching global bids:', e);
-    res.status(500).json({ error: 'Failed to fetch global bids' });
   }
 });
 
@@ -724,8 +685,7 @@ router.post('/supplier/bids/:bidSupplierId/response', authenticate, uploadRespon
 });
 
 // ─── Admin: Get all supplier responses with line-item pricing for a bid ─────
-router.get('/bids/:bidId/responses', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin') return res.status(403).json({ error: 'Forbidden' });
+router.get('/bids/:bidId/responses', authenticate, requireRole('business_admin'), async (req, res) => {
   try {
     const { bidId } = req.params;
 
@@ -770,8 +730,7 @@ router.get('/bids/:bidId/responses', authenticate, async (req, res) => {
 });
 
 // ─── Admin: Score a supplier response (best-value evaluation) ───────────────
-router.post('/bids/:bidId/evaluate', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin') return res.status(403).json({ error: 'Forbidden' });
+router.post('/bids/:bidId/evaluate', authenticate, requireRole('business_admin'), async (req, res) => {
   try {
     const { bidId } = req.params;
     const { supplier_id, criteria_name, score, weight, comments } = req.body;
@@ -800,8 +759,7 @@ router.post('/bids/:bidId/evaluate', authenticate, async (req, res) => {
 });
 
 // ─── Admin: Get evaluation scores for a bid ─────────────────────────────────
-router.get('/bids/:bidId/evaluation', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin') return res.status(403).json({ error: 'Forbidden' });
+router.get('/bids/:bidId/evaluation', authenticate, requireRole('business_admin'), async (req, res) => {
   try {
     const { bidId } = req.params;
 
@@ -875,10 +833,7 @@ router.post('/bids/:bidId/invite', authenticate, async (req, res) => {
 });
 
 // Award bid (create order with BoQ data and audit trail)
-router.post('/bids/:bidId/award', authenticate, async (req, res) => {
-  if (req.user.role !== 'business_admin') {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
+router.post('/bids/:bidId/award', authenticate, requireRole('business_admin'), async (req, res) => {
   const { bidId } = req.params;
   const { supplier_id, total_amount, contract_file_path, award_notes } = req.body;
 

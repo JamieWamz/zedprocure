@@ -10,9 +10,11 @@ const { v4: uuidv4 } = require('uuid');
 const pool = require('../config/db');
 const { authenticate } = require('../middleware/authMiddleware');
 const { recordInvoiceIssue, recordInvoicePayment } = require('../services/ledgerService');
+const { generateInvoicePDF } = require('../services/pdfService');
 const { sendMail } = require('../services/emailService');
 
 const router = express.Router({ strict: false });
+
 
 const OPEN_STATUSES = ['sent', 'partially_paid'];
 
@@ -371,6 +373,35 @@ router.get('/:id', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch invoice' });
   }
 });
+
+// ─── Export invoice to PDF ───────────────────────────────────────────────────
+router.get('/:id/pdf', authenticate, async (req, res) => {
+  try {
+    const client = await pool.connect();
+    try {
+      const scope = await resolvePartyScope(client, req.user);
+      const { rows: [inv] } = await client.query('SELECT * FROM invoices WHERE id = $1', [req.params.id]);
+      if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+      if (!canViewInvoice(scope, inv)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const { rows: lines } = await client.query('SELECT * FROM invoice_lines WHERE invoice_id = $1 ORDER BY line_order', [inv.id]);
+      inv.line_items = lines;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=invoice-${inv.invoice_no}.pdf`);
+
+      generateInvoicePDF(inv, res);
+
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    console.error('Get invoice PDF error:', e);
+    res.status(500).json({ error: 'Failed to generate invoice PDF' });
+  }
+});
+
 
 // ─── Update status (issue / cancel) ──────────────────────────────────────────
 router.patch('/:id', authenticate, async (req, res) => {
