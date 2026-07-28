@@ -13,7 +13,11 @@ export default function BidDetail() {
   const params = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const bidId = params.bidId;
+  // params.bidId is only set on the supplier route (/supplier/bids/:bidId).
+  // On the admin route (/admin/bids/<uuid>), AdminPortal renders <BidDetail />
+  // inline without a nested Route, so useParams() returns {}. Fall back to
+  // parsing the last path segment from location.pathname.
+  const bidId = params.bidId || location.pathname.split('/').filter(Boolean).pop();
 
   const { user } = useAuth();
   const [bid, setBid] = useState(null);
