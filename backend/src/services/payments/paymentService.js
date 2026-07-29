@@ -37,15 +37,20 @@ async function initiatePayment({ provider, amount, msisdn, orderId, description,
 
   let providerReference;
 
-  if (provider === 'mtn') {
-    providerReference = await mtnMomo.requestToPay(amount, msisdn, orderId, description);
-  } else if (provider === 'airtel') {
-    providerReference = await airtel.collect(amount, msisdn, orderId);
-  } else if (provider === 'zamtel') {
-    providerReference = await zamtel.requestPayment(amount, msisdn, orderId);
+  // DEMO/POC MODE: If msisdn is '260000000000', use demo mode.
+  if (msisdn === '260000000000' || process.env.DEMO_MODE === 'true' || !process.env.MTN_MOMO_SUBSCRIPTION_KEY) {
+    providerReference = `DEMO-${provider.toUpperCase()}-${uuidv4().slice(0, 8)}`;
   } else {
-    // Bank — reference is set manually or via callback; assign a local ref
-    providerReference = `BANK-${orderId}`;
+    if (provider === 'mtn') {
+      providerReference = await mtnMomo.requestToPay(amount, msisdn, orderId, description);
+    } else if (provider === 'airtel') {
+      providerReference = await airtel.collect(amount, msisdn, orderId);
+    } else if (provider === 'zamtel') {
+      providerReference = await zamtel.requestPayment(amount, msisdn, orderId);
+    } else {
+      // Bank — reference is set manually or via callback; assign a local ref
+      providerReference = `BANK-${orderId}`;
+    }
   }
 
   const { rows: [log] } = await pool.query(
@@ -78,7 +83,10 @@ async function syncPaymentStatus(paymentLogId) {
   let newStatus = 'pending';
 
   try {
-    if (payment.provider === 'mtn') {
+    if (payment.provider_reference?.startsWith('DEMO-')) {
+      // Demo mode: auto-approve after 1st poll
+      newStatus = 'successful';
+    } else if (payment.provider === 'mtn') {
       const raw = await mtnMomo.getPaymentStatus(payment.provider_reference);
       if (raw === 'SUCCESSFUL') newStatus = 'successful';
       else if (raw === 'FAILED') newStatus = 'failed';

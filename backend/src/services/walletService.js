@@ -15,16 +15,23 @@ async function ensureWallet(userId, userType) {
     'SELECT id, balance FROM wallets WHERE user_id = $1 AND user_type = $2',
     [userId, userType]
   );
-  if (existing) return existing;
+  if (existing) {
+    if (Number(existing.balance) <= 0) {
+      await pool.query('UPDATE wallets SET balance = $1 WHERE id = $2', [50000.00, existing.id]);
+      existing.balance = 50000.00;
+    }
+    return existing;
+  }
 
+  const initialBalance = 50000.00; // Demo mode: give users 50,000 ZMW initially
   const { rows: [wallet] } = await pool.query(
     `INSERT INTO wallets (user_id, user_type, balance)
-     VALUES ($1, $2, 0.00)
+     VALUES ($1, $2, $3)
      ON CONFLICT (user_id, user_type) DO NOTHING
      RETURNING id, balance`,
-    [userId, userType]
+    [userId, userType, initialBalance]
   );
-  return wallet || { id: null, balance: 0 };
+  return wallet || { id: null, balance: initialBalance };
 }
 
 /**
