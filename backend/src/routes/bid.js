@@ -283,13 +283,14 @@ router.get('/bids/:bidId', authenticate, async (req, res) => {
     const { rows: [bid] } = await pool.query(
       `SELECT id, tenant_id, title, description, deadline, delivery_start, delivery_end,
               requires_large_contract, evaluation_method, bidding_fee_amount, delivery_terms,
-              technical_specifications_file_path, visibility, status, views_count, created_at, business_category
+              technical_specifications_path, technical_specifications,
+              visibility, status, views_count, created_by, created_at, business_category
        FROM bids WHERE id=$1`,
       [bidId]
     );
     if (!bid) return res.status(404).json({ error: 'Not found' });
 
-    // Enforce authorization
+    // Enforce authorization — platform_admins can view any bid
     if (req.user.user_type === 'tenant_user' && bid.tenant_id !== req.user.tenant_id) {
       return res.status(403).json({ error: 'Forbidden' });
     } else if (req.user.user_type === 'supplier_user') {
@@ -304,9 +305,10 @@ router.get('/bids/:bidId', authenticate, async (req, res) => {
       }
     }
 
-    // Load BoQ line items
+    // Load BoQ line items (include unit_price_estimate for admin/customer views;
+    // the priceIsolation middleware strips it for supplier_user responses)
     const { rows: lineItems } = await pool.query(
-      `SELECT id, item_description, unit_of_measure, quantity, line_order
+      `SELECT id, item_description, unit_of_measure, quantity, unit_price_estimate, line_order
        FROM bid_line_items WHERE bid_id = $1 ORDER BY line_order ASC`,
       [bidId]
     );
