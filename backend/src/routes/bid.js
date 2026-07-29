@@ -84,7 +84,7 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
     title, description, deadline, delivery_start, delivery_end,
     requires_large_contract, evaluation_method, bidding_fee_amount,
     delivery_terms, technical_specifications,
-    line_items
+    line_items, business_category, visibility
   } = req.body;
 
   // Validate required fields
@@ -137,11 +137,14 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
 
     const bidRes = await client.query(
       `INSERT INTO bids (tenant_id, title, description, deadline, delivery_start, delivery_end,
-        requires_large_contract, evaluation_method, bidding_fee_amount, created_by,
-        status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'draft') RETURNING *`,
-      [tenantId, title, description, deadline, delivery_start, delivery_end,
-       isLargeContract, evalMethod, bidding_fee_amount, req.user.user_id]
+        requires_large_contract, evaluation_method, bidding_fee_amount, delivery_terms,
+        technical_specifications, technical_specifications_path, visibility, business_category, created_by, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'draft') RETURNING *`,
+      [
+        tenantId, title, description, deadline, delivery_start || null, delivery_end || null,
+        isLargeContract, evalMethod, bidding_fee_amount, delivery_terms,
+        technical_specifications || null, techSpecPath, visibility || 'global', business_category || null, req.user.user_id
+      ]
     );
     const bid = bidRes.rows[0];
 
@@ -277,6 +280,8 @@ router.get('/bids/my-tenant-bids', authenticate, async (req, res) => {
 router.get('/bids/:bidId', authenticate, async (req, res) => {
   try {
     const { bidId } = req.params;
+    console.log(`[GET /bids/:bidId] Request received for bidId: ${bidId}, user_type: ${req.user.user_type}, user_id: ${req.user.user_id}`);
+    
     await pool.query('UPDATE bids SET views_count = views_count + 1 WHERE id = $1', [bidId]);
     
     // Select specific columns to avoid leaking sensitive data

@@ -106,10 +106,14 @@ export default function BidDetail() {
 
   const fetchBid = async () => {
     try {
+      console.log(`[BidDetail] Fetching bid details for bidId: ${bidId}`);
       const { data } = await axios.get(`/api/bids/${bidId}`);
+      console.log('[BidDetail] Successfully fetched bid details:', data);
       setBid(data);
+      setError(null);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to load bid');
+      console.error('[BidDetail] Error fetching bid details:', err);
+      setError(err.response?.data?.error || 'Failed to load bid details');
     } finally {
       setLoading(false);
     }

@@ -80,11 +80,11 @@ function AppContent() {
           <Route path="/customer/*" element={
             <PrivateRoute requiredRoute="/customer"><CustomerDashboard /></PrivateRoute>
           } />
-          <Route path="/supplier/*" element={
-            <PrivateRoute requiredRoute="/supplier"><SupplierDashboard /></PrivateRoute>
-          } />
           <Route path="/supplier/bids/:bidId" element={
             <PrivateRoute requiredRoute="/supplier"><BidDetail /></PrivateRoute>
+          } />
+          <Route path="/supplier/*" element={
+            <PrivateRoute requiredRoute="/supplier"><SupplierDashboard /></PrivateRoute>
           } />
           <Route path="/public/bids" element={<PublicNoticeboard />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
