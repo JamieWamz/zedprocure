@@ -237,8 +237,8 @@ ${values.warranty || 'No specific warranty requirements.'}
           renderItem={(item) => (
             <List.Item
               style={{ background: item.is_read ? 'transparent' : '#f0f5ff', cursor: 'pointer' }}
-              onClick={() => {
-                markAsRead(item.id);
+              onClick={async () => {
+                await markAsRead(item.id);
                 if (item.link) navigate(item.link);
                 setNotifOpen(false);
               }}

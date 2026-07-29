@@ -3,7 +3,7 @@ import { Table, Button, message, Modal, Form, Input, Select, Tag, Space, Card, L
 import { CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
-import getFileUrl from '../utils/fileUrl';
+import { getFileUrl } from '../utils/fileUrl';
 
 const { Text } = Typography;
 

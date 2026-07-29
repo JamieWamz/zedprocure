@@ -110,8 +110,10 @@ export default function BusinessAdminDashboard() {
   }, [fetchNotifications]);
 
   const markAsRead = async (id) => {
-    await axios.put(`/api/notifications/${id}/read`);
-    fetchNotifications();
+    try {
+      await axios.put(`/api/notifications/${id}/read`);
+      fetchNotifications();
+    } catch (_) {}
   };
 
   const markAllRead = async () => {
@@ -134,7 +136,7 @@ export default function BusinessAdminDashboard() {
             renderItem={(item) => (
               <List.Item
                 style={{ background: item.is_read ? 'transparent' : '#f0f5ff', cursor: 'pointer' }}
-                onClick={() => { markAsRead(item.id); if (item.link) navigate(item.link); setNotifOpen(false); }}
+                onClick={async () => { await markAsRead(item.id); if (item.link) navigate(item.link); setNotifOpen(false); }}
               >
                 <List.Item.Meta
                   title={<Text strong={!item.is_read} style={{ fontSize: 13 }}>{item.title}</Text>}

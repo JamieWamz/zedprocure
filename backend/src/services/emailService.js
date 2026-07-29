@@ -27,7 +27,8 @@ function getTransporter() {
         console.log('\n=== EMAIL (dev fallback) ===');
         console.log(`To: ${opts.to}`);
         console.log(`Subject: ${opts.subject}`);
-        console.log(`Body: ${opts.html || opts.text}`);
+        const body = opts.html || opts.text || '';
+        console.log(`Body: ${body.length > 200 ? body.substring(0, 200) + '... [truncated]' : body}`);
         console.log('===========================\n');
       },
     };
