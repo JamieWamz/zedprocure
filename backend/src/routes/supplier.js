@@ -213,13 +213,15 @@ router.get('/documents/download', authenticate, (req, res) => {
     return res.status(400).json({ error: 'Path parameter is required' });
   }
   
-  // Basic path traversal prevention - only allow paths within uploads directory
-  const normalizedPath = path.normalize(filePath);
-  if (!normalizedPath.includes('uploads')) {
+  // Strong path traversal prevention
+  const uploadsDir = path.resolve(__dirname, '../../uploads');
+  const requestedPath = path.resolve(filePath);
+  
+  if (!requestedPath.startsWith(uploadsDir)) {
     return res.status(403).json({ error: 'Forbidden: Invalid file path' });
   }
   
-  res.download(normalizedPath, (err) => {
+  res.download(requestedPath, (err) => {
     if (err) {
       if (err.code === 'ENOENT') {
         res.status(404).json({ error: 'File not found' });

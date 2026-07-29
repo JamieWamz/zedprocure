@@ -69,7 +69,11 @@ async function verifyUserActive(decoded) {
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Authentication required' });
-    if (roles.includes(req.user.role)) return next();
+    
+    // Suppliers don't have a 'role' column, they are identified by user_type
+    const userRole = req.user.role || req.user.user_type;
+    
+    if (roles.includes(userRole) || roles.includes(req.user.role)) return next();
     return res.status(403).json({ error: 'Insufficient permissions' });
   };
 }

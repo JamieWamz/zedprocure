@@ -378,14 +378,14 @@ ${values.warranty || 'No specific warranty requirements.'}
           <DashboardStatistic title="Paid This Month" value={money(summary?.paidThisMonth)} color="#389e0d" />
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <DashboardStatistic title="Active Orders" value={orders.length} prefix={<ShoppingCartOutlined />} color="#1677ff" />
+          <DashboardStatistic title="Active Orders" value={(orders || []).length} prefix={<ShoppingCartOutlined />} color="#1677ff" />
         </Col>
       </Row>
 
       {/* Workflow Stage Steps Progress */}
       <Card style={{ marginBottom: 20 }}>
         <Title level={5} style={{ marginBottom: 12 }}>Procurement Lifecycle Progress</Title>
-        <ProgressSteps steps={customerSteps} current={orders.length > 0 ? 3 : customerBids.length > 0 ? 1 : 0} />
+        <ProgressSteps steps={customerSteps} current={(orders || []).length > 0 ? 3 : (customerBids || []).length > 0 ? 1 : 0} />
       </Card>
 
       {/* Main Tabbed Content */}
@@ -422,7 +422,7 @@ ${values.warranty || 'No specific warranty requirements.'}
                             option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
                           }
                         >
-                          {customerBids.map(bid => (
+                          {(customerBids || []).map(bid => (
                             <Option key={bid.id} value={bid.id}>
                               {bid.title} (Deadline: {new Date(bid.deadline).toLocaleDateString()})
                             </Option>

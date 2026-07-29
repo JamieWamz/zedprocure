@@ -346,7 +346,7 @@ function getOrderProgress(status) {
           <Card className="stat-card">
             <Statistic
               title="Open Bids Available"
-              value={bids.filter(b => !b.accepted && b.visibility === 'global').length}
+              value={(bids || []).filter(b => !b.accepted && b.visibility === 'global').length}
               prefix={<FileTextOutlined />}
               valueStyle={{ color: '#1677ff' }}
             />
@@ -356,7 +356,7 @@ function getOrderProgress(status) {
           <Card className="stat-card">
             <Statistic
               title="My Invitations"
-              value={bids.filter(b => b.bid_supplier_id).length}
+              value={(bids || []).filter(b => b.bid_supplier_id).length}
               prefix={<ClockCircleOutlined />}
               valueStyle={{ color: '#faad14' }}
             />
@@ -366,7 +366,7 @@ function getOrderProgress(status) {
           <Card className="stat-card">
             <Statistic
               title="Active Orders"
-              value={orders.filter(o => !['completed', 'disputed'].includes(o.status)).length}
+              value={(orders || []).filter(o => !['completed', 'disputed'].includes(o.status)).length}
               prefix={<ShoppingCartOutlined />}
               valueStyle={{ color: '#52c41a' }}
             />

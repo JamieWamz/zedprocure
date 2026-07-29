@@ -314,7 +314,7 @@ export default function BidDetail() {
         <Card title="Technical Specifications" size="small" style={{ marginBottom: 20 }}>
           {bid.technical_specifications && <p>{bid.technical_specifications}</p>}
           {bid.technical_specifications_path && (
-            <a href={bid.technical_specifications_path} target="_blank" rel="noreferrer">
+            <a href={getFileUrl(bid.technical_specifications_path)} target="_blank" rel="noreferrer">
               <FileTextOutlined /> View Technical Specification Document (PDF)
             </a>
           )}

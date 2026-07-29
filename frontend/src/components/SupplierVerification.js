@@ -3,6 +3,7 @@ import { Table, Button, message, Modal, Form, Input, Select, Tag, Space, Card, L
 import { CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
+import getFileUrl from '../utils/fileUrl';
 
 const { Text } = Typography;
 
@@ -321,7 +322,7 @@ export default function SupplierVerification() {
       >
         {selectedDocument && (
           <div>
-            <p><Text strong>File:</Text> <a href={selectedDocument.path} target="_blank" rel="noreferrer">View Document</a></p>
+            <p><Text strong>File:</Text> <a href={getFileUrl(selectedDocument.path)} target="_blank" rel="noreferrer">View Document</a></p>
         <p><Text strong>Status:</Text> {getDocumentStatusTag(selectedDocument)}</p>
         <p><Text strong>Category:</Text> <Tag>{selectedDocument.document_category || 'required'}</Tag></p>
         <p><Text strong>Uploaded:</Text> {new Date(selectedDocument.upload_date).toLocaleString()}</p>

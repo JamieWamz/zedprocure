@@ -55,6 +55,7 @@ export default function SupplierRegistration() {
       formData.append('full_name', values.full_name);
       formData.append('company_name', values.company_name);
       formData.append('registration_number', values.registration_number || '');
+      formData.append('business_category', values.business_category || '');
 
       ALL_DOCUMENTS.forEach(doc => {
         const file = values[doc.type]?.[0]?.originFileObj;
@@ -214,7 +215,7 @@ export default function SupplierRegistration() {
 
   const nextStep = async () => {
     const fields = currentStep === 0
-      ? ['company_name', 'registration_number', 'full_name', 'email', 'password']
+      ? ['company_name', 'registration_number', 'business_category', 'full_name', 'email', 'password']
       : ALL_DOCUMENTS.map(doc => doc.type);
     try {
       await form.validateFields(fields);

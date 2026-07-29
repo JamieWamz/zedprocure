@@ -57,7 +57,15 @@ const responseStorage = multer.diskStorage({
 
 const uploadResponse = multer({
   storage: responseStorage,
-  limits: { fileSize: 10 * 1024 * 1024 }
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ALLOWED_SPEC_EXT.includes(ext) && ALLOWED_SPEC_MIME.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Bid response documents must be a PDF file'));
+    }
+  }
 });
 
 // Valid Incoterms for validation
@@ -270,24 +278,50 @@ router.get('/bids/:bidId', authenticate, async (req, res) => {
   try {
     const { bidId } = req.params;
     await pool.query('UPDATE bids SET views_count = views_count + 1 WHERE id = $1', [bidId]);
-    const { rows: [bid] } = await pool.query('SELECT * FROM bids WHERE id=$1', [bidId]);
+    
+    // Select specific columns to avoid leaking sensitive data
+    const { rows: [bid] } = await pool.query(
+      `SELECT id, tenant_id, title, description, deadline, delivery_start, delivery_end,
+              requires_large_contract, evaluation_method, bidding_fee_amount, delivery_terms,
+              technical_specifications_file_path, visibility, status, views_count, created_at, business_category
+       FROM bids WHERE id=$1`,
+      [bidId]
+    );
     if (!bid) return res.status(404).json({ error: 'Not found' });
+
+    // Enforce authorization
+    if (req.user.user_type === 'tenant_user' && bid.tenant_id !== req.user.tenant_id) {
+      return res.status(403).json({ error: 'Forbidden' });
+    } else if (req.user.user_type === 'supplier_user') {
+      // Check if supplier is invited
+      const { rows: [invite] } = await pool.query(
+        `SELECT id FROM bid_suppliers WHERE bid_id = $1 AND supplier_id = (SELECT supplier_id FROM supplier_users WHERE id = $2)`,
+        [bidId, req.user.user_id]
+      );
+      // Suppliers can view if it's open & global, or if they are invited
+      if (!invite && (bid.visibility !== 'global' || bid.status !== 'open')) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    }
 
     // Load BoQ line items
     const { rows: lineItems } = await pool.query(
-      `SELECT id, item_description, unit_of_measure, quantity, unit_price_estimate, line_order
+      `SELECT id, item_description, unit_of_measure, quantity, line_order
        FROM bid_line_items WHERE bid_id = $1 ORDER BY line_order ASC`,
       [bidId]
     );
     bid.line_items = lineItems;
     bid.total_line_items = lineItems.length;
 
-    const { rows: suppliers } = await pool.query(
-      `SELECT s.id, s.company_name, bs.accepted, bs.id AS bid_supplier_id
-       FROM bid_suppliers bs JOIN suppliers s ON s.id = bs.supplier_id WHERE bs.bid_id = $1`,
-      [bidId]
-    );
-    bid.suppliers = suppliers;
+    // Load suppliers (only for tenant_users or admins, NOT for suppliers)
+    if (req.user.user_type !== 'supplier_user') {
+      const { rows: suppliers } = await pool.query(
+        `SELECT s.id, s.company_name, bs.accepted, bs.id AS bid_supplier_id
+         FROM bid_suppliers bs JOIN suppliers s ON s.id = bs.supplier_id WHERE bs.bid_id = $1`,
+        [bidId]
+      );
+      bid.suppliers = suppliers;
+    }
 
     const { rows: requirements } = await pool.query('SELECT * FROM bid_requirements WHERE bid_id=$1', [bidId]);
     bid.requirements = requirements;
@@ -800,7 +834,7 @@ router.get('/bids/:bidId/evaluation', authenticate, requireRole('business_admin'
 
 
 // ─── Admin / Customer: Invite suppliers to a bid ──────────────────────────────
-router.post('/bids/:bidId/invite', authenticate, async (req, res) => {
+router.post('/bids/:bidId/invite', authenticate, requireRole('business_admin', 'customer', 'system_admin'), async (req, res) => {
   const { bidId } = req.params;
   const { supplier_ids } = req.body;
 

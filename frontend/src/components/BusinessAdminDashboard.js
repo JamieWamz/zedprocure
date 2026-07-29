@@ -231,7 +231,7 @@ export default function BusinessAdminDashboard() {
   if (error) return <Alert type="error" message={error} showIcon style={{ margin: 24 }} />;
   if (!data) return null;
 
-  const { revenue, outstanding, stats, monthlyRevenue, escrowSummary, recentTransactions, invoices = {}, procurement = {} } = data;
+  const { revenue = {}, outstanding = {}, stats = {}, monthlyRevenue = [], escrowSummary = {}, recentTransactions = [], invoices = {}, procurement = {} } = data || {};
   const invoiceCounts = invoices.counts || {};
   const bidPipeline = procurement.bidPipeline || [];
   const orderPipeline = procurement.orderPipeline || [];
