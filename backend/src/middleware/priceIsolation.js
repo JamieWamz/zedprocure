@@ -13,6 +13,12 @@ module.exports = function stripBudgetForSupplier(req, res, next) {
           body.requirements = rest;
         }
       }
+      if (body && body.line_items && Array.isArray(body.line_items)) {
+        body.line_items = body.line_items.map(item => {
+          const { unit_price_estimate, ...rest } = item;
+          return rest;
+        });
+      }
       return originalJson(body);
     };
   }

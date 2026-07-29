@@ -296,12 +296,23 @@ router.get('/bids/:bidId', authenticate, async (req, res) => {
     } else if (req.user.user_type === 'supplier_user') {
       // Check if supplier is invited
       const { rows: [invite] } = await pool.query(
-        `SELECT id FROM bid_suppliers WHERE bid_id = $1 AND supplier_id = (SELECT supplier_id FROM supplier_users WHERE id = $2)`,
+        `SELECT bs.id, bs.accepted, s.company_name 
+         FROM bid_suppliers bs 
+         JOIN suppliers s ON s.id = bs.supplier_id 
+         WHERE bs.bid_id = $1 AND bs.supplier_id = (SELECT supplier_id FROM supplier_users WHERE id = $2)`,
         [bidId, req.user.user_id]
       );
       // Suppliers can view if it's open & global, or if they are invited
       if (!invite && (bid.visibility !== 'global' || bid.status !== 'open')) {
         return res.status(403).json({ error: 'Forbidden' });
+      }
+      
+      if (invite) {
+        bid.suppliers = [{
+          bid_supplier_id: invite.id,
+          accepted: invite.accepted,
+          company_name: invite.company_name
+        }];
       }
     }
 
