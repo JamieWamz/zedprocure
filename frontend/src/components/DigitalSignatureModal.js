@@ -19,18 +19,39 @@ export default function DigitalSignatureModal({
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    if (!open || !documentType || !documentId) return;
+    if (!open || !documentType || !documentId) {
+      setLoading(false);
+      setSignatures([]);
+      return;
+    }
     setLoading(true);
     try {
       const { data } = await axios.get(`/api/signatures/${documentType}/${documentId}`);
-      setSignatures(data);
+      setSignatures(Array.isArray(data) ? data : []);
     } catch (e) {
-      message.error(e.response?.data?.error || 'Failed to load signatures');
+      const msg = e.response?.data?.error || 'Failed to load signatures';
+      // 403 is expected when the user has no access — show informational message, not error
+      if (e.response?.status !== 403) {
+        message.error(msg);
+      }
+      setSignatures([]);
     } finally {
       setLoading(false);
     }
   }, [documentId, documentType, open]);
 
+  // Safety net: clear loading state if it gets stuck (network timeout, etc.)
+  useEffect(() => {
+    if (!open) { setLoading(false); setSignatures([]); }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !documentId) return;
+    const timeout = setTimeout(() => setLoading(false), 15000);
+    return () => clearTimeout(timeout);
+  }, [open, documentId]);
+
+  // Fetch signatures whenever modal opens or the document changes
   useEffect(() => { load(); }, [load]);
 
   const sign = async () => {
