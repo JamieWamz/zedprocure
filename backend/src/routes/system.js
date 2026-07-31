@@ -4,7 +4,21 @@ const bcrypt = require('bcryptjs');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
 const { validatePassword } = require('../utils/validation');
 const os = require('os');
+const rateLimit = require('express-rate-limit');
+const {
+  executeOperation,
+  getControlPlane,
+  getOperationHistory,
+} = require('../services/systemOperationsService');
 const router = express.Router();
+
+const operationLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many system operations. Wait one minute and try again.' },
+});
 
 const IMMUTABLE_EMAIL = 'wamuyuwamundia@gmail.com';
 const ADMIN_ROLE_LABELS = {
@@ -145,6 +159,41 @@ router.get('/system/stats', authenticate, requireRole('system_admin'), async (re
     });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch system stats' });
+  }
+});
+
+// ─── Operations Control Plane ───────────────────────────────
+router.get('/system/control-plane', authenticate, requireRole('system_admin'), async (_req, res) => {
+  try {
+    res.json(await getControlPlane());
+  } catch (error) {
+    console.error('Error loading system control plane:', error);
+    res.status(500).json({ error: 'Failed to load operations control plane.' });
+  }
+});
+
+router.get('/system/operations/history', authenticate, requireRole('system_admin'), async (req, res) => {
+  try {
+    res.json(await getOperationHistory(req.query.limit));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to load operation history.' });
+  }
+});
+
+router.post('/system/operations/:operationId', authenticate, requireRole('system_admin'), operationLimiter, async (req, res) => {
+  try {
+    const result = await executeOperation(req.params.operationId, {
+      actor: { id: req.user.id || req.user.user_id, email: req.user.email },
+      confirmation: req.body?.confirmation,
+      args: req.body?.args,
+    });
+    res.json(result);
+  } catch (error) {
+    const status = Number(error.status) || 500;
+    if (status >= 500) console.error(`System operation ${req.params.operationId} failed:`, error);
+    res.status(status).json({
+      error: status >= 500 ? 'System operation failed. Review the operation history and server logs.' : error.message,
+    });
   }
 });
 

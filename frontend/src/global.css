@@ -1059,6 +1059,62 @@ html[data-theme='dark'] .workspace-tabs > .ant-tabs-nav { border-color: var(--bo
 .workspace-tabs .ant-tabs-tab-active { background: rgba(13, 148, 136, 0.1); }
 
 /* ============================================================
+   SYSTEM OPERATIONS CONTROL PLANE
+   ============================================================ */
+.system-control-plane { --control-accent: #0f766e; }
+.system-control-tabs { scroll-margin-top: calc(var(--app-header-height) + var(--app-context-height) + 18px); }
+.system-control-tabs > .ant-tabs-nav { position: sticky; top: calc(var(--app-header-height) + var(--app-context-height) + 8px); z-index: 15; backdrop-filter: blur(16px); }
+
+.system-command-hero {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(13, 148, 136, 0.26);
+  background:
+    radial-gradient(circle at 92% 15%, rgba(45, 212, 191, 0.2), transparent 32%),
+    linear-gradient(120deg, #f0fdfa 0%, #ffffff 58%, #f8fafc 100%);
+  box-shadow: 0 18px 50px -32px rgba(15, 118, 110, 0.75);
+}
+.system-command-hero::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 5px; background: linear-gradient(#14b8a6, #0f766e); }
+html[data-theme='dark'] .system-command-hero {
+  border-color: rgba(45, 212, 191, 0.24);
+  background: radial-gradient(circle at 92% 15%, rgba(20, 184, 166, 0.16), transparent 34%), linear-gradient(120deg, #111827, #0f172a);
+}
+
+.release-status-panel {
+  min-height: 172px;
+  padding: 18px;
+  display: grid;
+  align-content: center;
+  gap: 11px;
+  border: 1px solid rgba(15, 118, 110, 0.22);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+}
+html[data-theme='dark'] .release-status-panel { border-color: rgba(45, 212, 191, 0.2); background: rgba(15, 23, 42, 0.68); }
+
+.system-operation-card { height: 100%; border-top-width: 4px; transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease; }
+.system-operation-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+.system-operation-card .ant-card-body,
+.system-operation-card .ant-space-vertical { height: 100%; }
+.system-operation-card .ant-space-item:nth-last-child(1) { margin-top: auto; }
+.system-operation-card--safe { border-top-color: #0d9488; }
+.system-operation-card--caution { border-top-color: #d97706; }
+.system-operation-card--critical { border-top-color: #dc2626; }
+.system-operation-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: #ccfbf1; color: #0f766e; font-size: 20px; }
+.system-operation-card--caution .system-operation-icon { background: #fef3c7; color: #b45309; }
+.system-operation-card--critical .system-operation-icon { background: #fee2e2; color: #b91c1c; }
+html[data-theme='dark'] .system-operation-icon { background: rgba(45, 212, 191, 0.14); color: #5eead4; }
+html[data-theme='dark'] .system-operation-card--caution .system-operation-icon { background: rgba(245, 158, 11, 0.14); color: #fbbf24; }
+html[data-theme='dark'] .system-operation-card--critical .system-operation-icon { background: rgba(239, 68, 68, 0.14); color: #fca5a5; }
+
+.system-operation-result { border-color: rgba(13, 148, 136, 0.32); box-shadow: 0 16px 42px -30px rgba(15, 118, 110, 0.8); }
+.system-operation-options { padding: 14px; border: 1px solid var(--border-color-light); border-radius: 12px; background: #f8fafc; }
+.system-operation-options > div:first-child { display: grid; }
+.system-operation-options .ant-divider { margin-block: 14px; }
+html[data-theme='dark'] .system-operation-options { border-color: var(--border-color-dark); background: #111827; }
+
+/* ============================================================
    NEXT ACTIONS, PROGRESS & COMPLETION
    ============================================================ */
 .next-action-panel {
@@ -1190,6 +1246,10 @@ a:focus-visible,
   .page-media-actions { width: 100%; gap: 8px; }
   .page-media-actions .ant-btn { flex: 1 1 auto; }
   .workspace-tabs > .ant-tabs-nav { overflow-x: auto; }
+  .system-control-tabs > .ant-tabs-nav { top: calc(var(--app-header-height) + var(--app-context-height) + 4px); margin-inline: -2px; }
+  .system-command-hero .ant-space { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .system-command-hero .ant-space-item .ant-btn { width: 100%; }
+  .release-status-panel { min-height: 0; }
   .workflow-form { padding: 18px 14px; }
   .boq-line-item { grid-template-columns: auto 1fr auto; }
   .boq-line-item .ant-form-item { grid-column: 2 / 3 !important; width: 100% !important; }
@@ -1208,6 +1268,7 @@ a:focus-visible,
   .next-action-panel { grid-template-columns: 1fr; }
   .next-action-buttons { grid-column: 1; }
   .page-media-actions .ant-btn { width: 100%; }
+  .system-command-hero .ant-space { grid-template-columns: 1fr; }
 }
 
 /* Deep-link destinations remain visible below the sticky application chrome. */

@@ -47,6 +47,12 @@ services:
         sync: false
       - key: APP_URL
         value: https://zedprocure.onrender.com
+      - key: RENDER_API_KEY
+        sync: false
+      - key: RENDER_BACKEND_SERVICE_ID
+        sync: false
+      - key: RENDER_FRONTEND_SERVICE_ID
+        sync: false
 
   - type: web
     name: zedprocure
