@@ -47,6 +47,8 @@ export default function BidEvaluation() {
   const [awardSupplier, setAwardSupplier] = useState(null);
   const [awardForm] = Form.useForm();
   const [awarding, setAwarding] = useState(false);
+  const [awardPreview, setAwardPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -105,21 +107,39 @@ export default function BidEvaluation() {
   };
 
   // ─── Awarding ─────────────────────────────────────────────────────────────
-  const openAwardModal = (supplierId, supplierName, totalPrice) => {
-    setAwardSupplier({ id: supplierId, name: supplierName, total: totalPrice });
+  const loadAwardPreview = async (responseId, requirementId) => {
+    setPreviewLoading(true);
+    setAwardPreview(null);
+    try {
+      const { data } = await axios.post(`/api/bids/${bidId}/award-preview`, {
+        response_id: responseId,
+        requirement_id: requirementId,
+      });
+      setAwardPreview(data);
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Unable to calculate the award quote');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const openAwardModal = (response) => {
+    const defaultRequirement = bid.requirements?.find(r => Number(r.budget_amount) > 0);
+    setAwardSupplier({ id: response.supplier_id, responseId: response.id, name: response.supplier_name, total: response.total_price });
     awardForm.setFieldsValue({
-      supplier_id: supplierId,
-      total_amount: totalPrice,
+      response_id: response.id,
+      requirement_id: defaultRequirement?.id,
     });
     setAwardModalVisible(true);
+    if (defaultRequirement) loadAwardPreview(response.id, defaultRequirement.id);
   };
 
   const handleAwardSubmit = async (values) => {
     setAwarding(true);
     try {
       const res = await axios.post(`/api/bids/${bidId}/award`, {
-        supplier_id: values.supplier_id,
-        total_amount: values.total_amount,
+        response_id: values.response_id,
+        requirement_id: values.requirement_id,
         contract_file_path: values.contract_file_path || null,
         award_notes: values.award_notes || null,
       });
@@ -339,7 +359,7 @@ export default function BidEvaluation() {
                         <Button
                           type="primary"
                           icon={<TrophyOutlined />}
-                          onClick={() => openAwardModal(resp.supplier_id, resp.supplier_name, resp.total_price)}
+                          onClick={() => openAwardModal(resp)}
                         >
                           Award to {resp.supplier_name}
                         </Button>
@@ -415,19 +435,38 @@ export default function BidEvaluation() {
           style={{ marginBottom: 16 }}
         />
         <Form form={awardForm} layout="vertical" onFinish={handleAwardSubmit}>
-          <Form.Item name="supplier_id" hidden>
+          <Form.Item name="response_id" hidden>
             <Input />
           </Form.Item>
-          <Form.Item name="total_amount" label="Total Award Amount (ZMW)" rules={[{ required: true }]}>
-            <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
+          <Form.Item name="requirement_id" label="Buyer Requirement / Approved Budget" rules={[{ required: true, message: 'Select the approved buyer requirement' }]}>
+            <Select
+              placeholder="Select an approved customer budget"
+              onChange={(requirementId) => loadAwardPreview(awardSupplier.responseId, requirementId)}
+              options={(bid.requirements || []).filter(r => Number(r.budget_amount) > 0).map(r => ({
+                value: r.id,
+                label: `ZMW ${Number(r.budget_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+              }))}
+            />
           </Form.Item>
+          <Card size="small" loading={previewLoading} title="Server-calculated transaction breakdown" style={{ marginBottom: 16 }}>
+            {awardPreview ? (
+              <Descriptions column={1} size="small">
+                <Descriptions.Item label="Buyer procurement quote">ZMW {Number(awardPreview.buyer.procurement_amount).toLocaleString()}</Descriptions.Item>
+                <Descriptions.Item label="Buyer protection fee">ZMW {Number(awardPreview.buyer.buyer_protection_fee).toLocaleString()}</Descriptions.Item>
+                <Descriptions.Item label="Express match fee">ZMW {Number(awardPreview.buyer.express_match_fee).toLocaleString()}</Descriptions.Item>
+                <Descriptions.Item label="Buyer total due"><Text strong>ZMW {Number(awardPreview.buyer.total_due).toLocaleString()}</Text></Descriptions.Item>
+                <Descriptions.Item label="Supplier accepted quote">ZMW {Number(awardPreview.supplier.accepted_quote).toLocaleString()}</Descriptions.Item>
+                <Descriptions.Item label="Supplier net payout"><Text strong>ZMW {Number(awardPreview.supplier.net_payout).toLocaleString()}</Text></Descriptions.Item>
+              </Descriptions>
+            ) : <Alert type="warning" showIcon message="Select a funded buyer requirement to validate this award." />}
+          </Card>
           <Form.Item name="contract_file_path" label="Contract Document (optional)">
             <Input placeholder="Path or URL to signed contract document" />
           </Form.Item>
           <Form.Item name="award_notes" label="Award Decision Notes">
             <Input.TextArea rows={3} placeholder="e.g. Awarded based on lowest compliant bid meeting all technical specifications" />
           </Form.Item>
-          <Button type="primary" htmlType="submit" block loading={awarding} icon={<TrophyOutlined />} size="large">
+          <Button type="primary" htmlType="submit" block loading={awarding} disabled={!awardPreview} icon={<TrophyOutlined />} size="large">
             Confirm Award — Create Order
           </Button>
         </Form>

@@ -110,6 +110,7 @@ export default function CreateBidWizard() {
       formData.append('requires_large_contract', values.requires_large_contract ? 'true' : 'false');
       formData.append('evaluation_method', values.evaluation_method || 'lowest_price');
       formData.append('bidding_fee_amount', String(values.bidding_fee_amount || 0));
+      formData.append('express_match', values.express_match ? 'true' : 'false');
       formData.append('technical_specifications', values.technical_specifications || '');
       formData.append('line_items', JSON.stringify(validLineItems.map((item, idx) => ({
         ...item,
@@ -240,6 +241,14 @@ export default function CreateBidWizard() {
 
         <Form.Item name="bidding_fee_amount" label="Bidding Fee (ZMW)" rules={[{ required: true }]}>
           <InputNumber min={0} style={{ width: '100%' }} />
+        </Form.Item>
+        <Form.Item
+          name="express_match"
+          label="Express Match"
+          valuePropName="checked"
+          extra="Prioritizes this urgent bid in supplier feeds. The configured express fee is shown in the buyer checkout before payment."
+        >
+          <Switch checkedChildren="Priority" unCheckedChildren="Standard" />
         </Form.Item>
 
         <div style={{ marginBottom: 16 }}>

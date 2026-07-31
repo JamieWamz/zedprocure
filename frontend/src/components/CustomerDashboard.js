@@ -635,6 +635,9 @@ ${values.warranty || 'No specific warranty requirements.'}
         onClose={() => setPayingOrder(null)}
         orderId={payingOrder?.id}
         amount={payingOrder?.total_amount}
+        procurementAmount={payingOrder?.buyer_price}
+        buyerProtectionFee={payingOrder?.buyer_protection_fee}
+        expressMatchFee={payingOrder?.express_match_fee}
         orderLabel={payingOrder ? `Order ${payingOrder.id?.slice(0, 8)} — ${payingOrder.supplier_name || 'Supplier'}` : ''}
         onSuccess={() => { setPayingOrder(null); loadPortal(); }}
       />
@@ -650,7 +653,10 @@ ${values.warranty || 'No specific warranty requirements.'}
             <InputNumber min={0.01} step={0.01} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="payment_method" label="Payment Method" rules={[{ required: true }]}>
-            <Select options={PAYMENT_METHOD_OPTIONS} />
+            <Select options={[
+              { value: 'mobile_money', label: 'Mobile Money (verified manual reference)' },
+              { value: 'bank_transfer', label: 'Bank Transfer (verified manual reference)' },
+            ]} />
           </Form.Item>
           <Form.Item name="transaction_ref" label="Transaction Reference">
             <Input placeholder="Optional bank/mobile money reference" />

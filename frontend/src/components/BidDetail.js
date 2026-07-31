@@ -119,7 +119,12 @@ export default function BidDetail() {
     }
   };
 
-  useEffect(() => { if (bidId) fetchBid(); }, [bidId]);
+  useEffect(() => {
+    if (!bidId) return undefined;
+    fetchBid();
+    const timer = setInterval(fetchBid, 15000);
+    return () => clearInterval(timer);
+  }, [bidId]);
 
   const handleAccept = async (bidSupplierId, accepted) => {
     setAcceptLoading(true);
@@ -150,13 +155,18 @@ export default function BidDetail() {
     try {
       const initRes = await axios.post('/api/payments/bidding-fee', {
         bid_id: bid.id,
-        payment_method: 'mobile_money',
+        payment_method: 'wallet',
       });
+      if (initRes.data.status === 'completed') {
+        message.success('Bid access is already active');
+        fetchBid();
+        return;
+      }
       const ref = initRes.data.transaction_ref;
-      await axios.post('/api/payments/confirm', { transaction_ref: ref, bid_id: bid.id });
+      await axios.post('/api/payments/confirm', { transaction_ref: ref });
       message.success('Bidding fee paid successfully');
       fetchBid();
-    } catch { message.error('Payment failed'); }
+    } catch (e) { message.error(e.response?.data?.error || 'Payment failed'); }
     finally { setPayLoading(false); }
   };
 
@@ -245,6 +255,7 @@ export default function BidDetail() {
       <Space style={{ marginBottom: 16 }} wrap>
         <Title level={3} style={{ margin: 0 }}>{bid.title}</Title>
         <Tag color={statusColor[bid.status] || 'default'} style={{ fontSize: 14, padding: '2px 12px' }}>{bid.status.toUpperCase()}</Tag>
+        {bid.express_match && <Tag color="volcano">EXPRESS MATCH</Tag>}
         {/* Admin-only: Evaluate & Award button — visible only during evaluation stage */}
         {isAdmin() && (
           <Button
@@ -403,7 +414,7 @@ export default function BidDetail() {
       </Card>
 
       {/* Supplier Actions */}
-      {isSupplier() && bid.status === 'open' && (
+      {isSupplier() && ['open', 'evaluation'].includes(bid.status) && (
         <Card title="Your Response" style={{ marginBottom: 20 }}>
           {bidSupplierId ? (
             <>
@@ -426,9 +437,15 @@ export default function BidDetail() {
               <Divider />
               
               <Space style={{ marginBottom: 16 }}>
-                <Button icon={<DollarOutlined />} onClick={handlePayFee} loading={payLoading}>
-                  Pay Bidding Fee ({Number(bid.bidding_fee_amount).toLocaleString()} ZMW)
-                </Button>
+                {bid.bid_access?.confirmed ? (
+                  <Tag color="success" icon={<CheckCircleOutlined />}>
+                    Bid access active via {String(bid.bid_access.source || 'payment').replace('_', ' ')}
+                  </Tag>
+                ) : (
+                  <Button icon={<DollarOutlined />} onClick={handlePayFee} loading={payLoading}>
+                    Pay from Wallet ({Number(bid.bidding_fee_amount).toLocaleString()} ZMW)
+                  </Button>
+                )}
               </Space>
 
               <Divider />

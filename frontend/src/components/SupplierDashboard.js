@@ -2,12 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Row, Col, Table, Tag, Spin, Alert, Button, Tabs, Badge, List,
   Typography, Empty, Popover, Statistic, message as msg, Modal, Form,
-  Upload, Space, Divider, Progress, Tooltip,
+  Upload, Space, Divider, Progress, Tooltip, Input, InputNumber, Select, Descriptions,
 } from 'antd';
 import {
   BellOutlined, FileTextOutlined, CheckCircleOutlined, ClockCircleOutlined,
   SafetyCertificateOutlined, TrophyOutlined, UploadOutlined, InboxOutlined,
   AuditOutlined, ShoppingCartOutlined, ReloadOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -68,22 +69,32 @@ export default function SupplierDashboard() {
 
   // Order signing
   const [signingOrder, setSigningOrder] = useState(null);
+  const [wallet, setWallet] = useState({ balance: '0.00', transactions: [] });
+  const [payoutOpen, setPayoutOpen] = useState(false);
+  const [payoutLoading, setPayoutLoading] = useState(false);
+  const [payoutForm] = Form.useForm();
+  const [payoutPreview, setPayoutPreview] = useState(null);
+  const [subscription, setSubscription] = useState({ tier: 'free', monthly_bid_limit: 0, bids_used: 0, bid_credits: 0 });
 
   const navigate = useNavigate();
   const location = useLocation();
 
   const fetchData = useCallback(async () => {
     try {
-      const [bidsRes, statusRes, notifRes, countRes] = await Promise.all([
+      const [bidsRes, statusRes, notifRes, countRes, walletRes, subscriptionRes] = await Promise.all([
         axios.get('/api/supplier/bids'),
         axios.get('/api/supplier/verification/status').catch(() => null),
         axios.get('/api/notifications').catch(() => ({ data: [] })),
         axios.get('/api/notifications/unread-count').catch(() => ({ data: { count: 0 } })),
+        axios.get('/api/wallet').catch(() => ({ data: { balance: '0.00', transactions: [] } })),
+        axios.get('/api/supplier/subscription').catch(() => ({ data: { tier: 'free', monthly_bid_limit: 0, bids_used: 0, bid_credits: 0 } })),
       ]);
       setBids(bidsRes.data);
       setVerificationStatus(statusRes?.data || null);
       setNotifications(notifRes.data);
       setUnreadCount(countRes.data.count);
+      setWallet(walletRes.data);
+      setSubscription(subscriptionRes.data);
     } catch (e) {
       console.error('Failed to load supplier dashboard:', e);
     } finally {
@@ -167,6 +178,32 @@ export default function SupplierDashboard() {
       fetchOrders();
     } catch (e) {
       msg.error(e.response?.data?.error || 'Failed to update order status');
+    }
+  };
+
+  const handlePayoutRequest = async (values) => {
+    setPayoutLoading(true);
+    try {
+      const { data } = await axios.post('/api/wallet/withdrawals', values);
+      msg.success(`Payout requested. Net amount: ${money(data.netPayout)}`);
+      setPayoutOpen(false);
+      setPayoutPreview(null);
+      payoutForm.resetFields();
+      fetchData();
+    } catch (e) {
+      msg.error(e.response?.data?.error || 'Payout request failed');
+    } finally {
+      setPayoutLoading(false);
+    }
+  };
+
+  const handlePayoutPreview = async () => {
+    try {
+      const amount = await payoutForm.validateFields(['amount']).then(v => v.amount);
+      const { data } = await axios.post('/api/wallet/withdrawals/preview', { amount });
+      setPayoutPreview(data);
+    } catch (e) {
+      if (e.response) msg.error(e.response?.data?.error || 'Unable to calculate payout');
     }
   };
 
@@ -322,6 +359,12 @@ function getOrderProgress(status) {
             </Badge>
           </Popover>
           <Button icon={<ReloadOutlined />} onClick={() => { fetchData(); fetchOrders(); }}>Refresh</Button>
+          <Button icon={<WalletOutlined />} onClick={() => setPayoutOpen(true)}>
+            Wallet {money(wallet.balance)}
+          </Button>
+          <Tag color={subscription.tier === 'enterprise' ? 'purple' : subscription.tier === 'growth' ? 'blue' : 'default'}>
+            {String(subscription.tier).toUpperCase()} · {Math.max(0, Number(subscription.monthly_bid_limit) - Number(subscription.bids_used))} included bids · {subscription.bid_credits} credits
+          </Tag>
           <Button icon={<SafetyCertificateOutlined />} onClick={() => setVerifModalOpen(true)}>
             Verification Status
           </Button>
@@ -435,6 +478,44 @@ function getOrderProgress(status) {
         documentLabel={signingOrder ? `Order ${signingOrder.id.slice(0, 8)} – ${signingOrder.tenant_name || 'Tenant'}` : ''}
         onSigned={fetchOrders}
       />
+
+      <Modal
+        title="Withdraw supplier balance"
+        open={payoutOpen}
+        onCancel={() => { setPayoutOpen(false); setPayoutPreview(null); }}
+        footer={null}
+      >
+        <Alert
+          type="info"
+          showIcon
+          message={`Available balance: ${money(wallet.balance)}`}
+          description="The server calculates the processing fee and returns the exact net payout when the request is queued."
+          style={{ marginBottom: 16 }}
+        />
+        <Form form={payoutForm} layout="vertical" onFinish={handlePayoutRequest}>
+          <Form.Item name="amount" label="Gross withdrawal amount (ZMW)" rules={[{ required: true }]}>
+            <InputNumber onChange={() => setPayoutPreview(null)} min={0.01} max={Number(wallet.balance || 0)} precision={2} style={{ width: '100%' }} />
+          </Form.Item>
+          <Button block onClick={handlePayoutPreview} style={{ marginBottom: 16 }}>Calculate processing fee</Button>
+          {payoutPreview && (
+            <Descriptions column={1} size="small" bordered style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="Gross amount">{money(payoutPreview.grossAmount)}</Descriptions.Item>
+              <Descriptions.Item label="Processing fee">{money(payoutPreview.processingFee)}</Descriptions.Item>
+              <Descriptions.Item label="Net payout"><Text strong>{money(payoutPreview.netPayout)}</Text></Descriptions.Item>
+            </Descriptions>
+          )}
+          <Form.Item name="payout_method" label="Payout method" rules={[{ required: true }]}>
+            <Select options={[
+              { value: 'mobile_money', label: 'Mobile Money' },
+              { value: 'bank_transfer', label: 'Bank Transfer' },
+            ]} />
+          </Form.Item>
+          <Form.Item name="payout_destination" label="Mobile number or bank account reference" rules={[{ required: true, max: 255 }]}>
+            <Input autoComplete="off" />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block loading={payoutLoading} disabled={!payoutPreview}>Request net payout</Button>
+        </Form>
+      </Modal>
 
       {/* Verification & Document Upload Modal */}
       <Modal

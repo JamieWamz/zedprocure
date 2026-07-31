@@ -91,7 +91,59 @@ html[data-theme='dark'] .ant-btn-primary {
   border: 1px solid rgba(255,255,255,0.1);
 }
 html[data-theme='dark'] .ant-btn-primary:hover {
-  background: #4f8ff7;
+  background: var(--primary-hover-dark);
+}
+
+/* Accessible, responsive payment method selector. The semantic button overlays
+   the visual card so keyboard, screen-reader, and pointer users share one target. */
+.provider-grid > div {
+  position: relative;
+}
+
+.provider-choice-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: var(--border-radius-lg);
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.provider-choice-overlay:focus-visible {
+  outline: 3px solid #0d9488;
+  outline-offset: 3px;
+}
+
+.payment-breakdown .ant-list-item {
+  gap: var(--space-md);
+  padding-inline: 0;
+}
+
+@media (max-width: 560px) {
+  .provider-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .ant-modal {
+    max-width: calc(100vw - 24px);
+    margin: 12px auto;
+  }
+
+  .ant-steps-item-description {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 

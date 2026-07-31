@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
+import { nextPaymentResult } from './paymentFlow';
 
 const { Text, Title } = Typography;
 
@@ -76,7 +77,10 @@ const itemVariants = {
  *   orderLabel   {string}   - Human-readable order description
  *   onSuccess    {function} - Called when payment confirms as successful
  */
-export default function PaymentModal({ open, onClose, orderId, amount, orderLabel, onSuccess }) {
+export default function PaymentModal({
+  open, onClose, orderId, amount, orderLabel, onSuccess,
+  procurementAmount, buyerProtectionFee = 0, expressMatchFee = 0,
+}) {
   const [step, setStep] = useState(0);       // 0=select, 1=waiting, 2=done
   const [form] = Form.useForm();
   const [selectedProvider, setSelectedProvider] = useState(null);
@@ -87,6 +91,7 @@ export default function PaymentModal({ open, onClose, orderId, amount, orderLabe
   const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState(null);
   const pollRef = useRef(null);
+  const pollAttemptsRef = useRef(0);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -121,18 +126,24 @@ export default function PaymentModal({ open, onClose, orderId, amount, orderLabe
 
   function startPolling(logId) {
     clearPoll();
+    pollAttemptsRef.current = 0;
     pollRef.current = setInterval(async () => {
+      pollAttemptsRef.current += 1;
+      const timeoutResult = nextPaymentResult('pending', pollAttemptsRef.current);
+      if (timeoutResult.terminal) {
+        clearPoll();
+        setFinalStatus(timeoutResult.finalStatus);
+        setStep(timeoutResult.step);
+        return;
+      }
       try {
         const { data } = await axios.get(`/api/payments/mobile/${logId}/status`);
-        if (data.status === 'successful') {
+        const result = nextPaymentResult(data.status, pollAttemptsRef.current);
+        if (result.terminal) {
           clearPoll();
-          setFinalStatus('successful');
-          setStep(2);
-          if (onSuccess) onSuccess();
-        } else if (data.status === 'failed') {
-          clearPoll();
-          setFinalStatus('failed');
-          setStep(2);
+          setFinalStatus(result.finalStatus);
+          setStep(result.step);
+          if (result.finalStatus === 'successful' && onSuccess) onSuccess();
         }
       } catch (_) {}
     }, 4000); // poll every 4 seconds
@@ -213,6 +224,17 @@ export default function PaymentModal({ open, onClose, orderId, amount, orderLabe
             </Title>
           </motion.div>
 
+          <Card size="small" className="payment-breakdown" aria-label="Transaction breakdown" style={{ marginBottom: 20 }}>
+            <List size="small">
+              <List.Item><Text>Procurement amount</Text><Text>ZMW {Number(procurementAmount ?? (Number(amount) - Number(buyerProtectionFee) - Number(expressMatchFee))).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text></List.Item>
+              <List.Item><Text>Buyer protection fee</Text><Text>ZMW {Number(buyerProtectionFee).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text></List.Item>
+              {Number(expressMatchFee) > 0 && (
+                <List.Item><Text>Express match fee</Text><Text>ZMW {Number(expressMatchFee).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text></List.Item>
+              )}
+              <List.Item><Text strong>Total due</Text><Text strong>ZMW {Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text></List.Item>
+            </List>
+          </Card>
+
           <Steps
             current={step}
             size="small"
@@ -253,14 +275,9 @@ export default function PaymentModal({ open, onClose, orderId, amount, orderLabe
                             style={{
                               cursor: 'pointer',
                               borderColor: isSelected ? p.color : '#d9d9d9',
-                              backgroundColor: isSelected ? `${p.color}10` : '#fff',
+                              backgroundColor: isSelected ? `${p.color}10` : 'var(--payment-card-bg)',
                               transition: 'all 0.2s ease',
                               borderWidth: 2,
-                            }}
-                            onClick={() => {
-                              setSelectedProvider(p.value);
-                              form.setFieldValue('provider', p.value);
-                              form.setFieldValue('msisdn', '');
                             }}
                             hoverable
                           >
@@ -288,6 +305,17 @@ export default function PaymentModal({ open, onClose, orderId, amount, orderLabe
                               )}
                             </Space>
                           </Card>
+                          <button
+                            type="button"
+                            className="provider-choice-overlay"
+                            aria-label={`Select ${p.label}`}
+                            aria-pressed={isSelected}
+                            onClick={() => {
+                              setSelectedProvider(p.value);
+                              form.setFieldValue('provider', p.value);
+                              form.setFieldValue('msisdn', '');
+                            }}
+                          />
                         </motion.div>
                       );
                     })}
@@ -433,6 +461,7 @@ export default function PaymentModal({ open, onClose, orderId, amount, orderLabe
               title={
                 finalStatus === 'successful' ? 'Payment Successful!'
                 : finalStatus === 'pending_bank' ? 'Bank Transfer Requested'
+                : finalStatus === 'timeout' ? 'Confirmation Delayed'
                 : 'Payment Failed'
               }
               subTitle={
@@ -440,10 +469,12 @@ export default function PaymentModal({ open, onClose, orderId, amount, orderLabe
                   ? 'Your payment has been received. The escrow account for this order has been funded.'
                   : finalStatus === 'pending_bank'
                   ? 'Bank transfer details have been sent to your email. Payment will be confirmed within 1–2 business days.'
+                  : finalStatus === 'timeout'
+                  ? 'The provider did not confirm in time. Your payment remains pending; check payment history before retrying to avoid a duplicate payment.'
                   : 'The payment was not completed. You can try again with the same or a different payment method.'
               }
               extra={[
-                finalStatus === 'failed' && (
+                ['failed', 'timeout'].includes(finalStatus) && (
                   <Button key="retry" type="primary" onClick={() => { setStep(0); setFinalStatus(null); form.resetFields(); }}>
                     Try Again
                   </Button>
@@ -457,4 +488,3 @@ export default function PaymentModal({ open, onClose, orderId, amount, orderLabe
     </Modal>
   );
 }
-
