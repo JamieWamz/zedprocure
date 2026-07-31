@@ -9,11 +9,12 @@ import {
   FlagOutlined, TrophyOutlined, UserSwitchOutlined, UserAddOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReChartTooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { cdnImages } from '../cdnAssets';
 import ProgressSteps from './ProgressSteps';
 import NextActionPanel from './NextActionPanel';
+import { getNotificationDestination, isActivationKey } from '../utils/notificationNavigation';
 
 const { Text } = Typography;
 
@@ -54,6 +55,8 @@ export default function BusinessAdminDashboard() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const [focusedRequestId, setFocusedRequestId] = useState(null);
 
   // ─── Verification Queue State ─────────────────────────────────────────────
   const [verificationQueue, setVerificationQueue] = useState([]);
@@ -110,6 +113,19 @@ export default function BusinessAdminDashboard() {
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const section = params.get('section');
+    const focus = params.get('focus');
+    setFocusedRequestId(focus);
+    if (section) {
+      window.setTimeout(() => {
+        const focusedRow = focus ? document.querySelector(`[data-row-key="${focus}"]`) : null;
+        (focusedRow || document.getElementById(section))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 0);
+    }
+  }, [location.search, adminProcurementRequests.length]);
+
   const markAsRead = async (id) => {
     try {
       await axios.put(`/api/notifications/${id}/read`);
@@ -120,6 +136,12 @@ export default function BusinessAdminDashboard() {
   const markAllRead = async () => {
     await axios.put('/api/notifications/read-all');
     fetchNotifications();
+  };
+
+  const openNotification = async (item) => {
+    await markAsRead(item.id);
+    setNotifOpen(false);
+    navigate(getNotificationDestination(item, { role: 'business_admin' }));
   };
 
   const notificationContent = (
@@ -136,8 +158,12 @@ export default function BusinessAdminDashboard() {
             dataSource={notifications.slice(0, 20)}
             renderItem={(item) => (
               <List.Item
-                style={{ background: item.is_read ? 'transparent' : '#f0f5ff', cursor: 'pointer' }}
-                onClick={async () => { await markAsRead(item.id); if (item.link) navigate(item.link); setNotifOpen(false); }}
+                className="notification-item"
+                data-unread={!item.is_read}
+                role="button"
+                tabIndex={0}
+                onClick={() => openNotification(item)}
+                onKeyDown={(event) => { if (isActivationKey(event)) { event.preventDefault(); openNotification(item); } }}
               >
                 <List.Item.Meta
                   title={<Text strong={!item.is_read} style={{ fontSize: 13 }}>{item.title}</Text>}
@@ -265,6 +291,13 @@ export default function BusinessAdminDashboard() {
 
   const profitColor = parseFloat(revenue.netProfit) >= 0 ? '#389e0d' : '#cf1322';
   const ProfitIcon = parseFloat(revenue.netProfit) >= 0 ? RiseOutlined : FallOutlined;
+  const routeCardProps = (path) => ({
+    hoverable: true,
+    role: 'button',
+    tabIndex: 0,
+    onClick: () => navigate(path),
+    onKeyDown: (event) => { if (isActivationKey(event)) { event.preventDefault(); navigate(path); } },
+  });
   const nextAction = Number(stats.totalBids || 0) === 0
     ? {
         title: 'Create and publish your first bid',
@@ -300,7 +333,7 @@ export default function BusinessAdminDashboard() {
           <Popover content={notificationContent} title="Notifications" trigger="click"
             open={notifOpen} onOpenChange={setNotifOpen}>
             <Badge count={unreadCount} size="small" style={{ marginRight: 8 }}>
-              <Button icon={<BellOutlined />} />
+              <Button icon={<BellOutlined />} aria-label="Open notifications" />
             </Badge>
           </Popover>
           <Button icon={<UserAddOutlined />} onClick={() => setInviteModalOpen(true)}>Invite Supplier</Button>
@@ -426,17 +459,17 @@ export default function BusinessAdminDashboard() {
       {/* Business Summary Stats */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={12} sm={8} lg={3}>
-          <Card className="stat-card" hoverable>
+          <Card className="stat-card stat-card--interactive" {...routeCardProps('/admin/bids')}>
             <Statistic title="Total Bids" value={stats.totalBids} prefix={<FileTextOutlined />} valueStyle={{ color: '#1677ff' }} />
           </Card>
         </Col>
         <Col xs={12} sm={8} lg={3}>
-          <Card className="stat-card" hoverable>
+          <Card className="stat-card stat-card--interactive" {...routeCardProps('/admin/bids?status=open')}>
             <Statistic title="Active Bids" value={stats.activeBids} prefix={<ClockCircleOutlined />} valueStyle={{ color: '#faad14' }} />
           </Card>
         </Col>
         <Col xs={12} sm={8} lg={3}>
-          <Card className="stat-card" hoverable>
+          <Card className="stat-card stat-card--interactive" {...routeCardProps('/admin/verification')}>
             <Statistic title="Verified Suppliers" value={stats.verifiedSuppliers} prefix={<SafetyCertificateOutlined />} valueStyle={{ color: '#52c41a' }} />
             <Text type={Number(stats.pendingSuppliers || 0) ? 'warning' : 'secondary'}>
               {stats.pendingSuppliers || 0} pending review
@@ -444,12 +477,12 @@ export default function BusinessAdminDashboard() {
           </Card>
         </Col>
         <Col xs={12} sm={8} lg={3}>
-          <Card className="stat-card" hoverable>
+          <Card className="stat-card stat-card--interactive" {...routeCardProps('/admin/orders')}>
             <Statistic title="Total Orders" value={stats.totalOrders} prefix={<ShoppingCartOutlined />} valueStyle={{ color: '#1677ff' }} />
           </Card>
         </Col>
         <Col xs={12} sm={8} lg={3}>
-          <Card className="stat-card" hoverable>
+          <Card className="stat-card stat-card--interactive" {...routeCardProps('/admin/orders?status=completed')}>
             <Statistic title="Completed" value={stats.completedOrders} prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} />
             <Text type={Number(stats.disputedOrders || 0) ? 'danger' : 'secondary'}>
               {stats.disputedOrders || 0} disputed
@@ -457,18 +490,17 @@ export default function BusinessAdminDashboard() {
           </Card>
         </Col>
         <Col xs={12} sm={8} lg={3}>
-          <Card className="stat-card" hoverable>
+          <Card className="stat-card stat-card--interactive" {...routeCardProps('/admin/users')}>
             <Statistic title="Users" value={stats.platformUsers} prefix={<TeamOutlined />} valueStyle={{ color: '#1677ff' }} />
           </Card>
         </Col>
         <Col xs={12} sm={8} lg={3}>
-          <Card className="stat-card" hoverable>
+          <Card className="stat-card stat-card--interactive" {...routeCardProps('/admin/tenants')}>
             <Statistic title="Organizations" value={stats.organizations} prefix={<BankOutlined />} valueStyle={{ color: '#1677ff' }} />
           </Card>
         </Col>
         <Col xs={12} sm={8} lg={3}>
-          <Card className="stat-card" hoverable
-            onClick={() => navigate('/admin/ledger')} style={{ cursor: 'pointer' }}>
+          <Card className="stat-card stat-card--interactive" {...routeCardProps('/admin/ledger')}>
             <Statistic title="Open Ledger" value="→" prefix={<DollarOutlined />} valueStyle={{ color: '#1677ff', fontSize: 24 }} />
           </Card>
         </Col>
@@ -485,7 +517,7 @@ export default function BusinessAdminDashboard() {
                 renderItem={(item) => (
                   <List.Item
                     style={{ cursor: 'pointer' }}
-                    onClick={() => navigate('/admin/bids')}
+                    onClick={() => navigate(`/admin/bids?status=${encodeURIComponent(item.status)}`)}
                   >
                     <List.Item.Meta
                       title={<Text style={{ textTransform: 'capitalize' }}>{item.status}</Text>}
@@ -518,7 +550,7 @@ export default function BusinessAdminDashboard() {
                       type="link"
                       size="small"
                       style={{ color: item.status === 'disputed' ? '#cf1322' : item.status === 'completed' ? '#389e0d' : '#1677ff', padding: 0 }}
-                      onClick={() => navigate('/admin/orders')}
+                      onClick={() => navigate(`/admin/orders?status=${encodeURIComponent(item.status)}`)}
                     >
                       {item.status === 'disputed' ? 'Action ↗' : 'Track ↗'}
                     </Button>
@@ -636,6 +668,7 @@ export default function BusinessAdminDashboard() {
         </Col>
         <Col xs={24} lg={24}>
           <Card
+            id="procurement-requests"
             title={<span><SendOutlined /> Customer Procurement Requests & Requirements ({adminProcurementRequests.length})</span>}
             className="table-card"
             style={{ marginBottom: 16 }}
@@ -666,6 +699,7 @@ export default function BusinessAdminDashboard() {
                   ),
                   rowExpandable: record => !!record.description || !!record.required_delivery_date,
                 }}
+                rowClassName={(record) => record.id === focusedRequestId ? 'notification-focus-row' : ''}
                 columns={[
                   { title: 'Title', dataIndex: 'title', render: v => <Text strong>{v}</Text> },
                   { title: 'Organization', dataIndex: 'tenant_name', render: v => v || '-' },

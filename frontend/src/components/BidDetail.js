@@ -127,6 +127,12 @@ export default function BidDetail() {
     return () => clearInterval(timer);
   }, [bidId]);
 
+  useEffect(() => {
+    if (!bid || !location.hash) return;
+    const targetId = decodeURIComponent(location.hash.slice(1));
+    window.setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  }, [bid, location.hash]);
+
   const handleAccept = async (bidSupplierId, accepted) => {
     setAcceptLoading(true);
     try {
@@ -445,7 +451,7 @@ export default function BidDetail() {
       </Card>
 
       {/* Customer Requirements */}
-      <Card title="Customer Requirements" style={{ marginBottom: 20 }}>
+      <Card id="customer-requirements" title="Customer Requirements" style={{ marginBottom: 20 }}>
         {bid.requirements && bid.requirements.length > 0 ? (
           bid.requirements.map((req, idx) => (
             <div key={idx} style={{ marginBottom: 16 }}>

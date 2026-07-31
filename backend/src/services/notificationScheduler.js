@@ -58,7 +58,7 @@ async function sendDeadlineReminders() {
           [bidder.user_id, 'supplier_user', `deadline_reminder_${reminderType}`,
            `Bid Deadline Approaching: ${bid.title}`,
            `This bid closes in ${hoursUntilDeadline} hour(s). Submit your response before ${new Date(bid.deadline).toLocaleString()}.`,
-           `/bids/${bid.id}`,
+           `/supplier/bids/${bid.id}#supplier-response`,
            JSON.stringify({ bid_id: bid.id })]
         );
 
@@ -72,7 +72,7 @@ async function sendDeadlineReminders() {
               <p>Dear ${bidder.full_name},</p>
               <p>This is a reminder that the bid <strong>${bid.title}</strong> closes in <strong>${hoursUntilDeadline} hour(s)</strong>.</p>
               <p><strong>Deadline:</strong> ${new Date(bid.deadline).toLocaleString()}</p>
-              <a href="${process.env.APP_URL || 'http://localhost'}/bids/${bid.id}"
+              <a href="${process.env.APP_URL || 'http://localhost'}/supplier/bids/${bid.id}#supplier-response"
                  style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin: 16px 0;">
                 Submit Your Response
               </a>

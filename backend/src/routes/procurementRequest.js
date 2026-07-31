@@ -27,7 +27,7 @@ router.post('/procurement-requests', authenticate, requireRole('customer'), asyn
       type: 'customer_request',
       title: `New Customer Procurement Request: ${title}`,
       message: `Customer ${req.user.full_name || req.user.email} created a procurement request "${title}". Est. Budget: ZMW ${estimated_budget || 'N/A'}.`,
-      link: '/admin',
+      link: `/admin?section=procurement-requests&focus=${request.id}`,
       metadata: { request_id: request.id, tenant_id: req.user.tenant_id },
     }).catch(err => console.error('Failed to send admin notification:', err));
 

@@ -506,7 +506,7 @@ router.post('/bids/:bidId/requirements', authenticate, requireRole('customer'), 
       type: 'customer_requirement',
       title: `Customer Requirement Submitted: ${bidTitle}`,
       message: `Customer ${req.user.full_name || req.user.email} submitted procurement requirements for bid "${bidTitle}". Budget: ZMW ${budget_amount || 'N/A'}. Payment method: ${payment_method || 'N/A'}.`,
-      link: `/bids/${bidId}`,
+      link: `/admin/bids/${bidId}#customer-requirements`,
       metadata: { bid_id: bidId, customer_user_id: req.user.user_id },
     }).catch(err => console.error('Failed to send admin notification:', err));
 

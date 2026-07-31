@@ -40,7 +40,7 @@ async function notifySuppliersOnBidPublished(bid) {
       type: 'new_bid',
       title: `New Bid: ${bid.title}`,
       message: `A new bid opportunity has been published${bid.business_category ? ` in ${bid.business_category}` : ''}. Deadline: ${new Date(bid.deadline).toLocaleString()}`,
-      link: `/bids/${bid.id}`,
+      link: `/supplier/bids/${bid.id}#supplier-response`,
       metadata: { bid_id: bid.id },
     });
 
@@ -55,7 +55,7 @@ async function notifySuppliersOnBidPublished(bid) {
           <p>A new bid has been published on the Zambia Procurement Portal.</p>
           <p><strong>${bid.title}</strong></p>
           <p>Deadline: ${new Date(bid.deadline).toLocaleString()}</p>
-          <a href="${process.env.APP_URL || 'http://localhost'}/bids/${bid.id}"
+          <a href="${process.env.APP_URL || 'http://localhost'}/supplier/bids/${bid.id}#supplier-response"
              style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin: 16px 0;">
             View Bid Details
           </a>
@@ -216,4 +216,3 @@ module.exports = {
   notifyBusinessAdmins,
   notifySupplierInvited,
 };
-

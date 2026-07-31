@@ -14,11 +14,12 @@ import { cdnImages } from '../cdnAssets';
 import DigitalSignatureModal from './DigitalSignatureModal';
 import PaymentModal from './PaymentModal';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import EnhancedEmpty from './EnhancedEmpty';
 import ProgressSteps from './ProgressSteps';
 import DashboardStatistic from './DashboardStatistic';
 import NextActionPanel from './NextActionPanel';
+import { getNotificationDestination, isActivationKey } from '../utils/notificationNavigation';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
@@ -97,6 +98,18 @@ export default function CustomerDashboard() {
   const [customerBids, setCustomerBids] = useState([]);
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const openTab = useCallback((tab, focus) => {
+    setActiveTab(tab);
+    const params = new URLSearchParams({ tab });
+    if (focus) params.set('focus', focus);
+    navigate({ pathname: '/customer', search: `?${params.toString()}` });
+    window.setTimeout(() => {
+      const focusedRow = focus ? document.querySelector(`[data-row-key="${focus}"]`) : null;
+      (focusedRow || document.getElementById('customer-workspace-tabs'))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  }, [navigate]);
 
   const loadPortal = useCallback(async () => {
     setInvoiceLoading(true);
@@ -145,11 +158,31 @@ export default function CustomerDashboard() {
     return () => clearInterval(interval);
   }, [loadPortal, fetchNotifications]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const requestedTab = params.get('tab');
+    const focus = params.get('focus');
+    if (['bids_requirements', 'procurement_requests', 'orders_escrow', 'invoices'].includes(requestedTab)) {
+      setActiveTab(requestedTab);
+      window.setTimeout(() => {
+        const focusedRow = focus ? document.querySelector(`[data-row-key="${focus}"]`) : null;
+        (focusedRow || document.getElementById('customer-workspace-tabs'))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 0);
+    }
+    if (params.get('action') === 'new-request') setCreateReqModal(true);
+  }, [location.search, orders.length, invoices.length, procurementRequests.length]);
+
   const markAsRead = async (id) => {
     try {
       await axios.put(`/api/notifications/${id}/read`);
       fetchNotifications();
     } catch (_) {}
+  };
+
+  const openNotification = async (item) => {
+    await markAsRead(item.id);
+    setNotifOpen(false);
+    navigate(getNotificationDestination(item, user));
   };
 
   const onFinishRequirements = async (values) => {
@@ -238,12 +271,12 @@ ${values.warranty || 'No specific warranty requirements.'}
           dataSource={notifications.slice(0, 20)}
           renderItem={(item) => (
             <List.Item
-              style={{ background: item.is_read ? 'transparent' : '#f0f5ff', cursor: 'pointer' }}
-              onClick={async () => {
-                await markAsRead(item.id);
-                if (item.link) navigate(item.link);
-                setNotifOpen(false);
-              }}
+              className="notification-item"
+              data-unread={!item.is_read}
+              role="button"
+              tabIndex={0}
+              onClick={() => openNotification(item)}
+              onKeyDown={(event) => { if (isActivationKey(event)) { event.preventDefault(); openNotification(item); } }}
             >
               <List.Item.Meta
                 title={<Text strong={!item.is_read} style={{ fontSize: 13 }}>{item.title}</Text>}
@@ -348,7 +381,7 @@ ${values.warranty || 'No specific warranty requirements.'}
   ];
 
   const openRequirements = () => {
-    setActiveTab('bids_requirements');
+    openTab('bids_requirements');
     window.setTimeout(() => document.getElementById('requirements-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   };
 
@@ -357,7 +390,7 @@ ${values.warranty || 'No specific warranty requirements.'}
         title: 'Review your active orders',
         description: 'Confirm escrow funding, follow delivery progress, and complete delivered orders from one place.',
         actionLabel: 'Open orders & escrow',
-        onAction: () => setActiveTab('orders_escrow'),
+        onAction: () => openTab('orders_escrow'),
       }
     : customerBids.length > 0
       ? {
@@ -384,7 +417,7 @@ ${values.warranty || 'No specific warranty requirements.'}
         <div className="page-media-actions">
           <Popover content={notificationContent} title="Notifications" trigger="click" open={notifOpen} onOpenChange={setNotifOpen}>
             <Badge count={unreadCount} size="small" style={{ marginRight: 8 }}>
-              <Button icon={<BellOutlined />} />
+              <Button icon={<BellOutlined />} aria-label="Open notifications" />
             </Badge>
           </Popover>
           <Button icon={<ReloadOutlined />} onClick={loadPortal} loading={invoiceLoading}>Refresh</Button>
@@ -399,16 +432,16 @@ ${values.warranty || 'No specific warranty requirements.'}
       {/* Key Metrics Summary Cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} md={6}>
-          <DashboardStatistic title="Open Balance" value={money(summary?.ar?.open)} prefix={<FileTextOutlined />} />
+          <DashboardStatistic title="Open Balance" value={money(summary?.ar?.open)} prefix={<FileTextOutlined />} path="/customer?tab=invoices" />
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <DashboardStatistic title="Overdue" value={money(summary?.ar?.overdue)} prefix={<ClockCircleOutlined />} color={Number(summary?.ar?.overdue || 0) > 0 ? '#cf1322' : '#389e0d'} />
+          <DashboardStatistic title="Overdue" value={money(summary?.ar?.overdue)} prefix={<ClockCircleOutlined />} color={Number(summary?.ar?.overdue || 0) > 0 ? '#cf1322' : '#389e0d'} path="/customer?tab=invoices" />
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <DashboardStatistic title="Paid This Month" value={money(summary?.paidThisMonth)} color="#389e0d" />
+          <DashboardStatistic title="Paid This Month" value={money(summary?.paidThisMonth)} color="#389e0d" path="/customer?tab=invoices" />
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <DashboardStatistic title="Active Orders" value={(orders || []).length} prefix={<ShoppingCartOutlined />} color="#1677ff" />
+          <DashboardStatistic title="Active Orders" value={(orders || []).length} prefix={<ShoppingCartOutlined />} color="#1677ff" path="/customer?tab=orders_escrow" />
         </Col>
       </Row>
 
@@ -420,8 +453,9 @@ ${values.warranty || 'No specific warranty requirements.'}
 
       {/* Main Tabbed Content */}
       <Tabs
+        id="customer-workspace-tabs"
         activeKey={activeTab}
-        onChange={setActiveTab}
+        onChange={openTab}
         className="workspace-tabs"
         items={[
           {
@@ -434,6 +468,7 @@ ${values.warranty || 'No specific warranty requirements.'}
                     <Table
                       rowKey="id"
                       dataSource={customerBids}
+                      rowClassName={(record) => new URLSearchParams(location.search).get('focus') === record.id ? 'notification-focus-row' : ''}
                       columns={bidColumns}
                       pagination={{ pageSize: 5 }}
                       scroll={{ x: 500 }}
@@ -512,6 +547,7 @@ ${values.warranty || 'No specific warranty requirements.'}
                 <Table
                   rowKey="id"
                   dataSource={procurementRequests}
+                  rowClassName={(record) => new URLSearchParams(location.search).get('focus') === record.id ? 'notification-focus-row' : ''}
                   columns={requestColumns}
                   pagination={{ pageSize: 5 }}
                   expandable={{
@@ -547,6 +583,7 @@ ${values.warranty || 'No specific warranty requirements.'}
                   rowKey="id"
                   loading={invoiceLoading}
                   dataSource={orders}
+                  rowClassName={(record) => new URLSearchParams(location.search).get('focus') === record.id ? 'notification-focus-row' : ''}
                   columns={orderColumns}
                   pagination={{ pageSize: 10 }}
                   scroll={{ x: 900 }}
@@ -564,6 +601,7 @@ ${values.warranty || 'No specific warranty requirements.'}
                   rowKey="id"
                   loading={invoiceLoading}
                   dataSource={invoices}
+                  rowClassName={(record) => new URLSearchParams(location.search).get('focus') === record.id ? 'notification-focus-row' : ''}
                   columns={columns}
                   pagination={{ pageSize: 8 }}
                   scroll={{ x: 720 }}

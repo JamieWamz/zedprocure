@@ -21,6 +21,11 @@ export default function TenantBidsList() {
   const location = useLocation();
   const [completedAction, setCompletedAction] = useState(location.state?.completedAction || null);
 
+  useEffect(() => {
+    const requestedStatus = new URLSearchParams(location.search).get('status');
+    setStatusFilter(requestedStatus || 'all');
+  }, [location.search]);
+
   const fetchBids = async () => {
     setLoading(true);
     try {
@@ -56,14 +61,6 @@ export default function TenantBidsList() {
       dataIndex: 'status', 
       key: 'status',
       render: (v) => <Tag color={statusColors[v] || 'default'}>{v?.toUpperCase()}</Tag>,
-      filters: [
-        { text: 'Draft', value: 'draft' },
-        { text: 'Open', value: 'open' },
-        { text: 'Evaluation', value: 'evaluation' },
-        { text: 'Awarded', value: 'awarded' },
-        { text: 'Closed', value: 'closed' },
-      ],
-      onFilter: (value) => setStatusFilter(value),
     },
     { 
       title: 'Deadline', 
@@ -165,7 +162,10 @@ export default function TenantBidsList() {
         />
         <Select
           value={statusFilter}
-          onChange={setStatusFilter}
+          onChange={(value) => {
+            setStatusFilter(value);
+            navigate(value === 'all' ? '/admin/bids' : `/admin/bids?status=${encodeURIComponent(value)}`, { replace: true });
+          }}
           style={{ width: 160 }}
           placeholder="Filter by status"
         >

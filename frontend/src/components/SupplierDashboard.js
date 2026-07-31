@@ -17,6 +17,8 @@ import DigitalSignatureModal from './DigitalSignatureModal';
 import ProgressSteps from './ProgressSteps';
 import EnhancedEmpty from './EnhancedEmpty';
 import NextActionPanel from './NextActionPanel';
+import { useAuth } from '../context/AuthContext';
+import { getNotificationDestination, isActivationKey } from '../utils/notificationNavigation';
 
 const { Text, Title } = Typography;
 
@@ -81,6 +83,18 @@ export default function SupplierDashboard() {
 
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+
+  const openTab = useCallback((tab, focus) => {
+    setActiveTab(tab);
+    const params = new URLSearchParams({ tab });
+    if (focus) params.set('focus', focus);
+    navigate({ pathname: '/supplier', search: `?${params.toString()}` });
+    window.setTimeout(() => {
+      const focusedRow = focus ? document.querySelector(`[data-row-key="${focus}"]`) : null;
+      (focusedRow || document.getElementById('supplier-workspace-tabs'))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  }, [navigate]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -141,6 +155,20 @@ export default function SupplierDashboard() {
     }
   }, [location.pathname]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const requestedTab = params.get('tab');
+    const focus = params.get('focus');
+    if (['bids', 'orders'].includes(requestedTab)) {
+      setActiveTab(requestedTab);
+      window.setTimeout(() => {
+        const focusedRow = focus ? document.querySelector(`[data-row-key="${focus}"]`) : null;
+        (focusedRow || document.getElementById('supplier-workspace-tabs'))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 0);
+    }
+    if (params.get('action') === 'wallet') setPayoutOpen(true);
+  }, [location.search, bids.length, orders.length]);
+
   const markAsRead = async (id) => {
     try {
       await axios.put(`/api/notifications/${id}/read`);
@@ -151,6 +179,12 @@ export default function SupplierDashboard() {
       setNotifications(notifRes.data);
       setUnreadCount(countRes.data.count);
     } catch (_) {}
+  };
+
+  const openNotification = async (item) => {
+    await markAsRead(item.id);
+    setNotifOpen(false);
+    navigate(getNotificationDestination(item, user));
   };
 
   const handleUploadDocument = async (docType, file) => {
@@ -220,8 +254,12 @@ export default function SupplierDashboard() {
           dataSource={notifications.slice(0, 20)}
           renderItem={(item) => (
             <List.Item
-              style={{ background: item.is_read ? 'transparent' : '#f0f5ff', cursor: 'pointer' }}
-              onClick={async () => { await markAsRead(item.id); if (item.link) navigate(item.link); setNotifOpen(false); }}
+              className="notification-item"
+              data-unread={!item.is_read}
+              role="button"
+              tabIndex={0}
+              onClick={() => openNotification(item)}
+              onKeyDown={(event) => { if (isActivationKey(event)) { event.preventDefault(); openNotification(item); } }}
             >
               <List.Item.Meta
                 title={<Text strong={!item.is_read} style={{ fontSize: 13 }}>{item.title}</Text>}
@@ -359,14 +397,22 @@ function getOrderProgress(status) {
           title: 'Move your active order forward',
           description: `Order ${actionableOrder.id.slice(0, 8)} is at “${getOrderProgress(actionableOrder.status).label}”. Open the order list to complete the next fulfillment action.`,
           actionLabel: 'Open active orders',
-          onAction: () => setActiveTab('orders'),
+          onAction: () => openTab('orders', actionableOrder.id),
         }
       : {
           title: 'Find your next opportunity',
           description: 'Review open bids, confirm the requirements, and express interest before the supplier deadline.',
           actionLabel: 'Browse available bids',
-          onAction: () => setActiveTab('bids'),
+          onAction: () => openTab('bids'),
         };
+
+  const tabCardProps = (tab) => ({
+    hoverable: true,
+    role: 'button',
+    tabIndex: 0,
+    onClick: () => openTab(tab),
+    onKeyDown: (event) => { if (isActivationKey(event)) { event.preventDefault(); openTab(tab); } },
+  });
 
   return (
     <div className="workspace-page">
@@ -380,7 +426,7 @@ function getOrderProgress(status) {
           <Popover content={notificationContent} title="Notifications" trigger="click"
             open={notifOpen} onOpenChange={setNotifOpen}>
             <Badge count={unreadCount} size="small" style={{ marginRight: 8 }}>
-              <Button icon={<BellOutlined />} />
+              <Button icon={<BellOutlined />} aria-label="Open notifications" />
             </Badge>
           </Popover>
           <Button icon={<ReloadOutlined />} onClick={() => { fetchData(); fetchOrders(); }}>Refresh</Button>
@@ -413,7 +459,7 @@ function getOrderProgress(status) {
       {/* Stats cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={6}>
-          <Card className="stat-card">
+          <Card className="stat-card stat-card--interactive" {...tabCardProps('bids')}>
             <Statistic
               title="Open Bids Available"
               value={(bids || []).filter(b => !b.accepted && b.visibility === 'global').length}
@@ -423,7 +469,7 @@ function getOrderProgress(status) {
           </Card>
         </Col>
         <Col xs={24} sm={6}>
-          <Card className="stat-card">
+          <Card className="stat-card stat-card--interactive" {...tabCardProps('bids')}>
             <Statistic
               title="My Invitations"
               value={(bids || []).filter(b => b.bid_supplier_id).length}
@@ -433,7 +479,7 @@ function getOrderProgress(status) {
           </Card>
         </Col>
         <Col xs={24} sm={6}>
-          <Card className="stat-card">
+          <Card className="stat-card stat-card--interactive" {...tabCardProps('orders')}>
             <Statistic
               title="Active Orders"
               value={(orders || []).filter(o => !['completed', 'disputed'].includes(o.status)).length}
@@ -443,7 +489,14 @@ function getOrderProgress(status) {
           </Card>
         </Col>
         <Col xs={24} sm={6}>
-          <Card className="stat-card">
+          <Card
+            className="stat-card stat-card--interactive"
+            hoverable
+            role="button"
+            tabIndex={0}
+            onClick={() => setVerifModalOpen(true)}
+            onKeyDown={(event) => { if (isActivationKey(event)) { event.preventDefault(); setVerifModalOpen(true); } }}
+          >
             <Statistic
               title="Verification Status"
               value={verificationStatus?.verification_status || 'Pending'}
@@ -456,8 +509,9 @@ function getOrderProgress(status) {
 
       {/* Main Tabs */}
       <Tabs
+        id="supplier-workspace-tabs"
         activeKey={activeTab}
-        onChange={setActiveTab}
+        onChange={openTab}
         className="workspace-tabs"
         items={[
           {
@@ -467,6 +521,7 @@ function getOrderProgress(status) {
               <Card className="table-card">
                 <Table
                   dataSource={bids}
+                  rowClassName={(record) => new URLSearchParams(location.search).get('focus') === record.id ? 'notification-focus-row' : ''}
                   columns={bidColumns}
                   rowKey="id"
                   pagination={{ pageSize: 10 }}
@@ -484,13 +539,14 @@ function getOrderProgress(status) {
               <Card className="table-card">
                 <Table
                   dataSource={orders}
+                  rowClassName={(record) => new URLSearchParams(location.search).get('focus') === record.id ? 'notification-focus-row' : ''}
                   columns={orderColumns}
                   rowKey="id"
                   loading={ordersLoading}
                   pagination={{ pageSize: 10 }}
                   size="middle"
                   scroll={{ x: 900 }}
-                  locale={{ emptyText: <EnhancedEmpty title="No orders yet" description="When your response is awarded, the order and its required next action will appear here." ctaText="Browse bids" ctaPath="/supplier" /> }}
+                  locale={{ emptyText: <EnhancedEmpty title="No orders yet" description="When your response is awarded, the order and its required next action will appear here." ctaText="Browse bids" ctaPath="/supplier?tab=bids" /> }}
                 />
               </Card>
             ),

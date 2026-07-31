@@ -11,7 +11,7 @@ const router = express.Router();
 router.get('/notifications', authenticate, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, type, title, message, link, is_read, created_at
+      `SELECT id, type, title, message, link, metadata, is_read, created_at
        FROM notifications
        WHERE user_id = $1 AND user_type = $2
        ORDER BY created_at DESC

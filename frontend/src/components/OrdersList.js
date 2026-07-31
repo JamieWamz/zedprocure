@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Card, Space, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { AuditOutlined, ReloadOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import DigitalSignatureModal from './DigitalSignatureModal';
 import EnhancedEmpty from './EnhancedEmpty';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const { Text } = Typography;
 
@@ -20,7 +20,13 @@ export default function OrdersList() {
   const [loading, setLoading] = useState(false);
   const [signingOrder, setSigningOrder] = useState(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const [completedAction, setCompletedAction] = useState(location.state?.completedAction || null);
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  useEffect(() => {
+    setStatusFilter(new URLSearchParams(location.search).get('status') || 'all');
+  }, [location.search]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,6 +79,8 @@ export default function OrdersList() {
     },
   ];
 
+  const visibleOrders = statusFilter === 'all' ? orders : orders.filter(order => order.status === statusFilter);
+
   return (
     <div className="workspace-page">
     {completedAction && (
@@ -89,14 +97,37 @@ export default function OrdersList() {
     <Card
       title="Orders & Paperless Contracts"
       className="table-card"
-      extra={<Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button>}
+      extra={(
+        <Space wrap>
+          <Select
+            aria-label="Filter orders by status"
+            value={statusFilter}
+            onChange={(value) => {
+              setStatusFilter(value);
+              navigate(value === 'all' ? '/admin/orders' : `/admin/orders?status=${encodeURIComponent(value)}`, { replace: true });
+            }}
+            style={{ width: 190 }}
+            options={[
+              { value: 'all', label: 'All order statuses' },
+              { value: 'pending_acceptance', label: 'Pending acceptance' },
+              { value: 'accepted', label: 'Accepted' },
+              { value: 'delivery_in_progress', label: 'Delivery in progress' },
+              { value: 'delivered', label: 'Delivered' },
+              { value: 'completed', label: 'Completed' },
+              { value: 'disputed', label: 'Disputed' },
+            ]}
+          />
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button>
+        </Space>
+      )}
     >
       <Table
         loading={loading}
-        dataSource={orders}
+        dataSource={visibleOrders}
         rowKey="id"
         columns={columns}
         scroll={{ x: 900 }}
+        rowClassName={(record) => new URLSearchParams(location.search).get('focus') === record.id ? 'notification-focus-row' : ''}
         locale={{ emptyText: <EnhancedEmpty title="No orders yet" description="Award a supplier response from bid evaluation to create the first order." ctaText="Review bids" ctaPath="/admin/bids" /> }}
       />
       <DigitalSignatureModal
