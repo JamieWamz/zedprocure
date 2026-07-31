@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { Alert, Form, Input, Button, Radio, Tabs, message, Tag } from 'antd';
+import { Alert, Form, Input, Button, Radio, Tabs, message } from 'antd';
 import {
   MailOutlined, LockOutlined, UserOutlined, BankOutlined,
-  SafetyCertificateOutlined, CheckCircleFilled,
+  SafetyCertificateOutlined,
   SunOutlined, MoonOutlined, DesktopOutlined, ArrowRightOutlined,
-  ShoppingCartOutlined, ShopOutlined, FileProtectOutlined,
-  AuditOutlined
+  ShoppingCartOutlined, ShopOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -69,7 +68,7 @@ export default function UnifiedLogin() {
     <div className="login-split">
       {/* ── Product introduction ── */}
       <div className="login-hero" aria-hidden="true">
-        <img className="login-hero-img" src={cdnImages.loginHero} alt="Zambia Procurement" loading="eager" />
+        <img className="login-hero-img" src={cdnImages.loginHero} alt="" loading="eager" />
         <div className="login-hero-overlay" />
         <div className="login-hero-content">
           <div className="login-hero-top">
@@ -77,72 +76,31 @@ export default function UnifiedLogin() {
               <span className="login-hero-logo">
                 <SafetyCertificateOutlined style={{ fontSize: 20, color: '#ffffff' }} />
               </span>
-              <span className="login-hero-title">Freshstart</span>
-              <Tag className="login-hero-brand-tag">Procurement platform</Tag>
-            </div>
-            <div className="login-system-status">
-              <span className="login-system-status-dot" />
-              Secure workspace
+              <span className="login-hero-brand-copy">
+                <strong>Freshstart</strong>
+                <small>Procurement</small>
+              </span>
             </div>
           </div>
 
           <div className="login-hero-middle">
-            <div className="login-hero-eyebrow">One accountable procurement journey</div>
+            <div className="login-hero-eyebrow">Connected procurement</div>
             <h1 className="login-hero-heading">
-              From requirement to payment,<br />every step stays clear.
+              Procurement,<br />without the noise.
             </h1>
             <p className="login-hero-subheading">
-              Bring buyers, verified suppliers, approvals, protected payments and delivery records into one connected workspace.
+              A focused workspace for customers and suppliers to move from requirement to delivery with clarity.
             </p>
 
-            <div className="login-journey" aria-label="Procurement workflow">
-              <div className="login-journey-step">
-                <span>01</span>
-                <strong>Request</strong>
-                <small>Define the need</small>
-              </div>
-              <ArrowRightOutlined className="login-journey-arrow" />
-              <div className="login-journey-step">
-                <span>02</span>
-                <strong>Compare</strong>
-                <small>Review fair offers</small>
-              </div>
-              <ArrowRightOutlined className="login-journey-arrow" />
-              <div className="login-journey-step">
-                <span>03</span>
-                <strong>Protect</strong>
-                <small>Approve and fund</small>
-              </div>
-              <ArrowRightOutlined className="login-journey-arrow" />
-              <div className="login-journey-step">
-                <span>04</span>
-                <strong>Deliver</strong>
-                <small>Complete with proof</small>
-              </div>
-            </div>
-
-            <div className="login-role-preview">
-              <div className="login-role-preview-card">
-                <span className="login-role-preview-icon"><ShoppingCartOutlined /></span>
-                <div>
-                  <strong>For customers</strong>
-                  <p>Make requests, compare proposals and follow every order.</p>
-                </div>
-              </div>
-              <div className="login-role-preview-card">
-                <span className="login-role-preview-icon"><ShopOutlined /></span>
-                <div>
-                  <strong>For suppliers</strong>
-                  <p>Find opportunities, submit bids and manage delivery.</p>
-                </div>
-              </div>
+            <div className="login-hero-principles">
+              <span>Verified participants</span>
+              <span>Protected payments</span>
+              <span>Traceable decisions</span>
             </div>
           </div>
 
           <div className="login-hero-foot">
-            <span><FileProtectOutlined /> Protected payment records</span>
-            <span><CheckCircleFilled /> Verified participation</span>
-            <span><AuditOutlined /> Traceable decisions</span>
+            One workspace. The right view for every role.
           </div>
         </div>
       </div>
@@ -160,30 +118,28 @@ export default function UnifiedLogin() {
             
             <div className="login-theme-toggle">
               <Button
-                size="small"
+                shape="circle"
                 type="text"
                 icon={appearance === 'dark' ? <SunOutlined /> : appearance === 'light' ? <MoonOutlined /> : <DesktopOutlined />}
                 onClick={() => setAppearance(appearance === 'dark' ? 'light' : appearance === 'light' ? 'system' : 'dark')}
                 title={`Theme: ${appearance}`}
                 aria-label={`Change appearance. Current setting: ${appearance}`}
-              >
-                {appearance.toUpperCase()}
-              </Button>
+              />
             </div>
           </div>
 
           <div className="login-mobile-intro">
-            <span>One accountable procurement journey</span>
-            <strong>Request. Compare. Protect. Deliver.</strong>
+            <strong>Procurement, without the noise.</strong>
+            <span>One clear workspace for every role.</span>
           </div>
 
           <div className="login-card-title-section">
             <span className="login-card-eyebrow">Secure workspace access</span>
-            <h2>{activeTab === 'login' ? 'Welcome back' : 'Join Freshstart'}</h2>
+            <h2>{activeTab === 'login' ? 'Welcome back' : 'Create your account'}</h2>
             <p>
               {activeTab === 'login'
-                ? 'Sign in to continue from your latest procurement activity.'
-                : 'Choose your role and create the workspace that fits your work.'}
+                ? 'Sign in to continue where you left off.'
+                : 'Choose the workspace that fits your role.'}
             </p>
           </div>
 
