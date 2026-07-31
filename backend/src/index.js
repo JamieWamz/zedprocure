@@ -6,8 +6,8 @@ const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
-const { TOKEN_COOKIE } = require('./config/auth');
 const { init } = require('./db/init');
+const { financialNoStore, requireJsonMutation } = require('./middleware/financialSecurity');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -42,6 +42,10 @@ app.use(express.json({ limit: '10mb' }));
 // Global rate limiter for all API routes
 const globalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200 });
 app.use('/api', globalLimiter);
+
+// Sensitive financial responses must never be cached. Mutations use a single,
+// unambiguous JSON parser; the signed webhook raw body is preserved above.
+app.use(['/api/payments', '/api/escrow', '/api/wallet'], financialNoStore, requireJsonMutation);
 
 app.use('/api/health', require('./routes/health'));
 app.use('/api/auth', require('./routes/auth'));
@@ -97,7 +101,7 @@ process.on('uncaughtException', (err) => {
 });
 
 // Express global error handler
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   console.error('Unhandled error:', err);
   const status = err.status || 500;
   res.status(status).json({ error: err.message || 'Internal server error' });
