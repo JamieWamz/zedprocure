@@ -1,0 +1,37 @@
+module.exports = [
+  {
+    files: ['src/**/*.js', '*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'commonjs',
+      globals: {
+        Buffer: 'readonly',
+        URL: 'readonly',
+        __dirname: 'readonly',
+        clearInterval: 'readonly',
+        console: 'readonly',
+        exports: 'writable',
+        module: 'writable',
+        process: 'readonly',
+        require: 'readonly',
+        setInterval: 'readonly',
+        setTimeout: 'readonly',
+        describe: 'readonly',
+        test: 'readonly',
+        it: 'readonly',
+        expect: 'readonly',
+        jest: 'readonly',
+        beforeAll: 'readonly',
+        beforeEach: 'readonly',
+        afterAll: 'readonly',
+        afterEach: 'readonly',
+      },
+    },
+    rules: {
+      'no-console': 'off',
+      'no-undef': 'error',
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      semi: ['warn', 'always'],
+    },
+  },
+];
