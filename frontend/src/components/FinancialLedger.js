@@ -13,7 +13,6 @@ import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as ReChartTooltip,
   XAxis, YAxis,
 } from 'recharts';
-import { cdnImages } from '../cdnAssets';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -303,7 +302,7 @@ export default function FinancialLedger() {
 
   return (
     <div>
-      <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.ledger})` }}>
+      <div className="page-media-banner">
         <div>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}><AuditOutlined /> Accounting Workspace</h2>
           <p>Review posted journal entries, account balances, financial statements and cash movement.</p>

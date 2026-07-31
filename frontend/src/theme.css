@@ -4,33 +4,33 @@
   /* ============================================================
      LIGHT THEME (Professional Slate & Rich Cyan-Teal)
      ============================================================ */
-  --bg-color-light: #f8fafc;            /* Clean Slate background */
-  --text-color-light: #0f172a;          /* Rich dark slate (Slate 900) */
-  --text-secondary-light: #475569;      /* Muted Slate (Slate 600) */
-  --primary-color-light: #0d9488;       /* Zambia Emerald Teal (Teal 600) */
-  --primary-hover-light: #0f766e;       /* Teal 700 */
-  --card-bg-light: #ffffff;             /* Pure white card */
-  --card-header-bg-light: #f1f5f9;      /* Slate 100 */
-  --border-color-light: #cbd5e1;        /* Slate 300 - clear borders */
-  --input-bg-light: #ffffff;            /* White input base */
-  --alert-bg-light: #f0fdf4;            /* Mint alert base */
-  --table-header-bg-light: #f1f5f9;     /* Slate 100 header */
+  --bg-color-light: #f5f7f9;
+  --text-color-light: #17212b;
+  --text-secondary-light: #52606d;
+  --primary-color-light: #0f6b5d;
+  --primary-hover-light: #0b574c;
+  --card-bg-light: #ffffff;
+  --card-header-bg-light: #f8fafb;
+  --border-color-light: #dbe1e7;
+  --input-bg-light: #ffffff;
+  --alert-bg-light: #f1f8f6;
+  --table-header-bg-light: #f6f8fa;
   --payment-card-bg: #ffffff;
 
   /* ============================================================
      DARK THEME (Sleek Obsidian & Cyan-Teal Accents)
      ============================================================ */
-  --bg-color-dark: #030712;             /* Deepest Slate/Obsidian (Slate 950) */
-  --text-color-dark: #f8fafc;           /* Bright Slate (Slate 50) */
-  --text-secondary-dark: #94a3b8;       /* Soft Slate (Slate 400) */
-  --primary-color-dark: #2dd4bf;        /* Radiant Mint/Teal (Teal 400) */
-  --primary-hover-dark: #14b8a6;        /* Teal 500 */
-  --card-bg-dark: #0f172a;              /* Slate 900 */
-  --card-header-bg-dark: #1e293b;       /* Slate 800 */
-  --border-color-dark: #1e293b;         /* Slate 800 - crisp borders */
-  --input-bg-dark: #0f172a;             /* Slate 900 input base */
-  --alert-bg-dark: #1e293b;             /* Slate 800 alert */
-  --table-header-bg-dark: #1e293b;      /* Slate 800 table header */
+  --bg-color-dark: #10151b;
+  --text-color-dark: #edf1f4;
+  --text-secondary-dark: #9ba7b4;
+  --primary-color-dark: #45b7a6;
+  --primary-hover-dark: #66c8b9;
+  --card-bg-dark: #171e26;
+  --card-header-bg-dark: #1c252e;
+  --border-color-dark: #303b46;
+  --input-bg-dark: #141b22;
+  --alert-bg-dark: #1b2829;
+  --table-header-bg-dark: #1c252e;
 
   /* ============================================================
      SHARED STYLING CONFIGURATIONS
@@ -49,23 +49,21 @@
   --space-2xl: 48px;
 
   /* Borders */
-  --border-radius-sm: 6px;
-  --border-radius-md: 10px;
-  --border-radius-lg: 16px;
-  --border-radius-xl: 22px;
+  --border-radius-sm: 4px;
+  --border-radius-md: 6px;
+  --border-radius-lg: 9px;
+  --border-radius-xl: 12px;
 
   /* Layout */
-  --app-header-height: 72px;
-  --app-context-height: 50px;
-  --content-max-width: 1600px;
+  --app-header-height: 64px;
+  --app-context-height: 44px;
+  --content-max-width: 1480px;
 
   /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.12), 0 4px 6px -2px rgba(0, 0, 0, 0.06);
-  --shadow-xl: 0 24px 48px -24px rgba(15, 23, 42, 0.28);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.035);
+  --shadow-md: 0 2px 6px rgba(16, 24, 40, 0.055);
+  --shadow-lg: 0 7px 18px rgba(16, 24, 40, 0.08);
+  --shadow-xl: 0 12px 28px rgba(16, 24, 40, 0.11);
 }
 
-html[data-theme='dark'] {
-  --payment-card-bg: #0f172a;
-}
+html[data-theme='dark'] { --payment-card-bg: #171e26; }

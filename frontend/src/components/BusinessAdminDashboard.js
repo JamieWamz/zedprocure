@@ -11,7 +11,6 @@ import {
 import axios from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReChartTooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
-import { cdnImages } from '../cdnAssets';
 import ProgressSteps from './ProgressSteps';
 import NextActionPanel from './NextActionPanel';
 import { getNotificationDestination, isActivationKey } from '../utils/notificationNavigation';
@@ -324,7 +323,7 @@ export default function BusinessAdminDashboard() {
   return (
     <div className="workspace-page">
       {/* Page Header with Wallet */}
-      <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.admin})` }}>
+      <div className="page-media-banner">
         <div>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Business Dashboard</h2>
           <p>Financial overview, invoice controls, cash movement and platform procurement metrics.</p>
@@ -352,36 +351,36 @@ export default function BusinessAdminDashboard() {
         <ProgressSteps steps={adminSteps} current={adminCurrentStep} />
       </Card>
 
-      {/* Revenue & Profit Cards */}
+      {/* Executive financial summary */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} lg={6}>
-          <Card className="stat-card" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: '#fff' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,0.8)' }}>Total Revenue</span>}
+          <Card className="stat-card executive-metric executive-metric--revenue">
+            <Statistic title="Total Revenue"
               value={parseFloat(revenue.total)} prefix={<DollarOutlined />} suffix="ZMW"
-              valueStyle={{ color: '#fff', fontWeight: 700 }} />
+              valueStyle={{ color: '#276b9a' }} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card className="stat-card" style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: '#fff' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,0.8)' }}>Expenses</span>}
+          <Card className="stat-card executive-metric executive-metric--expense">
+            <Statistic title="Expenses"
               value={parseFloat(revenue.expenses)} prefix={<FallOutlined />} suffix="ZMW"
-              valueStyle={{ color: '#fff', fontWeight: 700 }} />
+              valueStyle={{ color: '#9a650e' }} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card className="stat-card" style={{ background: `linear-gradient(135deg, ${parseFloat(revenue.netProfit) >= 0 ? '#11998e' : '#eb3349'} 0%, ${parseFloat(revenue.netProfit) >= 0 ? '#38ef7d' : '#f45c43'} 100%)`, color: '#fff' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,0.8)' }}>Net Profit</span>}
+          <Card className={`stat-card executive-metric ${parseFloat(revenue.netProfit) >= 0 ? 'executive-metric--profit' : 'executive-metric--loss'}`}>
+            <Statistic title="Net Profit"
               value={parseFloat(revenue.netProfit)} prefix={<ProfitIcon />} suffix="ZMW"
-              valueStyle={{ color: '#fff', fontWeight: 700, fontSize: 28 }} />
+              valueStyle={{ color: profitColor }} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card className="stat-card" style={{ background: 'linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%)', color: '#fff' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,0.8)' }}>Profit Margin</span>}
+          <Card className="stat-card executive-metric executive-metric--margin">
+            <Statistic title="Profit Margin"
               value={parseFloat(revenue.profitMargin)} precision={1} suffix="%"
-              valueStyle={{ color: '#fff', fontWeight: 700 }} />
+              valueStyle={{ color: '#0f6b5d' }} />
             <Progress percent={Math.min(parseFloat(revenue.profitMargin), 100)} showInfo={false}
-              strokeColor="#fff" trailColor="rgba(255,255,255,0.3)" style={{ marginTop: 8 }} />
+              strokeColor="#0f6b5d" trailColor="#e5e9ed" />
           </Card>
         </Col>
       </Row>
@@ -423,33 +422,33 @@ export default function BusinessAdminDashboard() {
                 <AreaChart data={monthlyRevenue}>
                   <defs>
                     <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#667eea" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#667eea" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#0f6b5d" stopOpacity={0.18} />
+                      <stop offset="95%" stopColor="#0f6b5d" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e9ed" />
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
                   <ReChartTooltip formatter={(v) => [`ZMW ${parseFloat(v).toLocaleString()}`, 'Revenue']} />
-                  <Area type="monotone" dataKey="revenue" stroke="#667eea" fill="url(#revenueGrad)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="revenue" stroke="#0f6b5d" fill="url(#revenueGrad)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : <Alert type="info" message="No revenue data yet. Revenue will appear as journal entries are created." showIcon />}
           </Card>
         </Col>
         <Col xs={24} lg={8}>
-          <Card title={<span><ExclamationCircleOutlined /> Outstanding Payments</span>} className="stat-card"
-            style={{ background: 'linear-gradient(135deg, #faad14 0%, #f5222d 100%)', color: '#fff', height: '100%' }}>
-            <Statistic title={<span style={{ color: 'rgba(255,255,255,0.8)' }}>Pending Escrow</span>}
+          <Card title={<span><ExclamationCircleOutlined /> Outstanding Payments</span>} className="stat-card executive-metric executive-metric--expense"
+            style={{ height: '100%' }}>
+            <Statistic title="Pending Escrow"
               value={parseFloat(outstanding.total)} prefix={<ClockCircleOutlined />} suffix="ZMW"
-              valueStyle={{ color: '#fff', fontSize: 32, fontWeight: 700 }} />
-            <div style={{ marginTop: 16, color: 'rgba(255,255,255,0.9)' }}>
+              valueStyle={{ color: Number(outstanding.total || 0) > 0 ? '#9a650e' : undefined }} />
+            <Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
               {outstanding.count} payment{outstanding.count !== 1 ? 's' : ''} awaiting settlement
-            </div>
+            </Text>
             {escrowSummary && Object.entries(escrowSummary).map(([status, info]) => (
-              <div key={status} style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.8)', fontSize: 13 }}>
+              <div key={status} style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13 }}>
                 <span style={{ textTransform: 'capitalize' }}>{status.replace('_', ' ')}</span>
-                <span>{info.count} · ZMW {parseFloat(info.total).toLocaleString()}</span>
+                <Text type="secondary">{info.count} · ZMW {parseFloat(info.total).toLocaleString()}</Text>
               </div>
             ))}
           </Card>

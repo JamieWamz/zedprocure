@@ -10,7 +10,6 @@ import {
 } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
-import { cdnImages } from '../cdnAssets';
 import DigitalSignatureModal from './DigitalSignatureModal';
 
 const { Text } = Typography;
@@ -272,7 +271,7 @@ export default function FinanceInvoices() {
 
   return (
     <div>
-      <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.invoices})` }}>
+      <div className="page-media-banner">
         <div>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}><FileTextOutlined /> Invoices</h2>
           <p>Track receivables, payables, reminders, aging and payment status from one finance desk.</p>

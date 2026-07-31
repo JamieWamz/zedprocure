@@ -24,7 +24,7 @@ const DashboardStatistic = ({ title, value, prefix, color, path }) => {
         title={title}
         value={value}
         prefix={prefix}
-        valueStyle={{ color: color || '#1677ff' }}
+        valueStyle={color ? { color } : undefined}
       />
     </Card>
   );

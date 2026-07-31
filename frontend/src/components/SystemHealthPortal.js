@@ -12,7 +12,6 @@ import {
   ShopOutlined, TeamOutlined, ToolOutlined, UserOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
-import { cdnImages } from '../cdnAssets';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const { Text } = Typography;
@@ -709,7 +708,7 @@ export default function SystemHealthPortal() {
 
   return (
     <div className="workspace-page system-control-plane">
-      <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.system})` }}>
+      <div className="page-media-banner">
         <div>
           <h2><CloudServerOutlined /> System Command Center</h2>
           <p>Test, maintain, upgrade and deploy the platform from one guarded operations workspace.</p>

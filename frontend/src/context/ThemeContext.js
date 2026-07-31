@@ -34,28 +34,46 @@ export function ThemeProvider({ children }) {
   const themeToken = useMemo(() => {
     const isDark = resolvedTheme === 'dark';
     return {
-      colorPrimary: isDark ? '#2dd4bf' : '#0d9488',
-      colorBgBase: isDark ? '#030712' : '#f8fafc',
-      colorTextBase: isDark ? '#f8fafc' : '#0f172a',
-      colorBorder: isDark ? '#1e293b' : '#cbd5e1',
-      colorBgContainer: isDark ? '#0f172a' : '#ffffff',
-      colorBgLayout: isDark ? '#030712' : '#f8fafc',
-      colorTextSecondary: isDark ? '#94a3b8' : '#475569',
-      borderRadius: 10,
-      borderRadiusLG: 16,
+      colorPrimary: isDark ? '#45b7a6' : '#0f6b5d',
+      colorInfo: isDark ? '#6aa8d7' : '#276b9a',
+      colorSuccess: isDark ? '#68b984' : '#267343',
+      colorWarning: isDark ? '#d6a24a' : '#9a650e',
+      colorError: isDark ? '#e47b7b' : '#b4232d',
+      colorBgBase: isDark ? '#10151b' : '#f5f7f9',
+      colorTextBase: isDark ? '#edf1f4' : '#17212b',
+      colorBorder: isDark ? '#303b46' : '#dbe1e7',
+      colorBgContainer: isDark ? '#171e26' : '#ffffff',
+      colorBgLayout: isDark ? '#10151b' : '#f5f7f9',
+      colorTextSecondary: isDark ? '#9ba7b4' : '#52606d',
+      borderRadius: 6,
+      borderRadiusLG: 9,
       controlHeight: 40,
-      controlHeightLG: 48,
+      controlHeightLG: 44,
       fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       boxShadowSecondary: isDark
-        ? '0 18px 40px -24px rgba(0, 0, 0, 0.85)'
-        : '0 18px 40px -24px rgba(15, 23, 42, 0.28)',
+        ? '0 8px 22px rgba(0, 0, 0, 0.32)'
+        : '0 8px 22px rgba(16, 24, 40, 0.11)',
     };
   }, [resolvedTheme]);
 
   return <ThemeContext.Provider value={value}>
       <ConfigProvider theme={{
         algorithm: resolvedTheme === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-        token: themeToken
+        token: themeToken,
+        components: {
+          Button: { fontWeight: 600, primaryShadow: 'none' },
+          Card: { headerFontSize: 15, headerHeight: 50, bodyPadding: 20 },
+          Table: {
+            headerBg: resolvedTheme === 'dark' ? '#1c252e' : '#f6f8fa',
+            headerColor: resolvedTheme === 'dark' ? '#cbd3db' : '#3f4b57',
+            headerBorderRadius: 0,
+            cellPaddingBlock: 12,
+            cellPaddingInline: 14,
+            rowHoverBg: resolvedTheme === 'dark' ? '#1c252e' : '#f8fafb',
+          },
+          Tabs: { titleFontSize: 13, horizontalItemGutter: 24 },
+          Modal: { titleFontSize: 17 },
+        },
       }}>
         {children}
       </ConfigProvider>

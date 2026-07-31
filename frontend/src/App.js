@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -13,37 +13,6 @@ import AcceptInvite from './components/AcceptInvite';
 import BidDetail from './components/BidDetail';
 import PublicNoticeboard from './components/PublicNoticeboard';
 import AppLayout from './components/AppLayout';
-import { cdnImages } from './cdnAssets';
-
-function LoadingExperience() {
-  const [showImage, setShowImage] = useState(false);
-  
-  useEffect(() => {
-    // Small delay to ensure the background image is visible
-    const timer = setTimeout(() => setShowImage(true), 100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  return (
-    <div className="route-loading">
-      <div 
-        className="route-loading-bg" 
-        style={{ 
-          backgroundImage: `url(${cdnImages.loginHero})`,
-          opacity: showImage ? 1 : 0,
-          transition: 'opacity 0.5s ease-in'
-        }} 
-      />
-      <div className="route-loading-overlay" />
-      <div className="route-loading-content">
-        <div className="route-loading-mark" />
-        <h1>Freshstart Procurement</h1>
-        <p>Preparing your workspace</p>
-        <div className="route-loading-dots"><span /><span /><span /></div>
-      </div>
-    </div>
-  );
-}
 
 function PrivateRoute({ children, requiredRoute }) {
   const { user, dashboardRoute, loading } = useAuth();
@@ -59,13 +28,6 @@ function PrivateRoute({ children, requiredRoute }) {
 }
 
 function AppContent() {
-  const [splashDone, setSplashDone] = useState(false);
-  const handleSplashFinish = useCallback(() => setSplashDone(true), []);
-
-  if (!splashDone) {
-    return <SplashScreen onFinish={handleSplashFinish} />;
-  }
-
   return (
     <Routes>
           <Route path="/login" element={<UnifiedLogin />} />

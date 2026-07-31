@@ -10,7 +10,6 @@ import {
   PlusOutlined, InfoCircleOutlined, DollarOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
-import { cdnImages } from '../cdnAssets';
 import DigitalSignatureModal from './DigitalSignatureModal';
 import PaymentModal from './PaymentModal';
 import { useAuth } from '../context/AuthContext';
@@ -409,7 +408,7 @@ ${values.warranty || 'No specific warranty requirements.'}
   return (
     <div className="workspace-page">
       {/* Media Banner Header */}
-      <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.customer})` }}>
+      <div className="page-media-banner">
         <div>
           <h2>Customer Portal</h2>
           <p>Submit procurement requirements, track orders, fund escrow via Mobile Money or Bank, and view digital signatures.</p>

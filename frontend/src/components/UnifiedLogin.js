@@ -81,44 +81,44 @@ export default function UnifiedLogin() {
                 <SafetyCertificateOutlined style={{ fontSize: 20, color: '#ffffff' }} />
               </span>
               <span className="login-hero-title">Freshstart</span>
-              <Tag color="blue" style={{ borderRadius: 12, padding: '0 10px', fontSize: 11, border: 'none', background: 'rgba(37, 99, 235, 0.4)', color: '#93c5fd' }}>
-                Zambia Procurement
+              <Tag style={{ padding: '1px 8px', borderColor: 'rgba(255,255,255,.28)', background: 'rgba(15,107,93,.36)', color: '#d7f3ec' }}>
+                Procurement platform
               </Tag>
             </div>
           </div>
 
           <div className="login-hero-middle">
             <h1 className="login-hero-heading">
-              Transparent & Escrow-Backed <br />
-              Public Procurement.
+              Procurement workflows with <br />
+              clear financial controls.
             </h1>
             <p className="login-hero-subheading">
-              Connecting Zambian public buyers, corporate procurement teams, and verified suppliers with multi-tier digital signatures and automated ledger settlement.
+              Coordinate buyers, verified suppliers, approvals, escrow payments and audit records in one accountable workspace.
             </p>
 
             <div className="login-hero-pills">
               <div className="login-pill">
                 <CheckCircleFilled style={{ color: '#10b981' }} />
-                <span>Escrow Payments (MTN / Airtel / Zanaco)</span>
+                <span>Controlled escrow and payment records</span>
               </div>
               <div className="login-pill">
                 <CheckCircleFilled style={{ color: '#10b981' }} />
-                <span>PACRA & ZRA Compliance Verification</span>
+                <span>Supplier compliance verification</span>
               </div>
               <div className="login-pill">
                 <CheckCircleFilled style={{ color: '#10b981' }} />
-                <span>Real-Time Evaluation Scorecards</span>
+                <span>Structured bid evaluation and approvals</span>
               </div>
             </div>
           </div>
 
           <div className="login-hero-foot">
             <Space size={16}>
-              <span> Encrypted TLS 1.3</span>
+              <span>Role-based access</span>
               <span>•</span>
-              <span> Real-Time Ledger</span>
+              <span>Auditable workflows</span>
               <span>•</span>
-              <span> GRZ Standard</span>
+              <span>Financial controls</span>
             </Space>
           </div>
         </div>
@@ -131,7 +131,7 @@ export default function UnifiedLogin() {
           <div className="login-card-header">
             <div className="login-brand-small">
               <div className="login-brand-icon">
-                <SafetyCertificateOutlined style={{ fontSize: 18, color: '#2563eb' }} />
+                <SafetyCertificateOutlined style={{ fontSize: 18, color: '#0f6b5d' }} />
               </div>
               <span className="login-brand-text">Freshstart</span>
             </div>

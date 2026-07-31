@@ -12,7 +12,6 @@ import {
 } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { cdnImages } from '../cdnAssets';
 import DigitalSignatureModal from './DigitalSignatureModal';
 import ProgressSteps from './ProgressSteps';
 import EnhancedEmpty from './EnhancedEmpty';
@@ -417,7 +416,7 @@ function getOrderProgress(status) {
   return (
     <div className="workspace-page">
       {/* Page Header */}
-      <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.supplier})` }}>
+      <div className="page-media-banner">
         <div>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Supplier Dashboard</h2>
           <p>Browse open bids, manage responses, track orders, and your verification status.</p>

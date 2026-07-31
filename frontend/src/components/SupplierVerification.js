@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Table, Button, message, Modal, Form, Input, Select, Tag, Space, Card, List, Typography, Alert } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons';
 import axios from 'axios';
-import { cdnImages } from '../cdnAssets';
 import { getFileUrl } from '../utils/fileUrl';
 
 const { Text } = Typography;
@@ -224,7 +223,7 @@ export default function SupplierVerification() {
 
   return (
     <div>
-      <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.verification})` }}>
+      <div className="page-media-banner">
         <div>
           <h2>Supplier Verification</h2>
           <p>Review and verify supplier documents (PACRA, ZRA, etc.) before they can participate in bids.</p>
