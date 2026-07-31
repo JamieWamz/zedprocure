@@ -35,6 +35,8 @@ app.use(cors({
   credentials: true,
 }));
 
+// Preserve webhook bytes for HMAC verification before the general JSON parser.
+app.use('/api/payments/mobile/callback', express.raw({ type: 'application/json', limit: '1mb' }));
 app.use(express.json({ limit: '10mb' }));
 
 // Global rate limiter for all API routes
@@ -52,6 +54,7 @@ app.use('/api', require('./routes/procurementRequest'));
 app.use('/api', require('./routes/order'));
 app.use('/api', require('./routes/payment'));
 app.use('/api', require('./routes/escrow'));
+app.use('/api', require('./routes/monetization'));
 app.use('/api/ledger', require('./routes/ledger'));
 app.use('/api/invoices', require('./routes/invoices'));
 app.use('/api/signatures', require('./routes/signatures'));

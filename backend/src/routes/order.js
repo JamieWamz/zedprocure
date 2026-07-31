@@ -3,6 +3,28 @@ const pool = require('../config/db');
 const { authenticate } = require('../middleware/authMiddleware');
 const router = express.Router();
 
+function projectOrderForUser(order, user) {
+  if (user.role === 'business_admin' || user.role === 'system_admin') return order;
+  const common = {
+    id: order.id,
+    bid_id: order.bid_id,
+    awarded_supplier_id: order.awarded_supplier_id,
+    status: order.status,
+    contract_file_path: order.contract_file_path,
+    created_at: order.created_at,
+  };
+  if (user.user_type === 'supplier_user') {
+    return { ...common, total_amount: order.supplier_payout_amount, supplier_payout_amount: order.supplier_payout_amount };
+  }
+  return {
+    ...common,
+    total_amount: order.total_amount,
+    buyer_price: order.buyer_price,
+    buyer_protection_fee: order.buyer_protection_fee,
+    express_match_fee: order.express_match_fee,
+  };
+}
+
 // List all orders (with tenant isolation)
 router.get('/orders', authenticate, async (req, res) => {
   if (req.user.role !== 'business_admin' && req.user.role !== 'customer' && req.user.user_type !== 'supplier_user') {
@@ -10,9 +32,16 @@ router.get('/orders', authenticate, async (req, res) => {
   }
   try {
     let query, params;
+    const customerOrderColumns = `o.id, o.bid_id, o.awarded_supplier_id, o.total_amount,
+      o.status, o.contract_file_path, o.created_at, o.award_decision_notes, o.awarded_at,
+      o.buyer_price, o.buyer_protection_fee, o.express_match_fee`;
+    const supplierOrderColumns = `o.id, o.bid_id, o.awarded_supplier_id,
+      o.supplier_payout_amount AS total_amount, o.status, o.contract_file_path,
+      o.created_at, o.award_decision_notes, o.awarded_at, o.supplier_price,
+      o.supplier_payout_amount`;
     if (req.user.tenant_id) {
       // Tenant-scoped query
-      query = `SELECT o.*, s.company_name AS supplier_name, t.name AS tenant_name,
+      query = `SELECT ${customerOrderColumns}, s.company_name AS supplier_name, t.name AS tenant_name,
                       COUNT(ds.id)::int AS signature_count,
                       MAX(ds.signed_at) AS last_signed_at,
                       ea.status AS escrow_status,
@@ -30,11 +59,11 @@ router.get('/orders', authenticate, async (req, res) => {
                ORDER BY o.created_at DESC`;
       params = [req.user.tenant_id];
     } else if (req.user.user_type === 'supplier_user') {
-      query = `SELECT o.*, s.company_name AS supplier_name, t.name AS tenant_name,
+      query = `SELECT ${supplierOrderColumns}, s.company_name AS supplier_name, t.name AS tenant_name,
                       COUNT(ds.id)::int AS signature_count,
                       MAX(ds.signed_at) AS last_signed_at,
                       ea.status AS escrow_status,
-                      ea.amount AS escrow_amount,
+                      ea.supplier_payout_amount AS escrow_amount,
                       ea.funded_at,
                       ea.released_at
                FROM orders o
@@ -45,7 +74,7 @@ router.get('/orders', authenticate, async (req, res) => {
                LEFT JOIN escrow_accounts ea ON ea.order_id = o.id
                LEFT JOIN digital_signatures ds ON ds.document_type = 'order' AND ds.document_id = o.id
                WHERE su.id = $1
-               GROUP BY o.id, s.company_name, t.name, ea.status, ea.amount, ea.funded_at, ea.released_at
+               GROUP BY o.id, s.company_name, t.name, ea.status, ea.supplier_payout_amount, ea.funded_at, ea.released_at
                ORDER BY o.created_at DESC`;
       params = [req.user.user_id];
     } else {
@@ -172,7 +201,7 @@ router.patch('/orders/:id/status', authenticate, async (req, res) => {
     );
 
     await client.query('COMMIT');
-    res.json(updatedOrder);
+    res.json(projectOrderForUser(updatedOrder, req.user));
   } catch (e) {
     await client.query('ROLLBACK');
     console.error('Error updating order status:', e);

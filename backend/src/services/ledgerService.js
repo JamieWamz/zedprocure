@@ -9,6 +9,7 @@ const LEDGER_ACCOUNTS = {
   ACCOUNTS_PAYABLE: 'ACCOUNTS_PAYABLE',
   SERVICE_REVENUE: 'SERVICE_REVENUE',
   SUPPLIER_EXPENSE: 'SUPPLIER_EXPENSE',
+  SUBSIDY_EXPENSE: 'SUBSIDY_EXPENSE',
 };
 
 async function getAccountId(client, code) {
@@ -79,16 +80,44 @@ async function recordEscrowFunding(orderId, userId, amount, client) {
   }, client);
 }
 
-async function recordEscrowRelease(orderId, adminUserId, amount, client) {
+async function recordSubsidyFunding(orderId, userId, amount, client) {
+  if (Number(amount) <= 0) return null;
+  return createJournalEntry({
+    referenceType: 'subsidy_funding',
+    referenceId: orderId,
+    description: `Platform subsidy reserve for order ${orderId}`,
+    createdBy: userId,
+    lines: [
+      { accountCode: LEDGER_ACCOUNTS.ESCROW, debit: amount, credit: 0 },
+      { accountCode: LEDGER_ACCOUNTS.CASH, debit: 0, credit: amount }
+    ]
+  }, client);
+}
+
+async function recordEscrowRelease(orderId, adminUserId, amounts, client) {
+  const gross = Number(amounts.gross);
+  const supplierPayout = Number(amounts.supplierPayout);
+  const platformRevenue = Number(amounts.platformRevenue);
+  const subsidyAmount = Number(amounts.subsidyAmount || 0);
+  if (Math.abs(gross + subsidyAmount - supplierPayout - Math.max(platformRevenue, 0)) > 0.005) {
+    throw new Error('Escrow release components must equal the funded gross amount');
+  }
+  const recognitionLines = [
+    { accountCode: LEDGER_ACCOUNTS.CUSTOMER_FUNDING, debit: gross, credit: 0 },
+    { accountCode: LEDGER_ACCOUNTS.SUPPLIER_PAYABLE, debit: 0, credit: supplierPayout },
+  ];
+  if (platformRevenue > 0) {
+    recognitionLines.push({ accountCode: LEDGER_ACCOUNTS.PLATFORM_REVENUE, debit: 0, credit: platformRevenue });
+  }
+  if (subsidyAmount > 0) {
+    recognitionLines.push({ accountCode: LEDGER_ACCOUNTS.SUBSIDY_EXPENSE, debit: subsidyAmount, credit: 0 });
+  }
   await createJournalEntry({
     referenceType: 'escrow_release',
     referenceId: orderId,
     description: `Release escrow for order ${orderId}`,
     createdBy: adminUserId,
-    lines: [
-      { accountCode: LEDGER_ACCOUNTS.CUSTOMER_FUNDING, debit: amount, credit: 0 },
-      { accountCode: LEDGER_ACCOUNTS.SUPPLIER_PAYABLE, debit: 0, credit: amount }
-    ]
+    lines: recognitionLines
   }, client);
   await createJournalEntry({
     referenceType: 'payout',
@@ -96,10 +125,47 @@ async function recordEscrowRelease(orderId, adminUserId, amount, client) {
     description: `Payout from escrow to supplier for order ${orderId}`,
     createdBy: adminUserId,
     lines: [
-      { accountCode: LEDGER_ACCOUNTS.SUPPLIER_PAYABLE, debit: amount, credit: 0 },
-      { accountCode: LEDGER_ACCOUNTS.ESCROW, debit: 0, credit: amount }
+      { accountCode: LEDGER_ACCOUNTS.SUPPLIER_PAYABLE, debit: supplierPayout, credit: 0 },
+      { accountCode: LEDGER_ACCOUNTS.ESCROW, debit: 0, credit: supplierPayout }
     ]
   }, client);
+  if (platformRevenue > 0) {
+    await createJournalEntry({
+      referenceType: 'platform_fee_capture',
+      referenceId: orderId,
+      description: `Capture platform fees for order ${orderId}`,
+      createdBy: adminUserId,
+      lines: [
+        { accountCode: LEDGER_ACCOUNTS.CASH, debit: platformRevenue, credit: 0 },
+        { accountCode: LEDGER_ACCOUNTS.ESCROW, debit: 0, credit: platformRevenue }
+      ]
+    }, client);
+  }
+}
+
+async function recordEscrowRefund(orderId, adminUserId, customerAmount, subsidyAmount, client) {
+  await createJournalEntry({
+    referenceType: 'escrow_refund',
+    referenceId: orderId,
+    description: `Refund customer escrow for order ${orderId}`,
+    createdBy: adminUserId,
+    lines: [
+      { accountCode: LEDGER_ACCOUNTS.CUSTOMER_FUNDING, debit: customerAmount, credit: 0 },
+      { accountCode: LEDGER_ACCOUNTS.ESCROW, debit: 0, credit: customerAmount }
+    ]
+  }, client);
+  if (Number(subsidyAmount) > 0) {
+    await createJournalEntry({
+      referenceType: 'subsidy_refund',
+      referenceId: orderId,
+      description: `Return unused subsidy reserve for order ${orderId}`,
+      createdBy: adminUserId,
+      lines: [
+        { accountCode: LEDGER_ACCOUNTS.CASH, debit: subsidyAmount, credit: 0 },
+        { accountCode: LEDGER_ACCOUNTS.ESCROW, debit: 0, credit: subsidyAmount }
+      ]
+    }, client);
+  }
 }
 
 // ─── Invoice recognition ─────────────────────────────────────────────────────
@@ -160,6 +226,6 @@ async function recordInvoicePayment(invoice, amount, userId, client) {
 }
 
 module.exports = {
-  recordBiddingFee, recordEscrowFunding, recordEscrowRelease,
+  recordBiddingFee, recordEscrowFunding, recordSubsidyFunding, recordEscrowRelease, recordEscrowRefund,
   recordInvoiceIssue, recordInvoicePayment, createJournalEntry,
 };

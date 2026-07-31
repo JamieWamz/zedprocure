@@ -14,7 +14,8 @@ const pool = require('../config/db');
 async function validateBidSubmission(bidId, supplierUserId) {
   const errors = [];
 
-  // 1. Bid exists and is open
+  // 1. Bid exists and is accepting responses. Evaluation starts after the
+  // first response, but other suppliers may still respond until the deadline.
   const { rows: [bid] } = await pool.query(
     'SELECT id, status, deadline, title FROM bids WHERE id = $1',
     [bidId]
@@ -23,7 +24,7 @@ async function validateBidSubmission(bidId, supplierUserId) {
     errors.push('Bid not found');
     return { valid: false, errors };
   }
-  if (bid.status !== 'open') {
+  if (!['open', 'evaluation'].includes(bid.status)) {
     errors.push('Bid is not currently accepting submissions');
   }
 

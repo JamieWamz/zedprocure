@@ -11,7 +11,8 @@ const pool       = require('../../config/db');
 const mtnMomo    = require('./mtnMomoService');
 const airtel     = require('./airtelMoneyService');
 const zamtel     = require('./zamtelKwachaService');
-const { recordEscrowFunding } = require('../ledgerService');
+const { recordEscrowFunding, recordSubsidyFunding } = require('../ledgerService');
+const { v4: uuidv4 } = require('uuid');
 
 const PROVIDERS = ['mtn', 'airtel', 'zamtel', 'bank'];
 
@@ -38,7 +39,9 @@ async function initiatePayment({ provider, amount, msisdn, orderId, description,
   let providerReference;
 
   // DEMO/POC MODE: If msisdn is '260000000000', use demo mode.
-  if (msisdn === '260000000000' || process.env.DEMO_MODE === 'true' || !process.env.MTN_MOMO_SUBSCRIPTION_KEY) {
+  const explicitDemo = process.env.DEMO_MODE === 'true' ||
+    (process.env.NODE_ENV !== 'production' && msisdn === '260000000000');
+  if (explicitDemo) {
     providerReference = `DEMO-${provider.toUpperCase()}-${uuidv4().slice(0, 8)}`;
   } else {
     if (provider === 'mtn') {
@@ -121,15 +124,25 @@ async function syncPaymentStatus(paymentLogId) {
       // When payment succeeds → fund the escrow account for this order
       if (newStatus === 'successful' && rowCount) {
         const escrowResult = await client.query(
-          `INSERT INTO escrow_accounts (order_id, customer_user_id, amount, status, funded_at)
-           VALUES ($1, $2, $3, 'funded', now())
+          `INSERT INTO escrow_accounts
+             (order_id, customer_user_id, amount, supplier_payout_amount, platform_fee_amount, subsidy_amount, status, funded_at)
+           SELECT o.id, $2, $3, o.supplier_payout_amount, GREATEST(o.platform_revenue_amount, 0),
+                  o.subsidy_amount, 'funded', now()
+           FROM orders o WHERE o.id = $1
            ON CONFLICT (order_id) DO UPDATE
-             SET status = 'funded', amount = EXCLUDED.amount, funded_at = now()
+             SET status = 'funded', amount = EXCLUDED.amount,
+                 supplier_payout_amount = EXCLUDED.supplier_payout_amount,
+                 platform_fee_amount = EXCLUDED.platform_fee_amount,
+                 subsidy_amount = EXCLUDED.subsidy_amount, funded_at = now()
              WHERE escrow_accounts.status = 'pending_funding'`,
           [payment.order_id, payment.initiated_by, payment.amount]
         );
         if (escrowResult.rowCount) {
           await recordEscrowFunding(payment.order_id, payment.initiated_by, payment.amount, client);
+          const { rows: [orderPricing] } = await client.query(
+            'SELECT subsidy_amount FROM orders WHERE id = $1', [payment.order_id]
+          );
+          await recordSubsidyFunding(payment.order_id, payment.initiated_by, orderPricing?.subsidy_amount, client);
         }
       }
 
@@ -153,6 +166,7 @@ async function syncPaymentStatus(paymentLogId) {
  * @param {object} payload   - Raw parsed JSON body from provider
  */
 async function processWebhook(provider, payload) {
+  if (!PROVIDERS.includes(provider)) throw new Error('Unsupported payment provider');
   let providerReference, newStatus;
 
   if (provider === 'mtn') {
@@ -190,15 +204,25 @@ async function processWebhook(provider, payload) {
 
     if (payment && newStatus === 'successful') {
       const escrowResult = await client.query(
-        `INSERT INTO escrow_accounts (order_id, customer_user_id, amount, status, funded_at)
-         VALUES ($1, $2, $3, 'funded', now())
-         ON CONFLICT (order_id) DO UPDATE
-           SET status = 'funded', amount = EXCLUDED.amount, funded_at = now()
-           WHERE escrow_accounts.status = 'pending_funding'`,
+      `INSERT INTO escrow_accounts
+         (order_id, customer_user_id, amount, supplier_payout_amount, platform_fee_amount, subsidy_amount, status, funded_at)
+       SELECT o.id, $2, $3, o.supplier_payout_amount, GREATEST(o.platform_revenue_amount, 0),
+              o.subsidy_amount, 'funded', now()
+       FROM orders o WHERE o.id = $1
+       ON CONFLICT (order_id) DO UPDATE
+         SET status = 'funded', amount = EXCLUDED.amount,
+             supplier_payout_amount = EXCLUDED.supplier_payout_amount,
+             platform_fee_amount = EXCLUDED.platform_fee_amount,
+             subsidy_amount = EXCLUDED.subsidy_amount, funded_at = now()
+         WHERE escrow_accounts.status = 'pending_funding'`,
         [payment.order_id, payment.initiated_by, payment.amount]
       );
       if (escrowResult.rowCount) {
         await recordEscrowFunding(payment.order_id, payment.initiated_by, payment.amount, client);
+        const { rows: [orderPricing] } = await client.query(
+          'SELECT subsidy_amount FROM orders WHERE id = $1', [payment.order_id]
+        );
+        await recordSubsidyFunding(payment.order_id, payment.initiated_by, orderPricing?.subsidy_amount, client);
       }
     }
 

@@ -1,8 +1,11 @@
 const express = require('express');
 const pool = require('../config/db');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
-const { recordEscrowFunding, recordEscrowRelease } = require('../services/ledgerService');
+const {
+  recordEscrowFunding, recordSubsidyFunding, recordEscrowRelease, recordEscrowRefund,
+} = require('../services/ledgerService');
 const { ensureWallet, creditWallet } = require('../services/walletService');
+const { requireEnum, requireUuid, cleanText } = require('../utils/requestValidation');
 const router = express.Router();
 
 // Customer funds escrow
@@ -10,7 +13,17 @@ router.post('/escrow/fund', authenticate, async (req, res) => {
   if (req.user.user_type !== 'tenant_user' || req.user.role !== 'customer') {
     return res.status(403).json({ error: 'Only customers can fund escrow' });
   }
-  const { order_id, amount, payment_method, transaction_ref } = req.body;
+  const { amount } = req.body;
+  let order_id;
+  let payment_method;
+  let transaction_ref;
+  try {
+    order_id = requireUuid(req.body.order_id, 'order_id');
+    payment_method = requireEnum(req.body.payment_method, ['mobile_money', 'bank_transfer'], 'payment_method');
+    transaction_ref = cleanText(req.body.transaction_ref, { required: true, maxLength: 100 });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
   if (!order_id || !payment_method || !transaction_ref) {
     return res.status(400).json({ error: 'order_id, payment_method and transaction_ref are required' });
   }
@@ -24,7 +37,8 @@ router.post('/escrow/fund', authenticate, async (req, res) => {
     await client.query('BEGIN');
 
     const { rows: [order] } = await client.query(
-      `SELECT b.tenant_id, o.total_amount, o.status
+      `SELECT b.tenant_id, o.total_amount, o.supplier_payout_amount,
+              o.platform_revenue_amount, o.subsidy_amount, o.status
        FROM orders o JOIN bids b ON b.id = o.bid_id WHERE o.id = $1 FOR UPDATE OF o`,
       [order_id]
     );
@@ -62,9 +76,14 @@ router.post('/escrow/fund', authenticate, async (req, res) => {
     }
 
     await client.query(
-      `INSERT INTO escrow_accounts (order_id, customer_user_id, amount, status)
-       VALUES ($1,$2,$3,'funded') ON CONFLICT (order_id) DO UPDATE SET status = 'funded', funded_at = now(), amount = EXCLUDED.amount`,
-      [order_id, req.user.user_id, amountNum]
+      `INSERT INTO escrow_accounts
+         (order_id, customer_user_id, amount, supplier_payout_amount, platform_fee_amount, subsidy_amount, status, funded_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'funded',now())
+       ON CONFLICT (order_id) DO UPDATE SET status = 'funded', funded_at = now(),
+         amount = EXCLUDED.amount, supplier_payout_amount = EXCLUDED.supplier_payout_amount,
+         platform_fee_amount = EXCLUDED.platform_fee_amount, subsidy_amount = EXCLUDED.subsidy_amount`,
+      [order_id, req.user.user_id, amountNum, order.supplier_payout_amount,
+       Math.max(0, Number(order.platform_revenue_amount || 0)), order.subsidy_amount]
     );
     await client.query(
       `INSERT INTO payment_transactions (from_user_id, amount, payment_method, transaction_ref, type, status)
@@ -72,6 +91,7 @@ router.post('/escrow/fund', authenticate, async (req, res) => {
       [req.user.user_id, amountNum, payment_method, transaction_ref]
     );
     await recordEscrowFunding(order_id, req.user.user_id, amountNum, client);
+    await recordSubsidyFunding(order_id, req.user.user_id, order.subsidy_amount, client);
 
     await client.query('COMMIT');
     res.json({ message: 'Escrow funded' });
@@ -90,8 +110,12 @@ router.post('/escrow/fund', authenticate, async (req, res) => {
 // Business Admin releases escrow to supplier after fulfillment checks.
 // Credits the supplier's in-app wallet atomically.
 router.post('/escrow/release', authenticate, requireRole('business_admin'), async (req, res) => {
-  const { order_id } = req.body;
-  if (!order_id) return res.status(400).json({ error: 'order_id is required' });
+  let order_id;
+  try {
+    order_id = requireUuid(req.body.order_id, 'order_id');
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
 
   const client = await pool.connect();
   try {
@@ -114,25 +138,22 @@ router.post('/escrow/release', authenticate, requireRole('business_admin'), asyn
     }
 
     // Get the supplier users to credit their wallets
-    const { rows: supplierUsers } = await client.query(
-      'SELECT id FROM supplier_users WHERE supplier_id = $1',
+    const { rows: [supplierUser] } = await client.query(
+      'SELECT id FROM supplier_users WHERE supplier_id = $1 AND is_active = TRUE ORDER BY id LIMIT 1',
       [escrow.awarded_supplier_id]
     );
-
-    // Credit each supplier user's wallet with their share
-    // (typically the full amount is credited proportionally)
-    const amountPerUser = escrow.amount / Math.max(supplierUsers.length, 1);
-    for (const su of supplierUsers) {
-      const wallet = await ensureWallet(su.id, 'supplier_user');
-      if (wallet.id) {
-        await creditWallet(
-          wallet.id,
-          amountPerUser,
-          `Escrow release from order ${order_id}`,
-          client
-        );
-      }
-    }
+    if (!supplierUser) throw new Error('Awarded supplier has no active payout user');
+    const supplierPayout = Number(escrow.supplier_payout_amount || escrow.amount);
+    const platformRevenue = Number(escrow.platform_fee_amount || 0);
+    const subsidyAmount = Number(escrow.subsidy_amount || 0);
+    const wallet = await ensureWallet(supplierUser.id, 'supplier_user', client);
+    await creditWallet(
+      wallet.id,
+      supplierPayout,
+      `Escrow release from order ${order_id}`,
+      client,
+      { reference: `escrow-release:${order_id}` }
+    );
 
     await client.query(
       'UPDATE escrow_accounts SET status = $1, released_at = now() WHERE order_id = $2',
@@ -140,14 +161,19 @@ router.post('/escrow/release', authenticate, requireRole('business_admin'), asyn
     );
 
     // Record double-entry ledger
-    await recordEscrowRelease(order_id, req.user.user_id, escrow.amount, client);
+    await recordEscrowRelease(order_id, req.user.user_id, {
+      gross: Number(escrow.amount),
+      supplierPayout,
+      platformRevenue,
+      subsidyAmount,
+    }, client);
 
     await client.query('COMMIT');
-    res.json({ message: 'Escrow released to supplier wallet', amount: escrow.amount });
+    res.json({ message: 'Escrow released to supplier wallet', supplier_payout: supplierPayout });
   } catch (e) {
     await client.query('ROLLBACK');
     console.error('Error releasing escrow:', e);
-    res.status(500).json({ error: 'Failed to release escrow: ' + e.message });
+    res.status(500).json({ error: 'Failed to release escrow' });
   } finally {
     client.release();
   }
@@ -156,7 +182,14 @@ router.post('/escrow/release', authenticate, requireRole('business_admin'), asyn
 // Business Admin refunds escrow back to customer.
 // Reverse the journal entries and credit customer wallet.
 router.post('/escrow/refund', authenticate, requireRole('business_admin'), async (req, res) => {
-  const { order_id, reason } = req.body;
+  let order_id;
+  let reason;
+  try {
+    order_id = requireUuid(req.body.order_id, 'order_id');
+    reason = cleanText(req.body.reason, { maxLength: 1000 });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
   if (!order_id) return res.status(400).json({ error: 'order_id is required' });
 
   const client = await pool.connect();
@@ -179,7 +212,7 @@ router.post('/escrow/refund', authenticate, requireRole('business_admin'), async
     }
 
     // Credit the customer's wallet
-    const wallet = await ensureWallet(escrow.customer_user_id, 'tenant_user');
+    const wallet = await ensureWallet(escrow.customer_user_id, 'tenant_user', client);
     if (wallet.id) {
       await creditWallet(
         wallet.id,
@@ -193,6 +226,13 @@ router.post('/escrow/refund', authenticate, requireRole('business_admin'), async
     await client.query(
       'UPDATE escrow_accounts SET status = $1 WHERE order_id = $2',
       ['refunded', order_id]
+    );
+    await recordEscrowRefund(
+      order_id,
+      req.user.user_id,
+      Number(escrow.amount),
+      Number(escrow.subsidy_amount || 0),
+      client
     );
 
     // Record reversal in payment_transactions
@@ -209,7 +249,7 @@ router.post('/escrow/refund', authenticate, requireRole('business_admin'), async
   } catch (e) {
     await client.query('ROLLBACK');
     console.error('Error refunding escrow:', e);
-    res.status(500).json({ error: 'Failed to refund escrow: ' + e.message });
+    res.status(500).json({ error: 'Failed to refund escrow' });
   } finally {
     client.release();
   }

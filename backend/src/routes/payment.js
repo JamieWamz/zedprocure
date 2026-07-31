@@ -3,49 +3,76 @@ const pool = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const { authenticate } = require('../middleware/authMiddleware');
 const { recordBiddingFee } = require('../services/ledgerService');
-const { ensureWallet, debitWallet } = require('../services/walletService');
+const { consumeBidAccess, BidAccessError } = require('../services/bidFeeService');
+const { requireUuid, requireEnum } = require('../utils/requestValidation');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
+const biddingFeeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many bidding-fee attempts. Please wait before trying again.' },
+});
+
 // Initiate bidding fee payment (returns a payment reference)
-router.post('/payments/bidding-fee', authenticate, async (req, res) => {
+router.post('/payments/bidding-fee', biddingFeeLimiter, authenticate, async (req, res) => {
   if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { bid_id, payment_method } = req.body;
+    const bid_id = requireUuid(req.body.bid_id, 'bid_id');
+    const payment_method = requireEnum(req.body.payment_method || 'wallet', ['wallet'], 'payment_method');
     const { rows: [bid] } = await pool.query(
-      `SELECT b.bidding_fee_amount
+      `SELECT b.bidding_fee_amount, b.status, b.deadline, s.id AS supplier_id
        FROM bids b
        JOIN bid_suppliers bs ON bs.bid_id = b.id
+       JOIN suppliers s ON s.id = bs.supplier_id
        JOIN supplier_users su ON su.supplier_id = bs.supplier_id
        WHERE b.id = $1 AND su.id = $2`,
       [bid_id, req.user.user_id]
     );
     if (!bid) return res.status(404).json({ error: 'Bid invitation not found' });
-    const ref = `BID-${Date.now()}-${uuidv4().slice(0,8)}`;
-    await pool.query(
-      `INSERT INTO payment_transactions (from_user_id, amount, payment_method, transaction_ref, type, status)
-       VALUES ($1,$2,$3,$4,'bidding_fee','initiated')`,
-      [req.user.user_id, bid.bidding_fee_amount, payment_method, ref]
+    if (!['open', 'evaluation'].includes(bid.status) || new Date(bid.deadline) <= new Date()) {
+      return res.status(422).json({ error: 'This bid is not accepting fee payments' });
+    }
+    const { rows: [existingCharge] } = await pool.query(
+      `SELECT charge_source, amount, status FROM bid_fee_charges
+       WHERE bid_id = $1 AND supplier_id = $2`,
+      [bid_id, bid.supplier_id]
     );
-    res.status(201).json({ transaction_ref: ref, status: 'initiated' });
+    if (existingCharge?.status === 'completed') {
+      return res.json({ status: 'completed', access_source: existingCharge.charge_source });
+    }
+    const ref = `BID-${Date.now()}-${uuidv4().slice(0,8)}`;
+    const { rows: [transaction] } = await pool.query(
+      `INSERT INTO payment_transactions (from_user_id, amount, payment_method, transaction_ref, type, status, bid_id)
+       VALUES ($1,$2,$3,$4,'bidding_fee','initiated',$5) RETURNING id`,
+      [req.user.user_id, bid.bidding_fee_amount, payment_method, ref, bid_id]
+    );
+    res.status(201).json({ transaction_ref: ref, transaction_id: transaction.id, status: 'initiated' });
   } catch (e) {
     console.error('Error initiating bidding fee:', e);
-    res.status(500).json({ error: 'Failed to initiate payment' });
+    res.status(e.message?.includes('must be') ? 400 : 500).json({ error: e.message || 'Failed to initiate payment' });
   }
 });
 
 // Confirm payment (manual or callback) – idempotent via unique ref
 // Debits the user's wallet and records the ledger entry atomically.
-router.post('/payments/confirm', authenticate, async (req, res) => {
+router.post('/payments/confirm', biddingFeeLimiter, authenticate, async (req, res) => {
   try {
-    const { transaction_ref } = req.body;
+    const transaction_ref = typeof req.body.transaction_ref === 'string' ? req.body.transaction_ref.trim() : '';
+    if (!/^BID-[A-Za-z0-9-]{10,100}$/.test(transaction_ref)) {
+      return res.status(400).json({ error: 'A valid transaction_ref is required' });
+    }
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
       const { rows: [tx] } = await client.query(
-        `SELECT * FROM payment_transactions WHERE transaction_ref = $1 FOR UPDATE`,
-        [transaction_ref]
+        `SELECT * FROM payment_transactions
+         WHERE transaction_ref = $1 AND from_user_id = $2 FOR UPDATE`,
+        [transaction_ref, req.user.user_id]
       );
       if (!tx) {
         await client.query('ROLLBACK');
@@ -58,28 +85,18 @@ router.post('/payments/confirm', authenticate, async (req, res) => {
 
       // If bidding fee, debit wallet and record ledger entry
       if (tx.type === 'bidding_fee') {
-        const { bid_id } = req.body;
-        if (!bid_id) {
-          await client.query('ROLLBACK');
-          return res.status(400).json({ error: 'bid_id is required for bid_fee payment confirmation' });
-        }
-
-        // Ensure the user has a wallet and debit it
-        const wallet = await ensureWallet(tx.from_user_id, req.user.user_type);
-        if (!wallet.id) {
-          await client.query('ROLLBACK');
-          return res.status(500).json({ error: 'Failed to locate wallet for user' });
-        }
-
-        await debitWallet(
-          wallet.id,
-          tx.amount,
-          `Bidding fee payment for bid ${bid_id} - ref ${transaction_ref}`,
-          client
-        );
+        if (!tx.bid_id) throw new Error('Bidding-fee transaction has no bid association');
+        const charge = await consumeBidAccess({
+          bidId: tx.bid_id,
+          supplierUserId: tx.from_user_id,
+          paymentTransactionId: tx.id,
+          client,
+        });
 
         // Record the double-entry ledger entry
-        await recordBiddingFee(bid_id, tx.from_user_id, tx.amount, transaction_ref, client);
+        if (Number(charge.amount) > 0) {
+          await recordBiddingFee(tx.bid_id, tx.from_user_id, charge.amount, transaction_ref, client);
+        }
       }
 
       // Mark payment as completed
@@ -89,7 +106,7 @@ router.post('/payments/confirm', authenticate, async (req, res) => {
       );
 
       await client.query('COMMIT');
-      res.json({ message: 'Payment confirmed', transaction_ref });
+      res.json({ message: 'Bid access confirmed', transaction_ref });
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;
@@ -98,7 +115,10 @@ router.post('/payments/confirm', authenticate, async (req, res) => {
     }
   } catch (e) {
     console.error('Error confirming payment:', e);
-    res.status(500).json({ error: 'Failed to confirm payment: ' + e.message });
+    const status = e instanceof BidAccessError
+      ? (e.code === 'PAYMENT_REQUIRED' ? 402 : 422)
+      : (e.message === 'Insufficient wallet balance' ? 402 : 500);
+    res.status(status).json({ error: 'Failed to confirm payment: ' + e.message });
   }
 });
 
@@ -169,7 +189,7 @@ router.post('/payments/mobile/initiate', authenticate, async (req, res) => {
     res.status(201).json(result);
   } catch (e) {
     console.error('[Payment] Initiation error:', e.message);
-    const status = e.message.includes('not configured') ? 503 : 500;
+    const status = e.code === '23505' ? 409 : (e.message.includes('not configured') ? 503 : 502);
     res.status(status).json({ error: e.message });
   }
 });
@@ -214,7 +234,7 @@ router.get('/payments/mobile/order/:orderId', authenticate, async (req, res) => 
       [req.params.orderId]
     );
     res.json(rows);
-  } catch (e) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch payment history' });
   }
 });
@@ -224,22 +244,28 @@ router.get('/payments/mobile/order/:orderId', authenticate, async (req, res) => 
  * Inbound webhook from provider (MTN / Airtel / Zamtel / Bank).
  * Provider is identified via query param: ?provider=mtn
  *
- * NOTE: In production, validate the provider's HMAC signature before calling
- *       processWebhook. See PAYMENT_INTEGRATION.md §8 for details.
+ * Requires x-webhook-signature: sha256=<hex HMAC of the raw request body>.
  */
-router.post('/payments/mobile/callback', express.raw({ type: '*/*' }), async (req, res) => {
+router.post('/payments/mobile/callback', async (req, res) => {
   const provider = req.query.provider;
   if (!provider) return res.status(400).json({ error: 'provider query parameter required' });
 
   try {
     const bodyStr = Buffer.isBuffer(req.body) ? req.body.toString() : JSON.stringify(req.body);
+    const secret = process.env.PAYMENT_WEBHOOK_SECRET;
+    if (!secret) return res.status(503).json({ error: 'Webhook verification is not configured' });
+    const supplied = String(req.get('x-webhook-signature') || '').replace(/^sha256=/, '');
+    const expected = crypto.createHmac('sha256', secret).update(bodyStr).digest('hex');
+    const validSignature = /^[a-f0-9]{64}$/i.test(supplied) && supplied.length === expected.length &&
+      crypto.timingSafeEqual(Buffer.from(supplied, 'hex'), Buffer.from(expected, 'hex'));
+    if (!validSignature) return res.status(401).json({ error: 'Invalid webhook signature' });
     const payload = JSON.parse(bodyStr);
     await processWebhook(provider, payload);
     res.status(200).json({ received: true });
   } catch (e) {
     console.error('[Payment] Webhook error:', e.message);
-    // Always return 200 to prevent provider retries from filling logs
-    res.status(200).json({ received: true, warning: 'Processing error logged' });
+    // A non-2xx response permits the provider to retry transient failures.
+    res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
 

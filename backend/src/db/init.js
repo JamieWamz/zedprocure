@@ -50,6 +50,7 @@ async function init() {
       ['PLATFORM_REVENUE', 'Platform Revenue', 'revenue'],
       ['SERVICE_REVENUE', 'Service Revenue', 'revenue'],
       ['SUPPLIER_EXPENSE', 'Supplier Expense', 'expense'],
+      ['SUBSIDY_EXPENSE', 'Transaction Subsidy Expense', 'expense'],
       ['CUSTOMER_FUNDING', 'Customer Funding Clearing', 'liability'],
       ['SUPPLIER_PAYABLE', 'Supplier Payable', 'liability']
     ];

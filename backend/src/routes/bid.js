@@ -2,14 +2,24 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 const pool = require('../config/db');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
-const { requireTenantContext, validateTenantAccess } = require('../middleware/tenantContext');
 const stripBudgetForSupplier = require('../middleware/priceIsolation');
-const { getOrganizationBids } = require('../services/bidService');
 const { validateBidSubmission } = require('../services/submissionGuard');
+const { consumeBidAccess, BidAccessError } = require('../services/bidFeeService');
+const { calculateTransactionPricing, MonetizationError } = require('../services/monetizationService');
+const { cleanText, requireUuid } = require('../utils/requestValidation');
 const { notifySuppliersOnBidPublished, notifySupplierInvited, notifyBusinessAdmins } = require('../services/notificationService');
 const router = express.Router();
+
+const supplierBidLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many bid actions. Please wait before trying again.' },
+});
 
 // ─── Multer configuration ────────────────────────────────────────────────────
 const ALLOWED_SPEC_EXT = ['.pdf'];
@@ -72,6 +82,66 @@ const uploadResponse = multer({
 const VALID_INCOTERMS = ['EXW','FCA','FAS','FOB','CFR','CIF','CPT','CIP','DPU','DAP','DDP'];
 const VALID_UOMS = ['each','kg','g','ton','meters','cm','liters','ml','sqm','sqft','hours','days','months','lump_sum','boxes','pairs','sets'];
 
+async function loadAwardPricing(client, bidId, responseId, requirementId) {
+  requireUuid(bidId, 'bidId');
+  if (responseId) requireUuid(responseId, 'response_id');
+  if (requirementId) requireUuid(requirementId, 'requirement_id');
+
+  const responseParams = responseId ? [bidId, responseId] : [bidId];
+  const responseFilter = responseId ? 'AND sr.id = $2' : '';
+  const { rows: [response] } = await client.query(
+    `SELECT sr.id AS response_id, bs.supplier_id,
+            COALESCE(SUM(brli.total_price), 0) AS supplier_price,
+            COUNT(DISTINCT brli.bid_line_item_id)::int AS priced_items,
+            (SELECT COUNT(*)::int FROM bid_line_items WHERE bid_id = $1) AS required_items
+     FROM supplier_responses sr
+     JOIN bid_suppliers bs ON bs.id = sr.bid_supplier_id
+     LEFT JOIN bid_response_line_items brli ON brli.supplier_response_id = sr.id
+     WHERE bs.bid_id = $1 ${responseFilter}
+     GROUP BY sr.id, bs.supplier_id
+     ORDER BY sr.submitted_at DESC LIMIT 1`,
+    responseParams
+  );
+  if (!response) throw new MonetizationError('MISSING_RESPONSE', 'A persisted supplier response is required');
+  if (response.priced_items !== response.required_items || response.required_items === 0) {
+    throw new MonetizationError('INCOMPLETE_RESPONSE', 'The supplier response does not price every Bill of Quantities item');
+  }
+
+  const requirementParams = requirementId ? [bidId, requirementId] : [bidId];
+  const requirementFilter = requirementId ? 'AND id = $2' : '';
+  const { rows: [requirement] } = await client.query(
+    `SELECT id, budget_amount FROM bid_requirements
+     WHERE bid_id = $1 ${requirementFilter} AND budget_amount IS NOT NULL
+     ORDER BY created_at DESC LIMIT 1`,
+    requirementParams
+  );
+  if (!requirement || Number(requirement.budget_amount) <= 0) {
+    throw new MonetizationError('MISSING_BUYER_PRICE', 'A positive customer budget is required before award');
+  }
+
+  const { rows: [settings] } = await client.query(
+    'SELECT * FROM platform_monetization_settings WHERE singleton_id = TRUE'
+  );
+  if (!settings) throw new Error('Platform monetization settings are missing');
+  const { rows: [bid] } = await client.query(
+    'SELECT express_match, express_match_fee FROM bids WHERE id = $1',
+    [bidId]
+  );
+
+  const pricing = calculateTransactionPricing({
+    userPrice: requirement.budget_amount,
+    supplierPrice: response.supplier_price,
+    escrowFeeType: settings.escrow_fee_type,
+    escrowFeePercent: settings.escrow_fee_percent,
+    escrowFeeFixed: settings.escrow_fee_fixed,
+    expressMatch: bid.express_match,
+    expressMatchFee: Number(bid.express_match_fee) || settings.express_match_fee,
+    allowSubsidized: settings.allow_subsidized_transactions,
+    subsidyLimit: settings.subsidy_limit,
+  });
+  return { response, requirement, pricing };
+}
+
 // Apply price isolation middleware to all /bids routes for supplier users
 // This MUST be before any /bids routes to ensure budget_amount is stripped
 router.use('/bids', authenticate, stripBudgetForSupplier);
@@ -84,12 +154,22 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
     title, description, deadline, delivery_start, delivery_end,
     requires_large_contract, evaluation_method, bidding_fee_amount,
     delivery_terms, technical_specifications,
-    line_items, business_category, visibility
+    line_items, business_category, visibility, express_match
   } = req.body;
 
   // Validate required fields
   if (!title || !title.trim()) {
     return res.status(400).json({ error: 'Bid title is required' });
+  }
+  let safeTitle;
+  let safeDescription;
+  let safeTechnicalSpecifications;
+  try {
+    safeTitle = cleanText(title, { required: true, maxLength: 255 });
+    safeDescription = cleanText(description, { maxLength: 10000 });
+    safeTechnicalSpecifications = cleanText(technical_specifications, { maxLength: 20000 });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
   }
   if (!deadline) {
     return res.status(400).json({ error: 'Bid deadline is required' });
@@ -99,6 +179,10 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
   }
   if (!VALID_INCOTERMS.includes(delivery_terms)) {
     return res.status(400).json({ error: `Invalid delivery terms. Must be one of: ${VALID_INCOTERMS.join(', ')}` });
+  }
+  const bidFee = Number(bidding_fee_amount);
+  if (!Number.isFinite(bidFee) || bidFee < 0 || bidFee > 1_000_000) {
+    return res.status(400).json({ error: 'Bidding fee must be between 0 and 1,000,000 ZMW' });
   }
 
   // Parse line_items from body (may be JSON string from FormData)
@@ -122,8 +206,14 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
     if (!item.unit_of_measure || !VALID_UOMS.includes(item.unit_of_measure)) {
       return res.status(400).json({ error: `Line item ${i + 1}: unit_of_measure must be one of: ${VALID_UOMS.join(', ')}` });
     }
-    if (!item.quantity || Number(item.quantity) <= 0) {
+    if (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0 || Number(item.quantity) > 1_000_000) {
       return res.status(400).json({ error: `Line item ${i + 1}: quantity must be greater than 0` });
+    }
+    if (item.unit_price_estimate !== undefined && item.unit_price_estimate !== null && item.unit_price_estimate !== '') {
+      const estimate = Number(item.unit_price_estimate);
+      if (!Number.isFinite(estimate) || estimate < 0 || estimate > 1_000_000_000) {
+        return res.status(400).json({ error: `Line item ${i + 1}: invalid unit price estimate` });
+      }
     }
   }
 
@@ -135,15 +225,22 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
   try {
     await client.query('BEGIN');
 
+    const { rows: [monetizationSettings] } = await client.query(
+      'SELECT express_match_fee FROM platform_monetization_settings WHERE singleton_id = TRUE'
+    );
+    const isExpressMatch = express_match === true || express_match === 'true';
+
     const bidRes = await client.query(
       `INSERT INTO bids (tenant_id, title, description, deadline, delivery_start, delivery_end,
         requires_large_contract, evaluation_method, bidding_fee_amount, delivery_terms,
-        technical_specifications, technical_specifications_path, visibility, business_category, created_by, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'draft') RETURNING *`,
+        technical_specifications, technical_specifications_path, visibility, business_category, created_by, status,
+        express_match, express_match_fee)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'draft',$16,$17) RETURNING *`,
       [
-        tenantId, title, description, deadline, delivery_start || null, delivery_end || null,
-        isLargeContract, evalMethod, bidding_fee_amount, delivery_terms,
-        technical_specifications || null, techSpecPath, visibility || 'global', business_category || null, req.user.user_id
+        tenantId, safeTitle, safeDescription, deadline, delivery_start || null, delivery_end || null,
+        isLargeContract, evalMethod, bidFee, delivery_terms,
+        safeTechnicalSpecifications, techSpecPath, visibility || 'global', business_category || null, req.user.user_id,
+        isExpressMatch, isExpressMatch ? Number(monetizationSettings?.express_match_fee || 0) : 0
       ]
     );
     const bid = bidRes.rows[0];
@@ -154,7 +251,7 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
       await client.query(
         `INSERT INTO bid_line_items (bid_id, item_description, unit_of_measure, quantity, unit_price_estimate, line_order)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [bid.id, item.item_description.trim(), item.unit_of_measure, item.quantity,
+        [bid.id, cleanText(item.item_description, { required: true, maxLength: 2000 }), item.unit_of_measure, item.quantity,
          item.unit_price_estimate || null, i + 1]
       );
     }
@@ -172,7 +269,7 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
   } catch (e) {
     await client.query('ROLLBACK');
     console.error('Bid creation error:', e);
-    res.status(500).json({ error: 'Bid creation failed: ' + e.message });
+    res.status(500).json({ error: 'Bid creation failed' });
   } finally {
     client.release();
   }
@@ -289,7 +386,8 @@ router.get('/bids/:bidId', authenticate, async (req, res) => {
       `SELECT id, tenant_id, title, description, deadline, delivery_start, delivery_end,
               requires_large_contract, evaluation_method, bidding_fee_amount, delivery_terms,
               technical_specifications_path, technical_specifications,
-              visibility, status, views_count, created_by, created_at, business_category
+              visibility, status, views_count, created_by, created_at, business_category,
+              express_match, express_match_fee
        FROM bids WHERE id=$1`,
       [bidId]
     );
@@ -301,14 +399,16 @@ router.get('/bids/:bidId', authenticate, async (req, res) => {
     } else if (req.user.user_type === 'supplier_user') {
       // Check if supplier is invited
       const { rows: [invite] } = await pool.query(
-        `SELECT bs.id, bs.accepted, s.company_name 
+        `SELECT bs.id, bs.accepted, s.company_name, bfc.status AS fee_status,
+                bfc.charge_source
          FROM bid_suppliers bs 
          JOIN suppliers s ON s.id = bs.supplier_id 
+         LEFT JOIN bid_fee_charges bfc ON bfc.bid_id = bs.bid_id AND bfc.supplier_id = bs.supplier_id
          WHERE bs.bid_id = $1 AND bs.supplier_id = (SELECT supplier_id FROM supplier_users WHERE id = $2)`,
         [bidId, req.user.user_id]
       );
       // Suppliers can view if it's open & global, or if they are invited
-      if (!invite && (bid.visibility !== 'global' || bid.status !== 'open')) {
+      if (!invite && (bid.visibility !== 'global' || !['open', 'evaluation'].includes(bid.status) || new Date(bid.deadline) <= new Date())) {
         return res.status(403).json({ error: 'Forbidden' });
       }
       
@@ -318,6 +418,10 @@ router.get('/bids/:bidId', authenticate, async (req, res) => {
           accepted: invite.accepted,
           company_name: invite.company_name
         }];
+        bid.bid_access = {
+          confirmed: invite.fee_status === 'completed' || Number(bid.bidding_fee_amount) === 0,
+          source: invite.charge_source || (Number(bid.bidding_fee_amount) === 0 ? 'free' : null),
+        };
       }
     }
 
@@ -356,6 +460,19 @@ router.post('/bids/:bidId/requirements', authenticate, requireRole('customer'), 
   const { bidId } = req.params;
   const { budget_amount, expected_delivery_time, payment_method, certification_standards, file_path } = req.body;
 
+  const buyerBudget = Number(budget_amount);
+  if (!Number.isFinite(buyerBudget) || buyerBudget <= 0 || buyerBudget > 1_000_000_000) {
+    return res.status(400).json({ error: 'budget_amount must be a positive amount within the permitted range' });
+  }
+  let safeStandards;
+  let safeFilePath;
+  try {
+    safeStandards = cleanText(certification_standards, { maxLength: 5000 });
+    safeFilePath = cleanText(file_path, { maxLength: 500 });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+
   try {
     // Verify user's tenant matches the bid's tenant and fetch bid title
     const authCheck = await pool.query(
@@ -381,7 +498,7 @@ router.post('/bids/:bidId/requirements', authenticate, requireRole('customer'), 
          certification_standards = EXCLUDED.certification_standards,
          specifications_file_path = COALESCE(EXCLUDED.specifications_file_path, bid_requirements.specifications_file_path)
        RETURNING *`,
-      [bidId, req.user.user_id, budget_amount, expected_delivery_time, payment_method, certification_standards, file_path]
+      [bidId, req.user.user_id, buyerBudget, expected_delivery_time, payment_method, safeStandards, safeFilePath]
     );
 
     // Notify Business Admin immediately
@@ -485,16 +602,18 @@ router.get('/supplier/bids', authenticate, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT b.id, b.title, b.description, b.deadline, b.visibility,
-              bs.accepted, bs.id as bid_supplier_id
+              bs.accepted, bs.id as bid_supplier_id, b.bidding_fee_amount,
+              b.express_match
        FROM bid_suppliers bs JOIN bids b ON b.id = bs.bid_id
        WHERE bs.supplier_id = (SELECT supplier_id FROM supplier_users WHERE id = $1)
-       AND b.status = 'open'
+       AND b.status IN ('open','evaluation') AND b.deadline > now()
        UNION
        SELECT b.id, b.title, b.description, b.deadline, b.visibility,
-              NULL as accepted, NULL as bid_supplier_id
+              NULL as accepted, NULL as bid_supplier_id, b.bidding_fee_amount,
+              b.express_match
        FROM bids b
        CROSS JOIN (SELECT business_category FROM suppliers WHERE id = (SELECT supplier_id FROM supplier_users WHERE id = $1)) s
-       WHERE b.status = 'open' AND b.visibility = 'global'
+       WHERE b.status IN ('open','evaluation') AND b.deadline > now() AND b.visibility = 'global'
        AND (s.business_category IS NULL OR s.business_category = '' OR b.business_category = s.business_category OR b.business_category IS NULL)
        ORDER BY deadline ASC`,
       [req.user.user_id]
@@ -526,7 +645,7 @@ router.post('/supplier/bids/:bidSupplierId/respond', authenticate, async (req, r
 // ─── Supplier: express interest in a global bid (creates invitation) ───────────
 // Allows a verified supplier to join a global open bid by creating a bid_suppliers
 // record, which is required before they can submit a response.
-router.post('/supplier/bids/:bidId/express-interest', authenticate, async (req, res) => {
+router.post('/supplier/bids/:bidId/express-interest', supplierBidLimiter, authenticate, async (req, res) => {
   if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
   try {
     const { bidId } = req.params;
@@ -539,7 +658,7 @@ router.post('/supplier/bids/:bidId/express-interest', authenticate, async (req, 
     if (!bid) {
       return res.status(404).json({ error: 'Bid not found' });
     }
-    if (bid.status !== 'open') {
+    if (!['open', 'evaluation'].includes(bid.status)) {
       return res.status(422).json({ error: 'This bid is not currently accepting submissions' });
     }
     if (new Date() > new Date(bid.deadline)) {
@@ -584,10 +703,13 @@ router.post('/supplier/bids/:bidId/express-interest', authenticate, async (req, 
 });
 
 // ─── Supplier: submit a bid response with per-line-item pricing ──────────────
-router.post('/supplier/bids/:bidSupplierId/response', authenticate, uploadResponse.single('file'), async (req, res) => {
+router.post('/supplier/bids/:bidSupplierId/response', supplierBidLimiter, authenticate, uploadResponse.single('file'), async (req, res) => {
   if (req.user.user_type !== 'supplier_user') return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { product_specifications, terms_conditions_accepted, line_item_prices } = req.body;
+    const { terms_conditions_accepted, line_item_prices } = req.body;
+    const product_specifications = cleanText(req.body.product_specifications, { required: true, maxLength: 10000 });
+    const acceptedTerms = terms_conditions_accepted === 'true' || terms_conditions_accepted === true;
+    if (!acceptedTerms) return res.status(400).json({ error: 'Terms and conditions must be accepted' });
     const file_path = req.file ? req.file.path : null;
 
     // Check if req.params.bidSupplierId matches a bid_suppliers ID or a bid ID
@@ -659,8 +781,24 @@ router.post('/supplier/bids/:bidSupplierId/response', authenticate, uploadRespon
       });
     }
 
-    // Validate each price entry
-    const priceMap = new Map(parsedPrices.map(p => [p.bid_line_item_id, p]));
+    if (parsedPrices.length !== boqItems.length) {
+      return res.status(400).json({ error: 'Pricing must contain exactly one entry for every Bill of Quantities item' });
+    }
+
+    // Reject duplicate, foreign, negative, non-numeric, and unreasonably large prices.
+    const priceMap = new Map();
+    for (const entry of parsedPrices) {
+      requireUuid(entry.bid_line_item_id, 'bid_line_item_id');
+      if (priceMap.has(entry.bid_line_item_id)) {
+        return res.status(400).json({ error: 'Duplicate line-item prices are not allowed' });
+      }
+      const unitPrice = Number(entry.unit_price);
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0 || unitPrice > 1_000_000_000) {
+        return res.status(400).json({ error: 'Each unit price must be greater than zero and within the permitted range' });
+      }
+      priceMap.set(entry.bid_line_item_id, { ...entry, unit_price: unitPrice });
+    }
+    let supplierTotal = 0;
     for (const boq of boqItems) {
       const price = priceMap.get(boq.id);
       if (!price || price.unit_price === undefined || Number(price.unit_price) < 0) {
@@ -668,18 +806,28 @@ router.post('/supplier/bids/:bidSupplierId/response', authenticate, uploadRespon
           error: `Missing or invalid unit price for line item: "${boq.item_description}" (qty: ${boq.quantity})`
         });
       }
+      supplierTotal += Number(price.unit_price) * Number(boq.quantity);
+      if (!Number.isFinite(supplierTotal) || supplierTotal > 1_000_000_000) {
+        return res.status(400).json({ error: 'The total supplier quote exceeds the permitted range' });
+      }
     }
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
+      const { rows: [lockedBidSupplier] } = await client.query(
+        'SELECT id FROM bid_suppliers WHERE id = $1 AND bid_id = $2 FOR UPDATE',
+        [bs.id, bs.bid_id]
+      );
+      if (!lockedBidSupplier) throw new Error('Bid supplier access changed before submission');
+      await consumeBidAccess({ bidId: bs.bid_id, supplierUserId: req.user.user_id, client });
+
       // Insert the main response
       const { rows: [response] } = await client.query(
         `INSERT INTO supplier_responses (bid_supplier_id, product_specifications, terms_conditions_accepted, response_file_path)
          VALUES ($1,$2,$3,$4) RETURNING *`,
-        [req.params.bidSupplierId, product_specifications,
-         terms_conditions_accepted === 'true' || terms_conditions_accepted === true, file_path]
+        [bs.id, product_specifications, acceptedTerms, file_path]
       );
 
       // Insert per-line-item pricing
@@ -693,7 +841,8 @@ router.post('/supplier/bids/:bidSupplierId/response', authenticate, uploadRespon
         await client.query(
           `INSERT INTO bid_response_line_items (supplier_response_id, bid_line_item_id, unit_price, total_price, notes)
            VALUES ($1, $2, $3, $4, $5)`,
-          [response.id, price.bid_line_item_id, unitPrice, totalPrice, price.notes || null]
+          [response.id, price.bid_line_item_id, unitPrice, totalPrice,
+           cleanText(price.notes, { maxLength: 1000 })]
         );
       }
 
@@ -734,7 +883,13 @@ router.post('/supplier/bids/:bidSupplierId/response', authenticate, uploadRespon
     }
   } catch (e) {
     console.error('Error submitting response:', e);
-    res.status(500).json({ error: 'Failed to submit response: ' + e.message });
+    const status = e instanceof BidAccessError
+      ? (e.code === 'PAYMENT_REQUIRED' ? 402 : 422)
+      : (e.code === '23505' ? 409 : (e.message?.includes('must be') ? 400 : 500));
+    const message = e instanceof BidAccessError || status === 400
+      ? e.message
+      : (status === 409 ? 'A response has already been submitted for this bid' : 'Failed to submit response');
+    res.status(status).json({ error: message });
   }
 });
 
@@ -886,13 +1041,47 @@ router.post('/bids/:bidId/invite', authenticate, requireRole('business_admin', '
   }
 });
 
-// Award bid (create order with BoQ data and audit trail)
+// Preview the server-authoritative checkout without exposing the raw margin.
+router.post('/bids/:bidId/award-preview', authenticate, requireRole('business_admin'), async (req, res) => {
+  try {
+    if (!req.body.response_id) return res.status(400).json({ error: 'response_id is required' });
+    const { pricing } = await loadAwardPricing(
+      pool,
+      req.params.bidId,
+      req.body.response_id,
+      req.body.requirement_id
+    );
+    res.json({
+      buyer: {
+        procurement_amount: pricing.userPrice,
+        buyer_protection_fee: pricing.protectionFee,
+        express_match_fee: pricing.expressMatchFee,
+        total_due: pricing.buyerTotal,
+      },
+      supplier: {
+        accepted_quote: pricing.supplierPrice,
+        net_payout: pricing.supplierPayout,
+      },
+      subsidized: pricing.subsidized,
+    });
+  } catch (e) {
+    const status = e instanceof MonetizationError ? 422 : 500;
+    res.status(status).json({ error: e.message });
+  }
+});
+
+// Award bid using persisted buyer requirements and supplier response pricing.
 router.post('/bids/:bidId/award', authenticate, requireRole('business_admin'), async (req, res) => {
   const { bidId } = req.params;
-  const { supplier_id, total_amount, contract_file_path, award_notes } = req.body;
-
-  if (!supplier_id || !total_amount) {
-    return res.status(400).json({ error: 'supplier_id and total_amount are required' });
+  const { response_id, requirement_id } = req.body;
+  if (!response_id) return res.status(400).json({ error: 'response_id is required' });
+  let contract_file_path;
+  let award_notes;
+  try {
+    contract_file_path = cleanText(req.body.contract_file_path, { maxLength: 500 });
+    award_notes = cleanText(req.body.award_notes, { maxLength: 4000 });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
   }
 
   const client = await pool.connect();
@@ -919,32 +1108,26 @@ router.post('/bids/:bidId/award', authenticate, requireRole('business_admin'), a
       return res.status(403).json({ error: 'Forbidden: bid belongs to another tenant' });
     }
 
-    // Ensure supplier entry exists in bid_suppliers table
-    let { rows: [invited] } = await client.query(
-      `SELECT id FROM bid_suppliers WHERE bid_id = $1 AND supplier_id = $2`,
-      [bidId, supplier_id]
+    const { response, requirement, pricing } = await loadAwardPricing(
+      client, bidId, response_id, requirement_id
     );
-    if (!invited) {
-      const { rows: [newInv] } = await client.query(
-        `INSERT INTO bid_suppliers (bid_id, supplier_id, accepted, accepted_at)
-         VALUES ($1, $2, true, now())
-         ON CONFLICT (bid_id, supplier_id) DO UPDATE SET accepted = true
-         RETURNING id`,
-        [bidId, supplier_id]
-      );
-      invited = newInv;
-    }
 
     // Update bid status to awarded
     await client.query('UPDATE bids SET status = $1 WHERE id = $2', ['awarded', bidId]);
 
     // Create order with award metadata
     const { rows: [order] } = await client.query(
-      `INSERT INTO orders (bid_id, awarded_supplier_id, total_amount, contract_file_path,
-        award_decision_notes, awarded_by, awarded_at)
-       VALUES ($1,$2,$3,$4,$5,$6,now()) RETURNING *`,
-      [bidId, supplier_id, total_amount, contract_file_path || null,
-       award_notes || null, req.user.user_id]
+      `INSERT INTO orders (
+         bid_id, awarded_supplier_id, total_amount, contract_file_path,
+         award_decision_notes, awarded_by, awarded_at, buyer_price, supplier_price,
+         spread_amount, buyer_protection_fee, express_match_fee, supplier_payout_amount,
+         platform_revenue_amount, subsidy_amount, pricing_snapshot, supplier_response_id, bid_requirement_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,now(),$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       RETURNING *`,
+      [bidId, response.supplier_id, pricing.buyerTotal, contract_file_path,
+       award_notes, req.user.user_id, pricing.userPrice, pricing.supplierPrice,
+       pricing.spread, pricing.protectionFee, pricing.expressMatchFee, pricing.supplierPayout,
+       pricing.platformRevenue, pricing.subsidyAmount, JSON.stringify(pricing), response.response_id, requirement.id]
     );
 
     // Log the award in system_logs
@@ -954,8 +1137,10 @@ router.post('/bids/:bidId/award', authenticate, requireRole('business_admin'), a
       [req.user.user_id, 'platform_admin', 'bid_awarded', 'bid', bidId,
        JSON.stringify({
          title: bid.title,
-         awarded_supplier_id: supplier_id,
-         total_amount,
+         awarded_supplier_id: response.supplier_id,
+         buyer_total: pricing.buyerTotal,
+         supplier_price: pricing.supplierPrice,
+         platform_revenue: pricing.platformRevenue,
          award_notes: award_notes || null,
        })]
     );
@@ -975,7 +1160,10 @@ router.post('/bids/:bidId/award', authenticate, requireRole('business_admin'), a
   } catch (e) {
     await client.query('ROLLBACK');
     console.error('Error awarding bid:', e);
-    res.status(500).json({ error: 'Failed to award bid: ' + e.message });
+    const status = e instanceof MonetizationError ? 422 : (e.code === '23505' ? 409 : 500);
+    res.status(status).json({
+      error: e instanceof MonetizationError ? e.message : (status === 409 ? 'This bid has already been awarded' : 'Failed to award bid'),
+    });
   } finally {
     client.release();
   }
