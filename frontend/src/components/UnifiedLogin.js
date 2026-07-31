@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Alert, Form, Input, Button, Select, Tabs, message, Space, Tag, Tooltip } from 'antd';
+import { Alert, Form, Input, Button, Radio, Tabs, message, Tag } from 'antd';
 import {
   MailOutlined, LockOutlined, UserOutlined, BankOutlined,
   SafetyCertificateOutlined, CheckCircleFilled,
-  ThunderboltOutlined, SunOutlined, MoonOutlined, DesktopOutlined,
-  ArrowRightOutlined
+  SunOutlined, MoonOutlined, DesktopOutlined, ArrowRightOutlined,
+  ShoppingCartOutlined, ShopOutlined, FileProtectOutlined,
+  AuditOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -18,14 +19,10 @@ export default function UnifiedLogin() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [activeTab, setActiveTab] = useState('login');
   const [loginForm] = Form.useForm();
   const [registerForm] = Form.useForm();
   const accountType = Form.useWatch('account_type', registerForm);
-
-  const fillQuickLogin = (email, password) => {
-    loginForm.setFieldsValue({ email, password });
-    message.info(`Pre-filled login for ${email}`);
-  };
 
   const onFinish = async (values) => {
     setLoading(true);
@@ -70,7 +67,7 @@ export default function UnifiedLogin() {
 
   return (
     <div className="login-split">
-      {/* ── Left Hero Side ── */}
+      {/* ── Product introduction ── */}
       <div className="login-hero" aria-hidden="true">
         <img className="login-hero-img" src={cdnImages.loginHero} alt="Zambia Procurement" loading="eager" />
         <div className="login-hero-overlay" />
@@ -81,53 +78,78 @@ export default function UnifiedLogin() {
                 <SafetyCertificateOutlined style={{ fontSize: 20, color: '#ffffff' }} />
               </span>
               <span className="login-hero-title">Freshstart</span>
-              <Tag style={{ padding: '1px 8px', borderColor: 'rgba(255,255,255,.28)', background: 'rgba(15,107,93,.36)', color: '#d7f3ec' }}>
-                Procurement platform
-              </Tag>
+              <Tag className="login-hero-brand-tag">Procurement platform</Tag>
+            </div>
+            <div className="login-system-status">
+              <span className="login-system-status-dot" />
+              Secure workspace
             </div>
           </div>
 
           <div className="login-hero-middle">
+            <div className="login-hero-eyebrow">One accountable procurement journey</div>
             <h1 className="login-hero-heading">
-              Procurement workflows with <br />
-              clear financial controls.
+              From requirement to payment,<br />every step stays clear.
             </h1>
             <p className="login-hero-subheading">
-              Coordinate buyers, verified suppliers, approvals, escrow payments and audit records in one accountable workspace.
+              Bring buyers, verified suppliers, approvals, protected payments and delivery records into one connected workspace.
             </p>
 
-            <div className="login-hero-pills">
-              <div className="login-pill">
-                <CheckCircleFilled style={{ color: '#10b981' }} />
-                <span>Controlled escrow and payment records</span>
+            <div className="login-journey" aria-label="Procurement workflow">
+              <div className="login-journey-step">
+                <span>01</span>
+                <strong>Request</strong>
+                <small>Define the need</small>
               </div>
-              <div className="login-pill">
-                <CheckCircleFilled style={{ color: '#10b981' }} />
-                <span>Supplier compliance verification</span>
+              <ArrowRightOutlined className="login-journey-arrow" />
+              <div className="login-journey-step">
+                <span>02</span>
+                <strong>Compare</strong>
+                <small>Review fair offers</small>
               </div>
-              <div className="login-pill">
-                <CheckCircleFilled style={{ color: '#10b981' }} />
-                <span>Structured bid evaluation and approvals</span>
+              <ArrowRightOutlined className="login-journey-arrow" />
+              <div className="login-journey-step">
+                <span>03</span>
+                <strong>Protect</strong>
+                <small>Approve and fund</small>
+              </div>
+              <ArrowRightOutlined className="login-journey-arrow" />
+              <div className="login-journey-step">
+                <span>04</span>
+                <strong>Deliver</strong>
+                <small>Complete with proof</small>
+              </div>
+            </div>
+
+            <div className="login-role-preview">
+              <div className="login-role-preview-card">
+                <span className="login-role-preview-icon"><ShoppingCartOutlined /></span>
+                <div>
+                  <strong>For customers</strong>
+                  <p>Make requests, compare proposals and follow every order.</p>
+                </div>
+              </div>
+              <div className="login-role-preview-card">
+                <span className="login-role-preview-icon"><ShopOutlined /></span>
+                <div>
+                  <strong>For suppliers</strong>
+                  <p>Find opportunities, submit bids and manage delivery.</p>
+                </div>
               </div>
             </div>
           </div>
 
           <div className="login-hero-foot">
-            <Space size={16}>
-              <span>Role-based access</span>
-              <span>•</span>
-              <span>Auditable workflows</span>
-              <span>•</span>
-              <span>Financial controls</span>
-            </Space>
+            <span><FileProtectOutlined /> Protected payment records</span>
+            <span><CheckCircleFilled /> Verified participation</span>
+            <span><AuditOutlined /> Traceable decisions</span>
           </div>
         </div>
       </div>
 
-      {/* ── Right Form Pane ── */}
+      {/* ── Workspace access ── */}
       <div className="login-form-pane">
         <div className="login-card">
-          {/* Header Bar: Brand + Theme Toggle */}
           <div className="login-card-header">
             <div className="login-brand-small">
               <div className="login-brand-icon">
@@ -143,21 +165,31 @@ export default function UnifiedLogin() {
                 icon={appearance === 'dark' ? <SunOutlined /> : appearance === 'light' ? <MoonOutlined /> : <DesktopOutlined />}
                 onClick={() => setAppearance(appearance === 'dark' ? 'light' : appearance === 'light' ? 'system' : 'dark')}
                 title={`Theme: ${appearance}`}
+                aria-label={`Change appearance. Current setting: ${appearance}`}
               >
                 {appearance.toUpperCase()}
               </Button>
             </div>
           </div>
 
-          {/* Headline */}
-          <div className="login-card-title-section">
-            <h2>Welcome Back</h2>
-            <p>Access your procurement dashboard, active bids, and escrow records.</p>
+          <div className="login-mobile-intro">
+            <span>One accountable procurement journey</span>
+            <strong>Request. Compare. Protect. Deliver.</strong>
           </div>
 
-          {/* Form Tabs: Sign In / Create Account */}
+          <div className="login-card-title-section">
+            <span className="login-card-eyebrow">Secure workspace access</span>
+            <h2>{activeTab === 'login' ? 'Welcome back' : 'Join Freshstart'}</h2>
+            <p>
+              {activeTab === 'login'
+                ? 'Sign in to continue from your latest procurement activity.'
+                : 'Choose your role and create the workspace that fits your work.'}
+            </p>
+          </div>
+
           <Tabs
-            defaultActiveKey="login"
+            activeKey={activeTab}
+            onChange={setActiveTab}
             className="login-tabs"
             items={[
               {
@@ -212,24 +244,27 @@ export default function UnifiedLogin() {
                 label: 'Create Account',
                 children: (
                   <Form form={registerForm} name="register" onFinish={onRegister} layout="vertical" initialValues={{ account_type: 'customer' }} requiredMark={false}>
-                    <Form.Item name="account_type" label="I want to register as:" rules={[{ required: true }]}>
-                      <Select
-                        size="large"
-                        options={[
-                          { value: 'customer', label: 'Customer / Buyer (Procurement Officer)' },
-                          { value: 'supplier', label: 'Supplier / Vendor (Bidding Contractor)' },
-                        ]}
-                      />
+                    <Form.Item name="account_type" label="Choose your workspace" rules={[{ required: true }]}>
+                      <Radio.Group className="login-role-selector">
+                        <Radio.Button value="customer">
+                          <ShoppingCartOutlined />
+                          <span><strong>Customer</strong><small>Request and purchase</small></span>
+                        </Radio.Button>
+                        <Radio.Button value="supplier">
+                          <ShopOutlined />
+                          <span><strong>Supplier</strong><small>Bid and deliver</small></span>
+                        </Radio.Button>
+                      </Radio.Group>
                     </Form.Item>
 
                     {accountType === 'supplier' && (
                       <Alert
                         type="info"
                         showIcon
-                        style={{ marginBottom: 16, borderRadius: 8 }}
+                        className="login-supplier-note"
                         message={
-                          <span style={{ fontSize: 13 }}>
-                            Suppliers must provide PACRA & ZRA details for compliance.
+                          <span>
+                            Have your PACRA and ZRA details ready for supplier verification.
                           </span>
                         }
                       />
@@ -265,6 +300,11 @@ export default function UnifiedLogin() {
               },
             ]}
           />
+
+          <div className="login-assurance">
+            <SafetyCertificateOutlined />
+            <span>Your access is role-based and activity is recorded for accountability.</span>
+          </div>
         </div>
       </div>
     </div>
