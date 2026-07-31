@@ -3,7 +3,7 @@ import { Empty, Button, Typography } from 'antd';
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 
-const EnhancedEmpty = ({ title, description, ctaText, ctaPath, icon }) => {
+const EnhancedEmpty = ({ title, description, ctaText, ctaPath, onAction, icon }) => {
   const navigate = useNavigate();
 
   return (
@@ -17,8 +17,8 @@ const EnhancedEmpty = ({ title, description, ctaText, ctaPath, icon }) => {
         </div>
       }
     >
-      {ctaText && ctaPath && (
-        <Button type="primary" onClick={() => navigate(ctaPath)}>
+      {ctaText && (ctaPath || onAction) && (
+        <Button type="primary" onClick={() => onAction ? onAction() : navigate(ctaPath)}>
           {ctaText} <ArrowRightOutlined />
         </Button>
       )}

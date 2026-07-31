@@ -19,7 +19,7 @@ import NextActionPanel from './NextActionPanel';
 import { useAuth } from '../context/AuthContext';
 import { getNotificationDestination, isActivationKey } from '../utils/notificationNavigation';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 // Mandatory documents for Zambian suppliers
 const MANDATORY_DOCS = [
@@ -34,8 +34,6 @@ const OPTIONAL_DOCS = [
   { type: 'directors_id',        label: "Directors' ID Copies",   desc: 'ID copies for all company directors' },
   { type: 'bank_reference',      label: 'Bank Reference Letter',  desc: 'Reference letter from your company bank' },
 ];
-
-const REQUIRED_DOCS = [...MANDATORY_DOCS, ...OPTIONAL_DOCS];
 
 const verificationSteps = [
   {
@@ -284,7 +282,7 @@ export default function SupplierDashboard() {
     (verificationStatus?.documents || [])
       .map(d => d.type || d.document_type)
   );
-  const verifiedCount = REQUIRED_DOCS.filter(d => verifiedDocTypes.has(d.type)).length;
+  const mandatoryVerifiedCount = MANDATORY_DOCS.filter(d => verifiedDocTypes.has(d.type)).length;
   const mandatoryDocsUploaded = MANDATORY_DOCS.every(d => uploadedDocTypes.has(d.type));
 
   let currentStep = 0;
@@ -295,18 +293,30 @@ export default function SupplierDashboard() {
   }
 
   const bidColumns = [
-    { title: 'Bid Title', dataIndex: 'title', key: 'title' },
-    { title: 'Description', dataIndex: 'description', key: 'description', ellipsis: true },
+    {
+      title: 'Opportunity', dataIndex: 'title', key: 'title', width: 340,
+      render: (value, row) => (
+        <div className="portal-table-primary">
+          <Text strong>{value}</Text>
+          <Text type="secondary" ellipsis>{row.description || 'Open this opportunity to review the requirements.'}</Text>
+        </div>
+      ),
+    },
     {
       title: 'Deadline', dataIndex: 'deadline', key: 'deadline',
-      render: (v) => new Date(v).toLocaleString(),
+      render: (v) => (
+        <div className="portal-table-primary">
+          <Text>{new Date(v).toLocaleDateString()}</Text>
+          <Text type="secondary">{new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+        </div>
+      ),
     },
     {
-      title: 'Visibility', dataIndex: 'visibility', key: 'visibility',
-      render: (v) => <Tag color={v === 'global' ? 'blue' : 'default'}>{v || 'restricted'}</Tag>,
+      title: 'Access', key: 'access',
+      render: (_, row) => <Tag color={row.bid_supplier_id ? 'gold' : 'default'}>{row.bid_supplier_id ? 'Invitation' : 'Open marketplace'}</Tag>,
     },
     {
-      title: 'Status', key: 'status',
+      title: 'Your status', key: 'status',
       render: (_, row) => row.accepted === true
         ? <Tag color="success">Accepted</Tag>
         : row.accepted === false
@@ -314,10 +324,10 @@ export default function SupplierDashboard() {
           : <Tag color="processing">Open</Tag>,
     },
     {
-      title: 'Action', key: 'action',
+      title: 'Next step', key: 'action',
       render: (_, row) => (
-        <Button size="small" type="link" onClick={() => navigate(`/supplier/bids/${row.id}`)}>
-          {row.bid_supplier_id ? 'View / Respond' : 'View Details'}
+        <Button size="small" type="primary" onClick={() => navigate(`/supplier/bids/${row.id}`)}>
+          {row.bid_supplier_id ? 'Review and respond' : 'Review opportunity'}
         </Button>
       ),
     },
@@ -384,24 +394,26 @@ function getOrderProgress(status) {
   ];
 
   const actionableOrder = orders.find(order => ['pending_acceptance', 'accepted', 'delivery_in_progress'].includes(order.status));
+  const supplierName = user?.full_name?.trim().split(/\s+/)[0] || user?.email?.split('@')[0] || 'there';
+  const remainingIncludedBids = Math.max(0, Number(subscription.monthly_bid_limit) - Number(subscription.bids_used));
   const nextAction = !isVerified
     ? {
-        title: 'Complete supplier verification',
-        description: 'Upload the mandatory compliance documents. Verification unlocks bid responses and protects buyers.',
-        actionLabel: 'Continue verification',
+        title: 'Finish setting up your supplier profile',
+        description: 'Upload the required company documents so buyers can confidently review your responses.',
+        actionLabel: 'Finish verification',
         onAction: () => setVerifModalOpen(true),
       }
     : actionableOrder
       ? {
-          title: 'Move your active order forward',
-          description: `Order ${actionableOrder.id.slice(0, 8)} is at “${getOrderProgress(actionableOrder.status).label}”. Open the order list to complete the next fulfillment action.`,
-          actionLabel: 'Open active orders',
+          title: 'An order is waiting for you',
+          description: `Order ${actionableOrder.id.slice(0, 8)} is at “${getOrderProgress(actionableOrder.status).label}”. Open it to complete the next step.`,
+          actionLabel: 'View the order',
           onAction: () => openTab('orders', actionableOrder.id),
         }
       : {
-          title: 'Find your next opportunity',
-          description: 'Review open bids, confirm the requirements, and express interest before the supplier deadline.',
-          actionLabel: 'Browse available bids',
+          title: 'Find work that fits your business',
+          description: 'Browse current opportunities and review the requirements before the response deadline.',
+          actionLabel: 'Browse opportunities',
           onAction: () => openTab('bids'),
         };
 
@@ -415,11 +427,11 @@ function getOrderProgress(status) {
 
   return (
     <div className="workspace-page">
-      {/* Page Header */}
-      <div className="page-media-banner">
+      <div className="page-media-banner portal-welcome-header">
         <div>
-          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Supplier Dashboard</h2>
-          <p>Browse open bids, manage responses, track orders, and your verification status.</p>
+          <Text className="portal-welcome-eyebrow">Supplier workspace</Text>
+          <h2>Welcome, {supplierName}</h2>
+          <p>Find opportunities, respond with confidence, and keep every order moving.</p>
         </div>
         <div className="page-media-actions">
           <Popover content={notificationContent} title="Notifications" trigger="click"
@@ -428,79 +440,64 @@ function getOrderProgress(status) {
               <Button icon={<BellOutlined />} aria-label="Open notifications" />
             </Badge>
           </Popover>
-          <Button icon={<ReloadOutlined />} onClick={() => { fetchData(); fetchOrders(); }}>Refresh</Button>
-          <Button icon={<WalletOutlined />} onClick={() => setPayoutOpen(true)}>
-            Wallet {money(wallet.balance)}
-          </Button>
-          <Tag color={subscription.tier === 'enterprise' ? 'purple' : subscription.tier === 'growth' ? 'blue' : 'default'}>
-            {String(subscription.tier).toUpperCase()} · {Math.max(0, Number(subscription.monthly_bid_limit) - Number(subscription.bids_used))} included bids · {subscription.bid_credits} credits
-          </Tag>
-          <Button icon={<SafetyCertificateOutlined />} onClick={() => setVerifModalOpen(true)}>
-            Verification Status
-          </Button>
+          <Tooltip title="Refresh workspace">
+            <Button icon={<ReloadOutlined />} onClick={() => { fetchData(); fetchOrders(); }} aria-label="Refresh workspace" />
+          </Tooltip>
         </div>
       </div>
 
       <NextActionPanel {...nextAction} />
 
-      {/* Verification banner */}
-      {!isVerified && (
-        <Alert
-          type="warning"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message="Account not yet verified"
-          description="You must be verified before submitting bids. Upload your documents and wait for admin approval."
-          action={<Button size="small" onClick={() => setVerifModalOpen(true)}>Upload Documents</Button>}
-        />
-      )}
+      <section className="portal-account-strip" aria-label="Supplier account overview">
+        <div className="portal-account-item">
+          <Text type="secondary">Verification</Text>
+          <Space size={6}>
+            <Tag color={isVerified ? 'success' : 'warning'}>{isVerified ? 'Verified' : 'Setup required'}</Tag>
+            <Button type="link" size="small" onClick={() => setVerifModalOpen(true)}>{isVerified ? 'View' : 'Finish'}</Button>
+          </Space>
+        </div>
+        <div className="portal-account-item">
+          <Text type="secondary">Plan</Text>
+          <Text strong className="portal-account-value">{String(subscription.tier || 'free').replaceAll('_', ' ')}</Text>
+        </div>
+        <div className="portal-account-item">
+          <Text type="secondary">Bidding allowance</Text>
+          <Text strong className="portal-account-value">{remainingIncludedBids} included · {subscription.bid_credits || 0} credits</Text>
+        </div>
+        <div className="portal-account-item portal-account-item--action">
+          <div>
+            <Text type="secondary">Available balance</Text>
+            <Text strong className="portal-account-value">{money(wallet.balance)}</Text>
+          </div>
+          <Button icon={<WalletOutlined />} onClick={() => setPayoutOpen(true)} disabled={Number(wallet.balance || 0) <= 0}>Withdraw</Button>
+        </div>
+      </section>
 
-      {/* Stats cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={6}>
+        <Col xs={24} sm={8}>
           <Card className="stat-card stat-card--interactive" {...tabCardProps('bids')}>
             <Statistic
-              title="Open Bids Available"
-              value={(bids || []).filter(b => !b.accepted && b.visibility === 'global').length}
+              title="Open opportunities"
+              value={(bids || []).filter(b => b.accepted == null && b.visibility === 'global').length}
               prefix={<FileTextOutlined />}
-              valueStyle={{ color: '#1677ff' }}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={6}>
+        <Col xs={24} sm={8}>
           <Card className="stat-card stat-card--interactive" {...tabCardProps('bids')}>
             <Statistic
-              title="My Invitations"
-              value={(bids || []).filter(b => b.bid_supplier_id).length}
+              title="Invitations for you"
+              value={(bids || []).filter(b => b.bid_supplier_id && b.accepted == null).length}
               prefix={<ClockCircleOutlined />}
-              valueStyle={{ color: '#faad14' }}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={6}>
+        <Col xs={24} sm={8}>
           <Card className="stat-card stat-card--interactive" {...tabCardProps('orders')}>
             <Statistic
-              title="Active Orders"
+              title="Orders in progress"
               value={(orders || []).filter(o => !['completed', 'disputed'].includes(o.status)).length}
               prefix={<ShoppingCartOutlined />}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={6}>
-          <Card
-            className="stat-card stat-card--interactive"
-            hoverable
-            role="button"
-            tabIndex={0}
-            onClick={() => setVerifModalOpen(true)}
-            onKeyDown={(event) => { if (isActivationKey(event)) { event.preventDefault(); setVerifModalOpen(true); } }}
-          >
-            <Statistic
-              title="Verification Status"
-              value={verificationStatus?.verification_status || 'Pending'}
-              prefix={<SafetyCertificateOutlined />}
-              valueStyle={{ color: isVerified ? '#52c41a' : '#faad14' }}
             />
           </Card>
         </Col>
@@ -515,9 +512,12 @@ function getOrderProgress(status) {
         items={[
           {
             key: 'bids',
-            label: <span><TrophyOutlined /> Available Bids</span>,
+            label: <span><TrophyOutlined /> Find opportunities</span>,
             children: (
-              <Card className="table-card">
+              <Card className="table-card" title="Opportunities available to you">
+                <Text type="secondary" className="portal-section-intro">
+                  Review the scope and deadline first. You can decide whether to respond after opening the opportunity.
+                </Text>
                 <Table
                   dataSource={bids}
                   rowClassName={(record) => new URLSearchParams(location.search).get('focus') === record.id ? 'notification-focus-row' : ''}
@@ -526,16 +526,16 @@ function getOrderProgress(status) {
                   pagination={{ pageSize: 10 }}
                   size="middle"
                   scroll={{ x: 700 }}
-                  locale={{ emptyText: <EnhancedEmpty title="No open bids right now" description="New verified opportunities will appear here. Refresh later or review your active orders." /> }}
+                  locale={{ emptyText: <EnhancedEmpty title="No opportunities are open right now" description="New opportunities and invitations will appear here automatically." ctaText="Refresh opportunities" onAction={fetchData} /> }}
                 />
               </Card>
             ),
           },
           {
             key: 'orders',
-            label: <span><ShoppingCartOutlined /> Orders & Contracts</span>,
+            label: <span><ShoppingCartOutlined /> My orders</span>,
             children: (
-              <Card className="table-card">
+              <Card className="table-card" title="Orders and delivery">
                 <Table
                   dataSource={orders}
                   rowClassName={(record) => new URLSearchParams(location.search).get('focus') === record.id ? 'notification-focus-row' : ''}
@@ -545,7 +545,7 @@ function getOrderProgress(status) {
                   pagination={{ pageSize: 10 }}
                   size="middle"
                   scroll={{ x: 900 }}
-                  locale={{ emptyText: <EnhancedEmpty title="No orders yet" description="When your response is awarded, the order and its required next action will appear here." ctaText="Browse bids" ctaPath="/supplier?tab=bids" /> }}
+                  locale={{ emptyText: <EnhancedEmpty title="No orders yet" description="When a response is awarded, the order and its next step will appear here." ctaText="Find opportunities" ctaPath="/supplier?tab=bids" /> }}
                 />
               </Card>
             ),
@@ -606,7 +606,7 @@ function getOrderProgress(status) {
         title={
           <Space>
             <SafetyCertificateOutlined style={{ color: isVerified ? '#52c41a' : '#faad14' }} />
-            <span>Compliance & Verification Status</span>
+            <span>Supplier verification</span>
           </Space>
         }
         open={verifModalOpen}
@@ -631,10 +631,10 @@ function getOrderProgress(status) {
           showIcon
           message={
             isVerified
-              ? 'Account Verified — You can participate in all open bids.'
+              ? 'Your supplier profile is verified and ready to bid.'
               : verificationStatus?.verification_status === 'rejected'
-              ? 'Verification Rejected — Please review the rejection reason and re-upload corrected documents.'
-              : 'Pending Verification — Upload all required documents for admin review.'
+              ? 'Some documents need attention. Review the note and upload corrected copies.'
+              : 'Upload the four required documents, then the procurement team will review them.'
           }
           description={verificationStatus?.verification_notes || undefined}
           style={{ marginBottom: 16 }}
@@ -642,9 +642,9 @@ function getOrderProgress(status) {
 
         {/* Document compliance progress */}
         <div style={{ marginBottom: 16 }}>
-          <Text strong>Compliance Progress: {verifiedCount}/{REQUIRED_DOCS.length} documents verified</Text>
+          <Text strong>{mandatoryVerifiedCount} of {MANDATORY_DOCS.length} required documents verified</Text>
           <Progress
-            percent={Math.round((verifiedCount / REQUIRED_DOCS.length) * 100)}
+            percent={Math.round((mandatoryVerifiedCount / MANDATORY_DOCS.length) * 100)}
             status={isVerified ? 'success' : 'active'}
             style={{ marginTop: 8 }}
           />
@@ -652,8 +652,7 @@ function getOrderProgress(status) {
 
         <Divider />
 
-        {/* Mandatory Documents */}
-        <Text strong style={{ color: '#1677ff' }}>Mandatory Documents</Text>
+        <Text strong>Required documents</Text>
         <Row gutter={[12, 12]} style={{ marginTop: 8, marginBottom: 16 }}>
           {MANDATORY_DOCS.map(doc => {
             const uploaded = (verificationStatus?.documents || []).find(
@@ -667,10 +666,7 @@ function getOrderProgress(status) {
                 <Card
                   size="small"
                   bordered
-                  style={{
-                    borderColor: docVerified ? '#b7eb8f' : docRejected ? '#ffa39e' : '#d9d9d9',
-                    background: docVerified ? '#f6ffed' : docRejected ? '#fff2f0' : '#fafafa',
-                  }}
+                  className={`verification-document-card verification-document-card--${docVerified ? 'verified' : docRejected ? 'rejected' : 'pending'}`}
                 >
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <Space>
@@ -685,7 +681,7 @@ function getOrderProgress(status) {
                           {uploaded.verification_status || 'pending'}
                         </Tag>
                       )}
-                      {!uploaded && <Tag color="warning">Not Uploaded</Tag>}
+                      {!uploaded && <Tag>Not uploaded</Tag>}
                     </Space>
                     <Text type="secondary" style={{ fontSize: 11 }}>{doc.desc}</Text>
                     {uploaded?.verification_notes && (
@@ -711,9 +707,12 @@ function getOrderProgress(status) {
           })}
         </Row>
 
-        {/* Optional Documents */}
-        <Text strong style={{ color: '#8c8c8c' }}>Optional Documents (Recommended)</Text>
-        <Row gutter={[12, 12]} style={{ marginTop: 8 }}>
+        <details className="portal-verification-optional">
+          <summary>
+            <span>Optional supporting documents</span>
+            <Text type="secondary">Add these if they strengthen your supplier profile</Text>
+          </summary>
+          <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
           {OPTIONAL_DOCS.map(doc => {
             const uploaded = (verificationStatus?.documents || []).find(
               d => (d.type || d.document_type) === doc.type
@@ -726,10 +725,7 @@ function getOrderProgress(status) {
                 <Card
                   size="small"
                   bordered
-                  style={{
-                    borderColor: docVerified ? '#b7eb8f' : docRejected ? '#ffa39e' : '#d9d9d9',
-                    background: docVerified ? '#f6ffed' : docRejected ? '#fff2f0' : '#fafafa',
-                  }}
+                  className={`verification-document-card verification-document-card--${docVerified ? 'verified' : docRejected ? 'rejected' : 'pending'}`}
                 >
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <Space>
@@ -744,7 +740,7 @@ function getOrderProgress(status) {
                           {uploaded.verification_status || 'pending'}
                         </Tag>
                       )}
-                      {!uploaded && <Tag color="warning">Not Uploaded</Tag>}
+                      {!uploaded && <Tag>Not uploaded</Tag>}
                     </Space>
                     <Text type="secondary" style={{ fontSize: 11 }}>{doc.desc}</Text>
                     {uploaded?.verification_notes && (
@@ -768,7 +764,8 @@ function getOrderProgress(status) {
               </Col>
             );
           })}
-        </Row>
+          </Row>
+        </details>
       </Modal>
     </div>
   );

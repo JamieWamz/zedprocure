@@ -20,15 +20,14 @@ import DashboardStatistic from './DashboardStatistic';
 import NextActionPanel from './NextActionPanel';
 import { getNotificationDestination, isActivationKey } from '../utils/notificationNavigation';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 const { Option } = Select;
 
 const customerSteps = [
-  { title: '1. Select/Create Request', description: 'Pick a bid or submit a procurement request.' },
-  { title: '2. Define Requirements', description: 'Specify budget, delivery date, & payment method.' },
-  { title: '3. Admin & Supplier Review', description: 'Business Admin reviews & invites suppliers.' },
-  { title: '4. Award & Fund Escrow', description: 'Award bid & fund escrow via Mobile Money/Bank.' },
-  { title: '5. Delivery & Completion', description: 'Receive goods, inspect, & release payment.' },
+  { title: 'Tell us what you need', description: 'Choose an open bid or send a new request.' },
+  { title: 'Procurement review', description: 'The procurement team checks the scope and prepares the bid.' },
+  { title: 'Supplier selection', description: 'Qualified responses are reviewed and an order is awarded.' },
+  { title: 'Delivery and payment', description: 'Track delivery, approve completion, and release protected payment.' },
 ];
 
 const PAYMENT_METHOD_OPTIONS = [
@@ -333,7 +332,7 @@ ${values.warranty || 'No specific warranty requirements.'}
       },
     },
     {
-      title: 'Escrow Status',
+      title: 'Payment protection',
       render: (_, row) => <Tag color={['funded', 'released'].includes(row.escrow_status) ? 'success' : 'warning'}>{row.escrow_status || 'not funded'}</Tag>,
     },
     {
@@ -345,12 +344,12 @@ ${values.warranty || 'No specific warranty requirements.'}
           {!['funded', 'released'].includes(row.escrow_status) && !['completed', 'disputed'].includes(row.status) && (
             <>
               <Button size="small" type="primary" icon={<DollarOutlined />} onClick={() => setPayingOrder(row)}>
-                Pay Now
+                Pay securely
               </Button>
               <Button size="small" icon={<BankOutlined />} onClick={() => {
                 fundForm.setFieldsValue({ amount: Number(row.total_amount), payment_method: 'bank_transfer' });
                 setFundingOrder(row);
-              }}>Manual Escrow</Button>
+              }}>Record bank transfer</Button>
             </>
           )}
           {['delivered', 'delivery_in_progress'].includes(row.status) && (
@@ -384,34 +383,36 @@ ${values.warranty || 'No specific warranty requirements.'}
     window.setTimeout(() => document.getElementById('requirements-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   };
 
-  const nextAction = orders.length > 0
+  const actionableCustomerOrder = orders.find(order => !['completed', 'disputed'].includes(order.status));
+  const customerName = user?.full_name?.trim().split(/\s+/)[0] || user?.email?.split('@')[0] || 'there';
+  const nextAction = actionableCustomerOrder
     ? {
-        title: 'Review your active orders',
-        description: 'Confirm escrow funding, follow delivery progress, and complete delivered orders from one place.',
-        actionLabel: 'Open orders & escrow',
+        title: 'Your order has a next step',
+        description: 'Check delivery progress, payment protection, and any action waiting for you.',
+        actionLabel: 'View my orders',
         onAction: () => openTab('orders_escrow'),
       }
     : customerBids.length > 0
       ? {
-          title: 'Define requirements for an open bid',
-          description: 'Choose a matching bid, provide specifications and budget guidance, then send it to the procurement team.',
-          actionLabel: 'Set bid requirements',
+          title: 'An open bid is ready for your requirements',
+          description: 'Choose the relevant bid and briefly explain what your organization needs.',
+          actionLabel: 'Choose a bid',
           onAction: openRequirements,
         }
       : {
-          title: 'Tell the procurement team what you need',
-          description: 'Start with a short procurement request. The business admin will review it and convert it into a bid.',
-          actionLabel: 'Create procurement request',
+          title: 'What does your organization need?',
+          description: 'Send a short request. The procurement team will review it and guide it through the bidding process.',
+          actionLabel: 'Start a request',
           onAction: () => setCreateReqModal(true),
         };
 
   return (
     <div className="workspace-page">
-      {/* Media Banner Header */}
-      <div className="page-media-banner">
+      <div className="page-media-banner portal-welcome-header">
         <div>
-          <h2>Customer Portal</h2>
-          <p>Submit procurement requirements, track orders, fund escrow via Mobile Money or Bank, and view digital signatures.</p>
+          <Text className="portal-welcome-eyebrow">Customer workspace</Text>
+          <h2>Welcome, {customerName}</h2>
+          <p>Tell us what you need, then follow procurement, delivery and payment from one place.</p>
         </div>
         <div className="page-media-actions">
           <Popover content={notificationContent} title="Notifications" trigger="click" open={notifOpen} onOpenChange={setNotifOpen}>
@@ -419,36 +420,42 @@ ${values.warranty || 'No specific warranty requirements.'}
               <Button icon={<BellOutlined />} aria-label="Open notifications" />
             </Badge>
           </Popover>
-          <Button icon={<ReloadOutlined />} onClick={loadPortal} loading={invoiceLoading}>Refresh</Button>
+          <Tooltip title="Refresh workspace">
+            <Button icon={<ReloadOutlined />} onClick={loadPortal} loading={invoiceLoading} aria-label="Refresh workspace" />
+          </Tooltip>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateReqModal(true)}>
-            New Procurement Request
+            Request something
           </Button>
         </div>
       </div>
 
       <NextActionPanel {...nextAction} />
 
-      {/* Key Metrics Summary Cards */}
+      {/* A short, task-focused overview. */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} md={6}>
-          <DashboardStatistic title="Open Balance" value={money(summary?.ar?.open)} prefix={<FileTextOutlined />} path="/customer?tab=invoices" />
+          <DashboardStatistic title="Requests submitted" value={procurementRequests.length} prefix={<SendOutlined />} path="/customer?tab=procurement_requests" />
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <DashboardStatistic title="Overdue" value={money(summary?.ar?.overdue)} prefix={<ClockCircleOutlined />} color={Number(summary?.ar?.overdue || 0) > 0 ? '#cf1322' : '#389e0d'} path="/customer?tab=invoices" />
+          <DashboardStatistic title="Orders in progress" value={orders.filter(order => !['completed', 'disputed'].includes(order.status)).length} prefix={<ShoppingCartOutlined />} path="/customer?tab=orders_escrow" />
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <DashboardStatistic title="Paid This Month" value={money(summary?.paidThisMonth)} color="#389e0d" path="/customer?tab=invoices" />
+          <DashboardStatistic title="Amount due" value={money(summary?.ar?.open)} prefix={<FileTextOutlined />} path="/customer?tab=invoices" />
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <DashboardStatistic title="Active Orders" value={(orders || []).length} prefix={<ShoppingCartOutlined />} color="#1677ff" path="/customer?tab=orders_escrow" />
+          <DashboardStatistic title="Overdue" value={money(summary?.ar?.overdue)} prefix={<ClockCircleOutlined />} color={Number(summary?.ar?.overdue || 0) > 0 ? '#b4232d' : '#267343'} path="/customer?tab=invoices" />
         </Col>
       </Row>
 
-      {/* Workflow Stage Steps Progress */}
-      <Card style={{ marginBottom: 20 }}>
-        <Title level={5} style={{ marginBottom: 12 }}>Procurement Lifecycle Progress</Title>
-        <ProgressSteps steps={customerSteps} current={(orders || []).length > 0 ? 3 : (customerBids || []).length > 0 ? 1 : 0} />
-      </Card>
+      <details className="portal-guide">
+        <summary>
+          <span>How does procurement work?</span>
+          <Text type="secondary">See the four stages from request to delivery</Text>
+        </summary>
+        <div className="portal-guide-content">
+          <ProgressSteps steps={customerSteps} current={orders.length > 0 ? 3 : customerBids.length > 0 ? 1 : 0} />
+        </div>
+      </details>
 
       {/* Main Tabbed Content */}
       <Tabs
@@ -459,11 +466,20 @@ ${values.warranty || 'No specific warranty requirements.'}
         items={[
           {
             key: 'bids_requirements',
-            label: <span><FileTextOutlined /> Bids & Requirements</span>,
-            children: (
+            label: <span><FileTextOutlined /> Choose a bid</span>,
+            children: customerBids.length === 0 ? (
+              <Card className="portal-empty-card">
+                <EnhancedEmpty
+                  title="No open bids match your organization yet"
+                  description="You do not need to wait. Send a request and the procurement team can prepare the right bid for you."
+                  ctaText="Start a request"
+                  onAction={() => setCreateReqModal(true)}
+                />
+              </Card>
+            ) : (
               <Row gutter={[16, 16]}>
                 <Col xs={24} lg={12}>
-                  <Card title="Open Bids for Your Organization" className="table-card" style={{ marginBottom: 16 }}>
+                  <Card title="1. Choose an open bid" className="table-card" style={{ marginBottom: 16 }}>
                     <Table
                       rowKey="id"
                       dataSource={customerBids}
@@ -471,15 +487,14 @@ ${values.warranty || 'No specific warranty requirements.'}
                       columns={bidColumns}
                       pagination={{ pageSize: 5 }}
                       scroll={{ x: 500 }}
-                      locale={{ emptyText: <EnhancedEmpty title="No Open Bids" description="There are no open bids for your organization yet. Submit a custom procurement request below." /> }}
                     />
                   </Card>
                 </Col>
                 <Col xs={24} lg={12}>
-                  <Card id="requirements-section" title="Set Requirements for Selected Bid" className="table-card">
-                    <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Budgets remain hidden from suppliers during bid evaluation for fairness." />
+                  <Card id="requirements-section" title="2. Explain what you need" className="table-card portal-form-card">
+                    <Alert type="info" showIcon style={{ marginBottom: 16 }} message="Your budget guide stays private during supplier evaluation." />
                     <Form form={form} layout="vertical" onFinish={onFinishRequirements}>
-                      <Form.Item name="bid_id" label="Select Bid" rules={[{ required: true, message: 'Please select a bid' }]}>
+                      <Form.Item name="bid_id" label="Open bid" rules={[{ required: true, message: 'Please select a bid' }]}>
                         <Select
                           showSearch
                           placeholder="Select a bid"
@@ -495,15 +510,14 @@ ${values.warranty || 'No specific warranty requirements.'}
                           ))}
                         </Select>
                       </Form.Item>
-                      <Form.Item name="budget_amount" label="Budget Amount (ZMW)">
+                      <Form.Item name="budget_amount" label="Budget guide (ZMW, optional)">
                         <InputNumber min={0} style={{ width: '100%' }} placeholder="e.g. 50000" />
                       </Form.Item>
-                      <Form.Item name="expected_delivery_time" label="Expected Delivery Timeline">
+                      <Form.Item name="expected_delivery_time" label="When do you need it? (optional)">
                         <Input placeholder="e.g. 14 business days" />
                       </Form.Item>
 
-                      {/* Payment Method Dropdown */}
-                      <Form.Item name="payment_method" label="Preferred Payment Method" rules={[{ required: true, message: 'Please select a payment method' }]}>
+                      <Form.Item name="payment_method" label="How would you prefer to pay?" rules={[{ required: true, message: 'Please select a payment method' }]}>
                         <Select placeholder="Select preferred payment provider">
                           {PAYMENT_METHOD_OPTIONS.map(opt => (
                             <Option key={opt.value} value={opt.value}>
@@ -513,11 +527,11 @@ ${values.warranty || 'No specific warranty requirements.'}
                         </Select>
                       </Form.Item>
 
-                      <Form.Item name="certification_standards" label="Detailed Technical Specifications & Quality Standards" rules={[{ required: true, message: 'Please provide detailed specifications and quality standards' }]}>
-                        <Input.TextArea rows={4} placeholder="Please provide specific detailed specifications, warranty duration, and quality standards (e.g. ISO 9001, ZBS standards, etc.) to ensure suppliers have clear guidelines." />
+                      <Form.Item name="certification_standards" label="Requirements and quality expectations" rules={[{ required: true, message: 'Please describe what you need' }]}>
+                        <Input.TextArea rows={4} placeholder="Describe the item or service, important specifications, warranty needs, and any required standards." />
                       </Form.Item>
                       <Button type="primary" htmlType="submit" loading={loading} disabled={!customerBids.length} icon={<SendOutlined />}>
-                        Submit Requirements to Admin
+                        Send requirements
                       </Button>
                     </Form>
                   </Card>
@@ -527,22 +541,17 @@ ${values.warranty || 'No specific warranty requirements.'}
           },
           {
             key: 'procurement_requests',
-            label: <span><PlusOutlined /> Direct Procurement Requests</span>,
+            label: <span><PlusOutlined /> My requests</span>,
             children: (
               <Card
-                title="My Custom Procurement Requests"
+                title="Requests sent to procurement"
                 extra={
                   <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateReqModal(true)}>
-                    New Request
+                    Start a request
                   </Button>
                 }
               >
-                <Alert
-                  type="info"
-                  showIcon
-                  message="Submit a custom procurement request directly to Business Admin when there are no open bids matching your needs."
-                  style={{ marginBottom: 16 }}
-                />
+                <Text type="secondary" className="portal-section-intro">Use this when the available bids do not cover what your organization needs.</Text>
                 <Table
                   rowKey="id"
                   dataSource={procurementRequests}
@@ -551,12 +560,12 @@ ${values.warranty || 'No specific warranty requirements.'}
                   pagination={{ pageSize: 5 }}
                   expandable={{
                     expandedRowRender: record => (
-                      <div style={{ margin: 0, padding: '12px 16px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                        <p style={{ margin: '0 0 6px 0' }}><strong>Detailed Specifications & Requirements:</strong></p>
-                        <div style={{ whiteSpace: 'pre-wrap', color: '#334155', marginBottom: 12 }}>{record.description || 'No description provided.'}</div>
+                      <div className="portal-expanded-record">
+                        <p><strong>Request details</strong></p>
+                        <div className="portal-expanded-copy">{record.description || 'No description provided.'}</div>
                         {record.required_delivery_date && (
-                          <p style={{ margin: '0 0 4px 0' }}>
-                            <strong>Required Delivery Date:</strong> {new Date(record.required_delivery_date).toLocaleDateString()}
+                          <p>
+                            <strong>Needed by:</strong> {new Date(record.required_delivery_date).toLocaleDateString()}
                           </p>
                         )}
                         {record.admin_notes && (
@@ -568,16 +577,16 @@ ${values.warranty || 'No specific warranty requirements.'}
                     ),
                     rowExpandable: record => !!record.description || !!record.required_delivery_date,
                   }}
-                  locale={{ emptyText: <EnhancedEmpty title="No Requests Yet" description="Submit your first procurement request to Business Admin." /> }}
+                  locale={{ emptyText: <EnhancedEmpty title="You have not sent a request yet" description="Start with a short description of what your organization needs." ctaText="Start a request" onAction={() => setCreateReqModal(true)} /> }}
                 />
               </Card>
             ),
           },
           {
             key: 'orders_escrow',
-            label: <span><ShoppingCartOutlined /> Orders & Escrow</span>,
+            label: <span><ShoppingCartOutlined /> My orders</span>,
             children: (
-              <Card title="Orders & Escrow Funding" className="table-card">
+              <Card title="Orders, delivery and protected payment" className="table-card">
                 <Table
                   rowKey="id"
                   loading={invoiceLoading}
@@ -593,7 +602,7 @@ ${values.warranty || 'No specific warranty requirements.'}
           },
           {
             key: 'invoices',
-            label: <span><FileTextOutlined /> Invoices & Signatures</span>,
+            label: <span><FileTextOutlined /> Invoices</span>,
             children: (
               <Card title="My Invoices" className="table-card">
                 <Table
@@ -612,32 +621,34 @@ ${values.warranty || 'No specific warranty requirements.'}
         ]}
       />
 
-      {/* Modal: Create Custom Procurement Request */}
       <Modal
         title={
           <Space>
-            <PlusOutlined style={{ color: '#1677ff' }} />
-            <span>Create Custom Procurement Request</span>
+            <PlusOutlined style={{ color: '#0f6b5d' }} />
+            <span>Tell us what you need</span>
           </Space>
         }
         open={createReqModal}
         onCancel={() => setCreateReqModal(false)}
         footer={null}
       >
+        <Text type="secondary" className="portal-modal-intro">
+          Give the procurement team enough detail to understand the request. Estimates can be approximate.
+        </Text>
         <Form form={reqForm} layout="vertical" onFinish={onFinishCustomRequest} initialValues={{ quantity: 1, unit_of_measure: 'each' }}>
-          <Form.Item name="title" label="Request Title / Item Required" rules={[{ required: true, message: 'Title is required' }]}>
+          <Form.Item name="title" label="What do you need?" rules={[{ required: true, message: 'Tell us what you need' }]}>
             <Input placeholder="e.g. Supply of 50 Laptops for Lusaka Office" />
           </Form.Item>
           
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="quantity" label="Quantity" rules={[{ required: true, message: 'Quantity is required' }]}>
                 <InputNumber min={1} style={{ width: '100%' }} placeholder="e.g. 50" />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item name="unit_of_measure" label="Unit of Measure" rules={[{ required: true }]}>
-                <Select placeholder="Select UoM">
+            <Col xs={24} sm={12}>
+              <Form.Item name="unit_of_measure" label="Unit" rules={[{ required: true }]}>
+                <Select placeholder="Select unit">
                   <Option value="each">Each / Piece</Option>
                   <Option value="boxes">Boxes</Option>
                   <Option value="kg">Kilograms (kg)</Option>
@@ -649,22 +660,22 @@ ${values.warranty || 'No specific warranty requirements.'}
             </Col>
           </Row>
 
-          <Form.Item name="description" label="Detailed Technical Specifications" rules={[{ required: true, message: 'Specifications are required' }]}>
-            <Input.TextArea rows={3} placeholder="Provide technical specifications, dimensions, brand preferences, etc." />
+          <Form.Item name="description" label="Describe the requirement" rules={[{ required: true, message: 'Please describe the requirement' }]}>
+            <Input.TextArea rows={3} placeholder="Include important specifications, dimensions, preferred features, or service scope." />
           </Form.Item>
 
-          <Form.Item name="warranty" label="Warranty & Support Requirement">
+          <Form.Item name="warranty" label="Warranty or support needed (optional)">
             <Input placeholder="e.g. 1 Year Local Warranty and onsite support" />
           </Form.Item>
 
           <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="estimated_budget" label="Estimated Budget (ZMW)">
+            <Col xs={24} sm={12}>
+              <Form.Item name="estimated_budget" label="Budget estimate (ZMW)">
                 <InputNumber min={0} style={{ width: '100%' }} placeholder="e.g. 150000" />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item name="payment_method" label="Payment Method" rules={[{ required: true }]}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="payment_method" label="Preferred payment" rules={[{ required: true }]}>
                 <Select placeholder="Select method">
                   {PAYMENT_METHOD_OPTIONS.map(opt => (
                     <Option key={opt.value} value={opt.value}>{opt.label}</Option>
@@ -673,12 +684,12 @@ ${values.warranty || 'No specific warranty requirements.'}
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="required_delivery_date" label="Required Delivery Date">
+          <Form.Item name="required_delivery_date" label="Needed by (optional)">
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={requestLoading} block icon={<SendOutlined />}>
-              Send Procurement Request to Business Admin
+              Send request
             </Button>
           </Form.Item>
         </Form>
