@@ -11,6 +11,7 @@ import {
   BankOutlined,
   MenuOutlined,
   ArrowRightOutlined,
+  CustomerServiceOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -26,6 +27,7 @@ import FinanceInvoices from './FinanceInvoices';
 import OrdersList from './OrdersList';
 import UserManagement from './UserManagement';
 import TenantManagement from './TenantManagement';
+import AdminSupportInbox from './AdminSupportInbox';
 
 const { Sider, Content } = Layout;
 
@@ -70,6 +72,7 @@ export default function AdminPortal() {
       { key: '/admin/ledger', icon: <DollarOutlined />, label: 'Financial Ledger' },
       { key: '/admin/users', icon: <UserOutlined />, label: 'User Accounts' },
       { key: '/admin/tenants', icon: <BankOutlined />, label: 'Organizations' },
+      { key: '/admin/support', icon: <CustomerServiceOutlined />, label: 'Customer Care' },
       );
     }
     return items;
@@ -103,6 +106,7 @@ export default function AdminPortal() {
     if (path === '/admin/ledger') return <FinancialLedger />;
     if (path === '/admin/users') return <UserManagement />;
     if (path === '/admin/tenants') return <TenantManagement />;
+    if (path === '/admin/support') return <AdminSupportInbox />;
     return <BusinessAdminDashboard />;
   };
 

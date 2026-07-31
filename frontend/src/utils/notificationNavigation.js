@@ -24,6 +24,12 @@ export function getNotificationDestination(notification, user) {
 
   if (notification?.type === 'verification_update') return '/supplier/verification';
 
+  if (notification?.type === 'support_issue') {
+    const issueId = metadata.support_issue_id;
+    if (role === 'system_admin') return `/system-health?tab=support${issueId ? `&focus=${encodeURIComponent(issueId)}` : ''}`;
+    return `/admin/support${issueId ? `?focus=${encodeURIComponent(issueId)}` : ''}`;
+  }
+
   if (notification?.type === 'customer_request') {
     const focus = metadata.request_id ? `&focus=${encodeURIComponent(metadata.request_id)}` : '';
     return `/admin?section=procurement-requests${focus}`;

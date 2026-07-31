@@ -16,7 +16,15 @@ function authenticate(req, res, next) {
     return res.status(401).json({ error: 'Authentication required' });
   }
   try {
+    // New tokens are scoped by issuer, audience, and use. Legacy tokens remain
+    // accepted until their short access TTL expires to avoid an unsafe hard cutover.
     const decoded = jwt.verify(token, jwtSecret);
+    if (decoded.token_use && decoded.token_use !== 'access') {
+      return res.status(401).json({ error: 'Invalid access token' });
+    }
+    if (decoded.token_use === 'access' && (decoded.iss !== 'freshstart-api' || decoded.aud !== 'freshstart-web')) {
+      return res.status(401).json({ error: 'Invalid access token scope' });
+    }
 
     // Verify user still exists and is active in the database
     verifyUserActive(decoded)
@@ -27,7 +35,7 @@ function authenticate(req, res, next) {
       .catch(err => {
         return res.status(401).json({ error: err.message });
       });
-  } catch (err) {
+  } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 }

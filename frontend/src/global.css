@@ -212,6 +212,16 @@ html[data-theme='dark'] .login-split { background: var(--bg-color-dark); }
   height: 100%;
   object-fit: cover;
   transform: scale(1.02);
+  animation: login-hero-reveal 900ms ease both;
+}
+
+@keyframes login-hero-reveal {
+  from { opacity: 0; transform: scale(1.045); }
+  to { opacity: 1; transform: scale(1.02); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-hero-img { animation: none; }
 }
 
 .login-hero-overlay {
@@ -554,6 +564,68 @@ html[data-theme='dark'] .login-assurance {
 }
 
 html[data-theme='dark'] .login-assurance .anticon { color: var(--primary-color-dark); }
+
+/* ============================================================
+   CUSTOMER CARE
+   ============================================================ */
+.header-support-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary-light);
+  font-weight: 600;
+}
+
+html[data-theme='dark'] .header-support-button { color: var(--text-secondary-dark); }
+
+.support-modal-intro,
+.support-inbox-alert {
+  margin-bottom: 18px;
+}
+
+.support-summary-row {
+  margin-bottom: 16px;
+}
+
+.support-summary-row .ant-card-body {
+  padding: 16px;
+}
+
+.support-inbox-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.support-inbox-actions .ant-select {
+  min-width: 150px;
+}
+
+.support-issue-details {
+  margin-bottom: 20px;
+}
+
+.support-resolution-form {
+  padding-top: 4px;
+}
+
+.support-recent-issues {
+  margin-top: 6px;
+}
+
+.support-recent-issues .ant-list-item-meta-title {
+  font-size: 12px;
+}
+
+.support-recent-issues .ant-list-item-meta-description {
+  font-size: 11px;
+}
+
+@media (max-width: 700px) {
+  .header-support-button span { display: none; }
+  .support-inbox-actions { align-items: stretch; flex-direction: column; }
+  .support-inbox-actions .ant-select { min-width: 138px; }
+}
 
 @media (max-width: 1180px) {
   .login-split { grid-template-columns: minmax(0, 1fr) minmax(410px, 0.9fr); }

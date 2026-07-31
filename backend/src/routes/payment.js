@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../config/db');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { authenticate } = require('../middleware/authMiddleware');
 const { recordBiddingFee } = require('../services/ledgerService');
 const { consumeBidAccess, BidAccessError } = require('../services/bidFeeService');
@@ -43,7 +43,7 @@ router.post('/payments/bidding-fee', biddingFeeLimiter, authenticate, async (req
     if (existingCharge?.status === 'completed') {
       return res.json({ status: 'completed', access_source: existingCharge.charge_source });
     }
-    const ref = `BID-${Date.now()}-${uuidv4().slice(0,8)}`;
+    const ref = `BID-${Date.now()}-${randomUUID().slice(0,8)}`;
     const { rows: [transaction] } = await pool.query(
       `INSERT INTO payment_transactions (from_user_id, amount, payment_method, transaction_ref, type, status, bid_id)
        VALUES ($1,$2,$3,$4,'bidding_fee','initiated',$5) RETURNING id`,

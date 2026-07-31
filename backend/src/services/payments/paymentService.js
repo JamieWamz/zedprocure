@@ -12,7 +12,7 @@ const mtnMomo    = require('./mtnMomoService');
 const airtel     = require('./airtelMoneyService');
 const zamtel     = require('./zamtelKwachaService');
 const { recordEscrowFunding, recordSubsidyFunding } = require('../ledgerService');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 const PROVIDERS = ['mtn', 'airtel', 'zamtel', 'bank'];
 
@@ -42,7 +42,7 @@ async function initiatePayment({ provider, amount, msisdn, orderId, description,
   const explicitDemo = process.env.DEMO_MODE === 'true' ||
     (process.env.NODE_ENV !== 'production' && msisdn === '260000000000');
   if (explicitDemo) {
-    providerReference = `DEMO-${provider.toUpperCase()}-${uuidv4().slice(0, 8)}`;
+    providerReference = `DEMO-${provider.toUpperCase()}-${randomUUID().slice(0, 8)}`;
   } else {
     if (provider === 'mtn') {
       providerReference = await mtnMomo.requestToPay(amount, msisdn, orderId, description);

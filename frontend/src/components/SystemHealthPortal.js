@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import axios from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
+import AdminSupportInbox from './AdminSupportInbox';
 
 const { Text } = Typography;
 const IMMUTABLE_EMAIL = 'wamuyuwamundia@gmail.com';
@@ -42,6 +43,7 @@ const RISK_META = {
 const SYSTEM_TAB_KEYS = new Set([
   'overview', 'tests', 'operations', 'deployments', 'admins',
   'organizations', 'users', 'suppliers', 'audit', 'console',
+  'support',
 ]);
 
 export default function SystemHealthPortal() {
@@ -667,6 +669,11 @@ export default function SystemHealthPortal() {
           <Table loading={loading} dataSource={suppliers} rowKey="id" columns={supplierColumns} scroll={{ x: 820 }} />
         </Card>
       ),
+    },
+    {
+      key: 'support',
+      label: 'Customer Care',
+      children: <AdminSupportInbox />,
     },
     {
       key: 'audit',

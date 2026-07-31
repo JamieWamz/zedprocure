@@ -28,4 +28,10 @@ describe('notification destination resolution', () => {
       { role: 'business_admin' }
     )).toBe('/admin/bids/bid-5');
   });
+
+  test('routes customer-care issues to the correct administrator inbox', () => {
+    const notification = { type: 'support_issue', metadata: { support_issue_id: 'issue-12' } };
+    expect(getNotificationDestination(notification, { role: 'business_admin' })).toBe('/admin/support?focus=issue-12');
+    expect(getNotificationDestination(notification, { role: 'system_admin' })).toBe('/system-health?tab=support&focus=issue-12');
+  });
 });

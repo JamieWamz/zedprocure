@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 const { jwtSecret, ACCESS_TTL, REFRESH_TTL, cookieOptions, TOKEN_COOKIE, REFRESH_COOKIE } = require('../config/auth');
@@ -14,9 +15,10 @@ const loginLimiter = rateLimit({
 });
 
 function signTokens(user) {
-  const payload = { user_id: user.id, user_type: user.user_type, role: user.role, tenant_id: user.tenant_id || null };
-  const accessToken = jwt.sign(payload, jwtSecret, { expiresIn: ACCESS_TTL });
-  const refreshToken = jwt.sign({ user_id: user.id }, jwtSecret, { expiresIn: REFRESH_TTL });
+  const commonOptions = { issuer: 'freshstart-api', audience: 'freshstart-web' };
+  const payload = { user_id: user.id, user_type: user.user_type, role: user.role, tenant_id: user.tenant_id || null, token_use: 'access' };
+  const accessToken = jwt.sign(payload, jwtSecret, { ...commonOptions, expiresIn: ACCESS_TTL, jwtid: crypto.randomUUID() });
+  const refreshToken = jwt.sign({ user_id: user.id, token_use: 'refresh' }, jwtSecret, { ...commonOptions, expiresIn: REFRESH_TTL, jwtid: crypto.randomUUID() });
   return { accessToken, refreshToken };
 }
 
@@ -39,13 +41,16 @@ function setAuthCookies(res, accessToken, refreshToken) {
 }
 
 router.post('/login', loginLimiter, async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+  const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+  if (!email || email.length > 254 || !password || password.length > 256) {
+    return res.status(400).json({ error: 'A valid email and password are required' });
+  }
 
   const queries = [
-    { text: 'SELECT id, email, password_hash, full_name, \'platform_admin\' AS user_type, role FROM platform_admins WHERE email=$1 AND is_active=true', param: [email] },
-    { text: 'SELECT id, email, password_hash, full_name, \'tenant_user\' AS user_type, role, tenant_id FROM tenant_users WHERE email=$1 AND is_active=true', param: [email] },
-    { text: 'SELECT id, email, password_hash, full_name, \'supplier_user\' AS user_type, \'supplier_user\' AS role FROM supplier_users WHERE email=$1 AND is_active=true', param: [email] },
+    { text: 'SELECT id, email, password_hash, full_name, \'platform_admin\' AS user_type, role FROM platform_admins WHERE LOWER(email)=$1 AND is_active=true', param: [email] },
+    { text: 'SELECT id, email, password_hash, full_name, \'tenant_user\' AS user_type, role, tenant_id FROM tenant_users WHERE LOWER(email)=$1 AND is_active=true', param: [email] },
+    { text: 'SELECT id, email, password_hash, full_name, \'supplier_user\' AS user_type, \'supplier_user\' AS role FROM supplier_users WHERE LOWER(email)=$1 AND is_active=true', param: [email] },
   ];
 
   for (const q of queries) {
@@ -78,14 +83,15 @@ router.post('/refresh', async (req, res) => {
   const refreshToken = req.cookies && req.cookies[REFRESH_COOKIE];
   if (!refreshToken) return res.status(401).json({ error: 'No refresh token' });
   try {
-    const decoded = jwt.verify(refreshToken, jwtSecret);
+    const decoded = jwt.verify(refreshToken, jwtSecret, { issuer: 'freshstart-api', audience: 'freshstart-web' });
+    if (decoded.token_use !== 'refresh') return res.status(401).json({ error: 'Invalid refresh token' });
     const profile = await getUserAuthProfile(decoded.user_id);
     if (!profile) return res.status(401).json({ error: 'User not found or disabled' });
 
     const { accessToken, refreshToken: newRefresh } = signTokens(profile);
     setAuthCookies(res, accessToken, newRefresh);
     res.json({ success: true });
-  } catch (err) {
+  } catch {
     return res.status(401).json({ error: 'Invalid or expired refresh token' });
   }
 });

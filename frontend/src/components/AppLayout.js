@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Layout, Button, Typography, Select, Tooltip, Breadcrumb, Avatar, Tag } from 'antd';
 import {
   LogoutOutlined,
@@ -7,10 +7,12 @@ import {
   BulbOutlined,
   HomeOutlined,
   SafetyCertificateOutlined,
+  CustomerServiceOutlined,
 } from '@ant-design/icons';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import SupportIssueModal from './SupportIssueModal';
 
 const { Header, Content } = Layout;
 const { Text } = Typography;
@@ -35,6 +37,7 @@ function routeContext(pathname, dashboardRoute) {
   if (pathname === '/admin/verification') return { title: 'Supplier verification', section: 'Suppliers', backPath: null };
   if (pathname === '/admin/users') return { title: 'User accounts', section: 'Administration', backPath: null };
   if (pathname === '/admin/tenants') return { title: 'Organizations', section: 'Administration', backPath: null };
+  if (pathname === '/admin/support') return { title: 'Customer care', section: 'Administration', backPath: null };
   if (/^\/supplier\/bids\/[^/]+$/.test(pathname)) return { title: 'Bid opportunity', section: 'Supplier workspace', backPath: '/supplier' };
   if (pathname === '/supplier/verification') return { title: 'Verification', section: 'Supplier workspace', backPath: '/supplier' };
   if (pathname.startsWith('/supplier')) return { title: 'Supplier workspace', section: 'Home', backPath: null };
@@ -48,10 +51,23 @@ export default function AppLayout({ children, showBack = false }) {
   const { appearance, setAppearance } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const [supportOpen, setSupportOpen] = useState(false);
   const context = useMemo(
     () => routeContext(location.pathname, dashboardRoute),
     [location.pathname, dashboardRoute]
   );
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).has('support')) setSupportOpen(true);
+  }, [location.search]);
+
+  const closeSupport = () => {
+    setSupportOpen(false);
+    const params = new URLSearchParams(location.search);
+    if (!params.has('support')) return;
+    params.delete('support');
+    navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : '' }, { replace: true });
+  };
 
   const workspaceHome = dashboardRoute || '/login';
   const showOrgPicker = user && ['business_admin', 'system_admin'].includes(user.role) && tenants.length > 0;
@@ -108,6 +124,16 @@ export default function AppLayout({ children, showBack = false }) {
               ]}
             />
           </Tooltip>
+          <Tooltip title="Report a problem to customer care">
+            <Button
+              className="header-support-button"
+              type="text"
+              icon={<CustomerServiceOutlined />}
+              onClick={() => setSupportOpen(true)}
+            >
+              <span>Help</span>
+            </Button>
+          </Tooltip>
           <div className="app-user" aria-label={`Signed in as ${user?.email || 'User'}`}>
             <Avatar size={34}>{initials}</Avatar>
             <span className="app-user-copy">
@@ -149,6 +175,7 @@ export default function AppLayout({ children, showBack = false }) {
       <Content id="main-content" className="content-wrapper" role="main" tabIndex="-1">
         {children}
       </Content>
+      <SupportIssueModal open={supportOpen} onClose={closeSupport} />
     </Layout>
   );
 }

@@ -1,12 +1,14 @@
 require('dotenv').config();
+const crypto = require('crypto');
 
-const jwtSecret = process.env.JWT_SECRET;
+let jwtSecret = process.env.JWT_SECRET;
 
 if (!jwtSecret) {
   // In production a missing secret must be fatal: otherwise tokens can be forged.
   if (process.env.NODE_ENV === 'production') {
     throw new Error('FATAL: JWT_SECRET is not set. Refusing to start in production.');
   }
+  jwtSecret = crypto.randomBytes(32).toString('hex');
   console.warn('WARNING: JWT_SECRET is not set. Using an ephemeral secret (tokens invalid after restart). Set JWT_SECRET for production.');
 }
 

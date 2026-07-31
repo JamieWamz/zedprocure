@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Form, Input, Button, Radio, Tabs, message } from 'antd';
 import {
   MailOutlined, LockOutlined, UserOutlined, BankOutlined,
@@ -12,6 +12,8 @@ import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
 import { useTheme } from '../context/ThemeContext';
 
+const LOGIN_HERO_IMAGES = cdnImages.loginHeroes?.length ? cdnImages.loginHeroes : [cdnImages.loginHero];
+
 export default function UnifiedLogin() {
   const { login } = useAuth();
   const { appearance, setAppearance } = useTheme();
@@ -19,9 +21,22 @@ export default function UnifiedLogin() {
   const [loading, setLoading] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [activeTab, setActiveTab] = useState('login');
+  const [heroIndex, setHeroIndex] = useState(0);
   const [loginForm] = Form.useForm();
   const [registerForm] = Form.useForm();
   const accountType = Form.useWatch('account_type', registerForm);
+
+  useEffect(() => {
+    LOGIN_HERO_IMAGES.forEach(src => {
+      const image = new Image();
+      image.src = src;
+    });
+    if (LOGIN_HERO_IMAGES.length < 2) return undefined;
+    const interval = window.setInterval(() => {
+      setHeroIndex(index => (index + 1) % LOGIN_HERO_IMAGES.length);
+    }, 7000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const onFinish = async (values) => {
     setLoading(true);
@@ -68,7 +83,14 @@ export default function UnifiedLogin() {
     <div className="login-split">
       {/* ── Product introduction ── */}
       <div className="login-hero" aria-hidden="true">
-        <img className="login-hero-img" src={cdnImages.loginHero} alt="" loading="eager" />
+        <img
+          key={LOGIN_HERO_IMAGES[heroIndex]}
+          className="login-hero-img"
+          src={LOGIN_HERO_IMAGES[heroIndex]}
+          alt=""
+          loading={heroIndex === 0 ? 'eager' : 'lazy'}
+          onError={() => setHeroIndex(index => (index + 1) % LOGIN_HERO_IMAGES.length)}
+        />
         <div className="login-hero-overlay" />
         <div className="login-hero-content">
           <div className="login-hero-top">

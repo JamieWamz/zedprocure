@@ -3,7 +3,7 @@ const app = require('../index');
 const pool = require('../config/db');
 const jwt = require('jsonwebtoken');
 const { jwtSecret, TOKEN_COOKIE } = require('../config/auth');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 describe('Bid Routes', () => {
   let client;
@@ -23,14 +23,14 @@ describe('Bid Routes', () => {
 
     const adminRes = await client.query(
       "INSERT INTO platform_admins (id, email, password_hash, full_name, role) VALUES ($1, 'admin@test.com', 'hash', 'Test Admin', 'business_admin') RETURNING id",
-      [uuidv4()]
+      [randomUUID()]
     );
     adminId = adminRes.rows[0].id;
     authToken = jwt.sign({ user_id: adminId, user_type: 'platform_admin', role: 'business_admin' }, jwtSecret, { expiresIn: '1h' });
 
     const customerRes = await client.query(
       "INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role) VALUES ($1, $2, 'customer@test.com', 'hash', 'Test Customer', 'customer') RETURNING id",
-      [uuidv4(), tenantId]
+      [randomUUID(), tenantId]
     );
     customerId = customerRes.rows[0].id;
     customerToken = jwt.sign({ user_id: customerId, user_type: 'tenant_user', tenant_id: tenantId, role: 'customer' }, jwtSecret, { expiresIn: '1h' });

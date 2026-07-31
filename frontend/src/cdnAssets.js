@@ -4,8 +4,16 @@ function envImage(key, fallback) {
   return process.env[`REACT_APP_CDN_${key}`] || fallback;
 }
 
+const loginHeroes = [
+  envImage('LOGIN_HERO_1', `${UNSPLASH}/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=1920&q=82`),
+  envImage('LOGIN_HERO_2', `${UNSPLASH}/photo-1552664730-d307ca884978?auto=format&fit=crop&w=1920&q=82`),
+  envImage('LOGIN_HERO_3', `${UNSPLASH}/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1920&q=82`),
+  envImage('LOGIN_HERO_4', `${UNSPLASH}/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1920&q=82`),
+];
+
 export const cdnImages = {
-  loginHero: envImage('LOGIN_HERO', `${UNSPLASH}/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1920&q=80`),
+  loginHero: envImage('LOGIN_HERO', loginHeroes[0]),
+  loginHeroes,
   splash: [
     envImage('SPLASH_1', `${UNSPLASH}/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1920&q=80`),
     envImage('SPLASH_2', `${UNSPLASH}/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=1920&q=80`),

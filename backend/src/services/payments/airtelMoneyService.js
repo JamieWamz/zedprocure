@@ -9,7 +9,7 @@
  */
 
 const axios = require('axios');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 const BASE_URL      = () => process.env.AIRTEL_BASE_URL || 'https://openapiuat.airtel.africa';
 const CLIENT_ID     = () => process.env.AIRTEL_CLIENT_ID;
@@ -53,7 +53,7 @@ async function getAccessToken() {
  */
 async function collect(amount, msisdn, orderId) {
   const token = await getAccessToken();
-  const reference = uuidv4();
+  const reference = randomUUID();
 
   const { data } = await axios.post(
     `${BASE_URL()}/merchant/v1/payments/`,

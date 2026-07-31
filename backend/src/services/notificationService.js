@@ -70,7 +70,7 @@ async function notifySuppliersOnBidPublished(bid) {
 /**
  * Notify a supplier about a verification decision.
  */
-async function notifyVerificationDecision(supplierId, status, notes, adminName) {
+async function notifyVerificationDecision(supplierId, status, notes, _adminName) {
   const { rows: [supplier] } = await pool.query(
     'SELECT company_name FROM suppliers WHERE id = $1',
     [supplierId]
@@ -122,20 +122,30 @@ async function notifyVerificationDecision(supplierId, status, notes, adminName) 
 /**
  * Notify all Business Admin users (platform_admins) about a critical event.
  */
-async function notifyBusinessAdmins({ type, title, message, link, metadata }) {
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+async function notifyBusinessAdmins({ type, title, message, link, linkByRole, metadata }) {
   try {
     const { rows: admins } = await pool.query(
-      `SELECT id, email, full_name FROM platform_admins WHERE is_active = true`
+      `SELECT id, email, full_name, role FROM platform_admins WHERE is_active = true`
     );
 
     for (const admin of admins) {
+      const adminLink = linkByRole?.[admin.role] || link || '/admin';
       await createNotification({
         userId: admin.id,
         userType: 'platform_admin',
         type: type || 'admin_alert',
         title,
         message,
-        link: link || '/admin',
+        link: adminLink,
         metadata,
       });
 
@@ -145,10 +155,10 @@ async function notifyBusinessAdmins({ type, title, message, link, metadata }) {
         subject: title,
         html: `
           <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-            <h2 style="color: #1e3a8a;">${title}</h2>
-            <p>Dear ${admin.full_name},</p>
-            <p>${message}</p>
-            <a href="${process.env.APP_URL || 'http://localhost'}${link || '/admin'}"
+          <h2 style="color: #1e3a8a;">${escapeHtml(title)}</h2>
+            <p>Dear ${escapeHtml(admin.full_name)},</p>
+            <p>${escapeHtml(message)}</p>
+            <a href="${process.env.APP_URL || 'http://localhost'}${adminLink}"
                style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin: 16px 0;">
               View Dashboard
             </a>

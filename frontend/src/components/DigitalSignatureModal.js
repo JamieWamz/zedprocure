@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, Form, Input, List, Modal, Space, Tag, Typography, message } from 'antd';
-import { AuditOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { AuditOutlined, CheckCircleOutlined, LockOutlined, SafetyCertificateOutlined, WarningOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 
 const { Text } = Typography;
 
@@ -14,6 +15,7 @@ export default function DigitalSignatureModal({
   onSigned,
 }) {
   const [form] = Form.useForm();
+  const { user } = useAuth();
   const [signatures, setSignatures] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,8 +44,14 @@ export default function DigitalSignatureModal({
 
   // Safety net: clear loading state if it gets stuck (network timeout, etc.)
   useEffect(() => {
-    if (!open) { setLoading(false); setSignatures([]); }
-  }, [open]);
+    if (!open) {
+      setLoading(false);
+      setSignatures([]);
+      form.resetFields();
+      return;
+    }
+    form.setFieldsValue({ signer_name: user?.full_name || '', consent: false, confirmation_password: '' });
+  }, [form, open, user?.full_name]);
 
   useEffect(() => {
     if (!open || !documentId) return;
@@ -63,10 +71,11 @@ export default function DigitalSignatureModal({
         document_id: documentId,
         signer_name: values.signer_name,
         signer_title: values.signer_title,
+        confirmation_password: values.confirmation_password,
         consent: values.consent,
       });
       message.success('Digital signature applied');
-      form.resetFields();
+      form.setFieldsValue({ signer_name: user?.full_name || '', signer_title: '', confirmation_password: '', consent: false });
       await load();
       if (onSigned) onSigned();
     } catch (e) {
@@ -76,6 +85,10 @@ export default function DigitalSignatureModal({
     }
   };
 
+  const alreadySigned = signatures.some(signature =>
+    String(signature.signer_email || '').toLowerCase() === String(user?.email || '').toLowerCase()
+  );
+
   return (
     <Modal
       title={<span><AuditOutlined /> Digital Signature</span>}
@@ -83,24 +96,35 @@ export default function DigitalSignatureModal({
       onCancel={onClose}
       footer={[
         <Button key="close" onClick={onClose}>Close</Button>,
-        <Button key="sign" type="primary" icon={<CheckCircleOutlined />} loading={saving} onClick={sign}>Sign Digitally</Button>,
+        <Button key="sign" type="primary" icon={<CheckCircleOutlined />} loading={saving} disabled={alreadySigned} onClick={sign}>
+          {alreadySigned ? 'Already signed' : 'Sign securely'}
+        </Button>,
       ]}
       width={680}
     >
       <Alert
-        type="info"
+        type="warning"
         showIcon
+        icon={<WarningOutlined />}
         style={{ marginBottom: 12 }}
         message={documentLabel || `${documentType} ${documentId}`}
-        description="Use this to approve documents in-app without printing, signing, scanning, or emailing paper copies."
+        description="A digital signature is permanent. Your password, account identity, document fingerprint, time, and consent are bound into a tamper-evident record."
       />
 
       <Form form={form} layout="vertical">
-        <Form.Item name="signer_name" label="Legal Name" rules={[{ required: true, min: 2 }]}>
-          <Input placeholder="Name as it should appear on the signature record" />
+        <Form.Item name="signer_name" label="Verified legal name" rules={[{ required: true, min: 2 }]}>
+          <Input disabled prefix={<SafetyCertificateOutlined />} />
         </Form.Item>
         <Form.Item name="signer_title" label="Title / Capacity">
-          <Input placeholder="Procurement Officer, Finance Manager, Director..." />
+          <Input maxLength={120} placeholder="Procurement Officer, Finance Manager, Director..." />
+        </Form.Item>
+        <Form.Item
+          name="confirmation_password"
+          label="Confirm your password"
+          extra="This re-verifies your identity. Your password is never stored with the signature."
+          rules={[{ required: true, message: 'Enter your password to sign' }, { max: 256 }]}
+        >
+          <Input.Password prefix={<LockOutlined />} autoComplete="current-password" placeholder="Current account password" />
         </Form.Item>
         <Form.Item
           name="consent"
@@ -121,10 +145,24 @@ export default function DigitalSignatureModal({
         renderItem={(signature) => (
           <List.Item>
             <List.Item.Meta
-              title={<Space><Text>{signature.signer_name}</Text><Tag>{signature.signer_role || signature.signer_user_type}</Tag></Space>}
-              description={`${signature.signer_title || 'Signer'} · ${signature.signer_email || 'no email'} · ${new Date(signature.signed_at).toLocaleString()}`}
+              title={(
+                <Space wrap>
+                  <Text>{signature.signer_name}</Text>
+                  <Tag>{signature.signer_role || signature.signer_user_type}</Tag>
+                  {signature.integrity_verified === true && <Tag color="success" icon={<SafetyCertificateOutlined />}>Integrity verified</Tag>}
+                  {signature.integrity_status === 'legacy' && <Tag color="warning">Legacy signature</Tag>}
+                  {signature.integrity_verified === false && <Tag color="error">Integrity check failed</Tag>}
+                </Space>
+              )}
+              description={(
+                <Space direction="vertical" size={1}>
+                  <Text type="secondary">{signature.signer_title || 'Signer'} · {signature.signer_email || 'no email'} · {new Date(signature.signed_at).toLocaleString()}</Text>
+                  {signature.document_hash && (
+                    <Text type="secondary">Document fingerprint: <Text code>{signature.document_hash.slice(0, 16)}…</Text> {signature.document_unchanged === false && <Tag color="warning">Document changed since signing</Tag>}</Text>
+                  )}
+                </Space>
+              )}
             />
-            <Text code style={{ fontSize: 11 }}>{signature.signature_hash.slice(0, 16)}</Text>
           </List.Item>
         )}
       />

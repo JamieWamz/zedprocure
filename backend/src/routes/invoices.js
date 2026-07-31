@@ -6,7 +6,7 @@
  * All money movements post to the immutable general ledger via ledgerService.
  */
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const pool = require('../config/db');
 const { authenticate } = require('../middleware/authMiddleware');
 const { recordInvoiceIssue, recordInvoicePayment } = require('../services/ledgerService');
@@ -117,7 +117,7 @@ router.get('/summary', authenticate, async (req, res) => {
     const scope = await resolvePartyScope(client, req.user);
     const where = [];
     const params = [];
-    let i = applyScope(where, params, 1, scope);
+    applyScope(where, params, 1, scope);
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
     const { rows: [totals] } = await client.query(
@@ -321,7 +321,7 @@ router.post('/', authenticate, async (req, res) => {
       await client.query(
         `INSERT INTO invoice_lines (id, invoice_id, description, quantity, unit_price, tax_rate, amount, line_order)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [uuidv4(), inv.id, l.description, l.quantity, l.unit_price, l.tax_rate, l.amount.toFixed(2), l.line_order]
+        [randomUUID(), inv.id, l.description, l.quantity, l.unit_price, l.tax_rate, l.amount.toFixed(2), l.line_order]
       );
     }
 
@@ -499,7 +499,7 @@ router.post('/:id/payments', authenticate, async (req, res) => {
     const { rows: [pay] } = await client.query(
       `INSERT INTO invoice_payments (id, invoice_id, amount, payment_date, method, reference, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [uuidv4(), inv.id, amt.toFixed(2), payment_date || new Date().toISOString().slice(0, 10), method || 'bank_transfer', reference || null, req.user.user_id]
+      [randomUUID(), inv.id, amt.toFixed(2), payment_date || new Date().toISOString().slice(0, 10), method || 'bank_transfer', reference || null, req.user.user_id]
     );
 
     const { rows: [issued] } = await client.query(

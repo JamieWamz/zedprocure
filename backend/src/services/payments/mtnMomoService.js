@@ -11,7 +11,7 @@
  */
 
 const axios = require('axios');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 const BASE_URL         = () => process.env.MTN_MOMO_BASE_URL || 'https://sandbox.momodeveloper.mtn.com';
 const SUBSCRIPTION_KEY = () => process.env.MTN_MOMO_SUBSCRIPTION_KEY;
@@ -49,7 +49,7 @@ async function requestToPay(amount, msisdn, orderId, description = 'ZedProcure P
   }
 
   const token = await getAccessToken();
-  const externalId = uuidv4();
+  const externalId = randomUUID();
 
   await axios.post(
     `${BASE_URL()}/collection/v1_0/requesttopay`,

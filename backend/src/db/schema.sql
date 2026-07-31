@@ -169,11 +169,48 @@ CREATE TABLE digital_signatures (
     consent_text TEXT NOT NULL,
     ip_address INET,
     user_agent TEXT,
+    signature_version SMALLINT NOT NULL DEFAULT 2,
+    document_hash VARCHAR(64),
+    password_verified_at TIMESTAMPTZ,
     signed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (document_type, document_id, signer_user_id, signer_user_type)
 );
 
 CREATE INDEX IF NOT EXISTS idx_digital_signatures_document ON digital_signatures(document_type, document_id);
+
+CREATE OR REPLACE FUNCTION prevent_digital_signature_mutation()
+RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'Digital signature records are immutable';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER digital_signatures_immutable
+    BEFORE UPDATE OR DELETE ON digital_signatures
+    FOR EACH ROW EXECUTE FUNCTION prevent_digital_signature_mutation();
+
+CREATE TABLE support_issues (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    reference VARCHAR(24) UNIQUE NOT NULL,
+    reporter_user_id UUID NOT NULL,
+    reporter_user_type VARCHAR(32) NOT NULL,
+    reporter_email VARCHAR(255) NOT NULL,
+    reporter_name VARCHAR(150),
+    tenant_id UUID REFERENCES tenants(id),
+    category VARCHAR(24) NOT NULL CHECK (category IN ('technical','account','bid','payment','security','other')),
+    subject VARCHAR(120) NOT NULL,
+    description TEXT NOT NULL,
+    priority VARCHAR(12) NOT NULL DEFAULT 'normal' CHECK (priority IN ('low','normal','high')),
+    status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','in_progress','resolved','closed')),
+    assigned_admin_id UUID REFERENCES platform_admins(id),
+    resolution_note TEXT,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX support_issues_status_created_idx ON support_issues(status, created_at DESC);
+CREATE INDEX support_issues_reporter_idx ON support_issues(reporter_user_id, reporter_user_type, created_at DESC);
 
 CREATE TABLE accounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
