@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, DatePicker, InputNumber, Switch, Select, Button, message, Alert, Space, Upload } from 'antd';
-import { PlusOutlined, DeleteOutlined, UploadOutlined, InboxOutlined, MenuOutlined } from '@ant-design/icons';
+import { Form, Input, DatePicker, InputNumber, Switch, Select, Button, message, Alert, Space, Upload, Typography } from 'antd';
+import { PlusOutlined, DeleteOutlined, InboxOutlined, MenuOutlined, ArrowLeftOutlined, SendOutlined, SaveOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import ProgressSteps from './ProgressSteps';
 
 const { Dragger } = Upload;
+const { Title, Text } = Typography;
+
+const creationSteps = [
+  { title: 'Define', description: 'Set the scope, dates, and sourcing rules.' },
+  { title: 'Price', description: 'Build the bill of quantities and fee settings.' },
+  { title: 'Publish', description: 'Validate the bid and notify eligible suppliers.' },
+  { title: 'Evaluate', description: 'Compare responses and award the order.' },
+];
 
 const INCOTERMS = [
   { value: 'EXW', label: 'EXW – Ex Works' },
@@ -136,7 +145,17 @@ export default function CreateBidWizard() {
         message.success('Bid saved as draft. Publish it later from the dashboard.');
       }
 
-      navigate('/admin/bids');
+      navigate('/admin/bids', {
+        state: {
+          completedAction: {
+            title: saveAsDraft ? 'Draft saved successfully' : 'Bid published successfully',
+            description: saveAsDraft
+              ? 'Review the draft from the bid list, then publish it when the requirements are ready.'
+              : 'Suppliers can now discover the opportunity. Monitor invitations and responses from the bid details page.',
+            bidId: bid.id,
+          },
+        },
+      });
     } catch (err) {
       const errorMsg = err.response?.data?.error || 'Creation failed';
       message.error(errorMsg);
@@ -154,8 +173,19 @@ export default function CreateBidWizard() {
   };
   
   return (
-    <div style={{ maxWidth: 960, margin: 'auto' }}>
-      <h2>Create New Bid — Bill of Quantities</h2>
+    <div className="workflow-page">
+      <div className="workflow-page-heading">
+        <div>
+          <Button type="link" icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin/bids')} className="workflow-back-button">
+            Back to all bids
+          </Button>
+          <Title level={2}>Create a procurement bid</Title>
+          <Text type="secondary">Complete the sourcing details below. Required fields are validated before anything is published.</Text>
+        </div>
+      </div>
+      <div className="workflow-steps-card">
+        <ProgressSteps steps={creationSteps} current={0} />
+      </div>
       <Alert
         type="info"
         showIcon
@@ -163,6 +193,7 @@ export default function CreateBidWizard() {
         message="Open Marketplace Mode — Bids require a structured Bill of Quantities, Incoterms, and at least one line item before publishing."
       />
       <Form
+        className="workflow-form"
         form={form}
         layout="vertical"
         onFinish={onFinish}
@@ -172,6 +203,12 @@ export default function CreateBidWizard() {
           line_items: [{ item_description: '', unit_of_measure: 'each', quantity: 1, unit_price_estimate: null }],
         }}
       >
+        <div className="workflow-form-section workflow-form-section--flat">
+          <div className="workflow-section-heading">
+            <span className="workflow-section-number">1</span>
+            <div><h3>Bid scope and sourcing rules</h3><p>Set the opportunity, supplier audience, deadline, and commercial controls.</p></div>
+          </div>
+        </div>
         {!activeTenantId && tenants.length > 0 && (
           <Form.Item name="tenant_id" label="Workspace/Organization" rules={[{ required: true }]}>
             <Select placeholder="Select a Workspace/Organization" onChange={val => setActiveTenantId(val)}>
@@ -251,9 +288,12 @@ export default function CreateBidWizard() {
           <Switch checkedChildren="Priority" unCheckedChildren="Standard" />
         </Form.Item>
 
-        <div style={{ marginBottom: 16 }}>
-          <h3>Bill of Quantities (BoQ) — Line Items</h3>
-          <p style={{ color: '#666', fontSize: 13 }}>
+        <div className="workflow-form-section">
+          <div className="workflow-section-heading">
+            <span className="workflow-section-number">2</span>
+            <div><h3>Bill of Quantities</h3><p>Define what suppliers must price.</p></div>
+          </div>
+          <p className="workflow-helper-text">
             Define the line items for this bid. Each item must have a description, unit of measure, and quantity.
             At least one line item is required before publishing. You can drag and drop to reorder the items.
           </p>
@@ -268,6 +308,7 @@ export default function CreateBidWizard() {
                           <Draggable key={key} draggableId={`item-${key}`} index={index}>
                             {(provided) => (
                               <Space
+                                className="boq-line-item"
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                                 style={{ display: 'flex', marginBottom: 8, ...provided.draggableProps.style }}
@@ -282,7 +323,7 @@ export default function CreateBidWizard() {
                                   rules={[{ required: true, message: 'Description is required' }]}
                                   style={{ width: '300px' }}
                                 >
-                                  <Input placeholder="Item Description" />
+                                  <Input placeholder="Item description" aria-label={`Line item ${index + 1} description`} />
                                 </Form.Item>
                                 <Form.Item
                                   {...restField}
@@ -290,7 +331,7 @@ export default function CreateBidWizard() {
                                   rules={[{ required: true, message: 'UoM is required' }]}
                                    style={{ width: '150px' }}
                                 >
-                                  <Select placeholder="Unit of Measure">
+                                  <Select placeholder="Unit of measure" aria-label={`Line item ${index + 1} unit of measure`}>
                                     {UNIT_OF_MEASURE.map(uom => (
                                       <Select.Option key={uom.value} value={uom.value}>{uom.label}</Select.Option>
                                     ))}
@@ -302,16 +343,16 @@ export default function CreateBidWizard() {
                                   rules={[{ required: true, message: 'Quantity is required' }]}
                                    style={{ width: '100px' }}
                                 >
-                                  <InputNumber min={0.0001} placeholder="Quantity" style={{width: '100%'}} />
+                                  <InputNumber min={0.0001} placeholder="Quantity" aria-label={`Line item ${index + 1} quantity`} style={{width: '100%'}} />
                                 </Form.Item>
                                 <Form.Item
                                   {...restField}
                                   name={[name, 'unit_price_estimate']}
                                    style={{ width: '130px' }}
                                 >
-                                  <InputNumber min={0} placeholder="Est. Price" style={{width: '100%'}} />
+                                  <InputNumber min={0} placeholder="Est. price" aria-label={`Line item ${index + 1} estimated unit price`} style={{width: '100%'}} />
                                 </Form.Item>
-                                <DeleteOutlined onClick={() => remove(name)} />
+                                <Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(name)} aria-label={`Remove line item ${index + 1}`} />
                               </Space>
                             )}
                           </Draggable>
@@ -331,8 +372,11 @@ export default function CreateBidWizard() {
           </DragDropContext>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <h3>Technical Specifications</h3>
+        <div className="workflow-form-section">
+          <div className="workflow-section-heading">
+            <span className="workflow-section-number">3</span>
+            <div><h3>Technical specifications</h3><p>Add standards, compliance requirements, and supporting documents.</p></div>
+          </div>
           <Form.Item name="technical_specifications" label="Technical Specifications (Text)">
             <Input.TextArea rows={4} placeholder="Enter detailed technical specifications, standards, and compliance requirements" />
           </Form.Item>
@@ -363,28 +407,39 @@ export default function CreateBidWizard() {
           </Form.Item>
         </div>
 
-        <div style={{ display: 'flex', gap: 12 }}>
-          <Form.Item>
+        <div className="workflow-action-bar">
+          <div>
+            <Text strong>Ready to continue?</Text>
+            <Text type="secondary">Publish now or keep an editable draft.</Text>
+          </div>
+          <Space wrap>
+          <Form.Item noStyle>
+            <Button size="large" onClick={() => navigate('/admin/bids')}>Cancel</Button>
+          </Form.Item>
+          <Form.Item noStyle>
+            <Button
+              htmlType="submit"
+              loading={loading && saveAsDraft}
+              onClick={() => setSaveAsDraft(true)}
+              size="large"
+              icon={<SaveOutlined />}
+            >
+              Save draft
+            </Button>
+          </Form.Item>
+          <Form.Item noStyle>
             <Button
               type="primary"
               htmlType="submit"
               loading={loading && !saveAsDraft}
               onClick={() => setSaveAsDraft(false)}
               size="large"
+              icon={<SendOutlined />}
             >
-              Publish Now
+              Validate & publish
             </Button>
           </Form.Item>
-          <Form.Item>
-            <Button
-              htmlType="submit"
-              loading={loading && saveAsDraft}
-              onClick={() => setSaveAsDraft(true)}
-              size="large"
-            >
-              Save as Draft
-            </Button>
-          </Form.Item>
+          </Space>
         </div>
       </Form>
     </div>

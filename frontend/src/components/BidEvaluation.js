@@ -145,7 +145,14 @@ export default function BidEvaluation() {
       });
       message.success(`Bid awarded to ${awardSupplier.name}. Order #${res.data.id} created.`);
       setAwardModalVisible(false);
-      navigate('/admin/orders');
+      navigate('/admin/orders', {
+        state: {
+          completedAction: {
+            title: `Bid awarded to ${awardSupplier.name}`,
+            description: `Order ${res.data.id.slice(0, 8)} is ready for contract signatures, supplier acceptance, and escrow tracking.`,
+          },
+        },
+      });
     } catch (e) {
       message.error(e.response?.data?.error || 'Failed to award bid');
     } finally {

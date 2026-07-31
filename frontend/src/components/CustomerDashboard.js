@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import EnhancedEmpty from './EnhancedEmpty';
 import ProgressSteps from './ProgressSteps';
 import DashboardStatistic from './DashboardStatistic';
+import NextActionPanel from './NextActionPanel';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
@@ -83,6 +84,7 @@ export default function CustomerDashboard() {
   const [payingOrder, setPayingOrder] = useState(null);
   const [fundingOrder, setFundingOrder] = useState(null);
   const [createReqModal, setCreateReqModal] = useState(false);
+  const [activeTab, setActiveTab] = useState('bids_requirements');
 
   // Notifications state
   const [notifications, setNotifications] = useState([]);
@@ -269,7 +271,7 @@ ${values.warranty || 'No specific warranty requirements.'}
     { title: 'Deadline', dataIndex: 'deadline', key: 'deadline', render: v => new Date(v).toLocaleString() },
     { title: 'Action', key: 'action', render: (_, row) => (
       <Space size="small">
-        <Button size="small" onClick={() => navigate(`/supplier/bids/${row.id}`)}>View Details</Button>
+        <Button size="small" onClick={() => navigate(`/customer/bids/${row.id}`)}>View Details</Button>
         <Button size="small" type="primary" onClick={() => {
           form.setFieldsValue({ bid_id: row.id });
           document.getElementById('requirements-section')?.scrollIntoView({ behavior: 'smooth' });
@@ -345,8 +347,34 @@ ${values.warranty || 'No specific warranty requirements.'}
     { title: 'Submitted', dataIndex: 'created_at', render: v => new Date(v).toLocaleDateString() },
   ];
 
+  const openRequirements = () => {
+    setActiveTab('bids_requirements');
+    window.setTimeout(() => document.getElementById('requirements-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
+
+  const nextAction = orders.length > 0
+    ? {
+        title: 'Review your active orders',
+        description: 'Confirm escrow funding, follow delivery progress, and complete delivered orders from one place.',
+        actionLabel: 'Open orders & escrow',
+        onAction: () => setActiveTab('orders_escrow'),
+      }
+    : customerBids.length > 0
+      ? {
+          title: 'Define requirements for an open bid',
+          description: 'Choose a matching bid, provide specifications and budget guidance, then send it to the procurement team.',
+          actionLabel: 'Set bid requirements',
+          onAction: openRequirements,
+        }
+      : {
+          title: 'Tell the procurement team what you need',
+          description: 'Start with a short procurement request. The business admin will review it and convert it into a bid.',
+          actionLabel: 'Create procurement request',
+          onAction: () => setCreateReqModal(true),
+        };
+
   return (
-    <div>
+    <div className="workspace-page">
       {/* Media Banner Header */}
       <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.customer})` }}>
         <div>
@@ -365,6 +393,8 @@ ${values.warranty || 'No specific warranty requirements.'}
           </Button>
         </div>
       </div>
+
+      <NextActionPanel {...nextAction} />
 
       {/* Key Metrics Summary Cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
@@ -390,7 +420,9 @@ ${values.warranty || 'No specific warranty requirements.'}
 
       {/* Main Tabbed Content */}
       <Tabs
-        defaultActiveKey="bids_requirements"
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        className="workspace-tabs"
         items={[
           {
             key: 'bids_requirements',

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Table, message, Tag, Space, Button, Input, Select, Card, Statistic, Row, Col } from 'antd';
+import { Table, message, Tag, Space, Button, Input, Select, Card, Statistic, Row, Col, Alert } from 'antd';
 import { SearchOutlined, FileTextOutlined, ReloadOutlined, PlusOutlined } from '@ant-design/icons';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const statusColors = {
@@ -18,6 +18,8 @@ export default function TenantBidsList() {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const navigate = useNavigate();
+  const location = useLocation();
+  const [completedAction, setCompletedAction] = useState(location.state?.completedAction || null);
 
   const fetchBids = async () => {
     setLoading(true);
@@ -97,7 +99,23 @@ export default function TenantBidsList() {
   ];
 
   return (
-    <div>
+    <div className="workspace-page">
+      {completedAction && (
+        <Alert
+          className="completion-banner"
+          type="success"
+          showIcon
+          closable
+          onClose={() => setCompletedAction(null)}
+          message={completedAction.title}
+          description={completedAction.description}
+          action={completedAction.bidId && (
+            <Button type="primary" onClick={() => navigate(`/admin/bids/${completedAction.bidId}`)}>
+              Open bid details
+            </Button>
+          )}
+        />
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>Procurement Bids</h2>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/admin/bids/new')}>

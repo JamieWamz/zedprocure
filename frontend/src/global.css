@@ -883,3 +883,329 @@ html[data-theme='light'] .logout-button {
 html[data-theme='dark'] .logout-button {
   color: var(--text-color-dark) !important;
 }
+
+/* ============================================================
+   APPLICATION SHELL & WAYFINDING
+   ============================================================ */
+.app-shell {
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(13, 148, 136, 0.08), transparent 28rem),
+    var(--bg-color-light);
+}
+
+html[data-theme='dark'] .app-shell {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(45, 212, 191, 0.08), transparent 30rem),
+    var(--bg-color-dark);
+}
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 12px;
+  z-index: 10000;
+  transform: translateY(-160%);
+  padding: 10px 14px;
+  border-radius: var(--border-radius-md);
+  background: #0f172a;
+  color: #fff;
+  font-weight: 700;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.app-layout-header {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  height: var(--app-header-height);
+  padding: 0 clamp(16px, 3vw, 40px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.8) !important;
+  backdrop-filter: blur(18px);
+}
+
+html[data-theme='dark'] .app-layout-header {
+  background: rgba(15, 23, 42, 0.92) !important;
+  border-bottom-color: rgba(51, 65, 85, 0.8) !important;
+}
+
+.app-brand {
+  min-width: max-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: inherit;
+  line-height: 1.1;
+}
+
+.app-brand:hover { color: var(--primary-color-light); }
+
+.app-brand-mark {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: #fff;
+  font-size: 20px;
+  background: linear-gradient(145deg, #0f766e, #14b8a6);
+  box-shadow: 0 10px 22px -10px rgba(13, 148, 136, 0.8);
+}
+
+.app-brand-copy { display: grid; gap: 2px; }
+.app-brand-copy strong { font-size: 16px; letter-spacing: -0.02em; }
+.app-brand-copy small { color: var(--text-secondary-light); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+html[data-theme='dark'] .app-brand-copy small { color: var(--text-secondary-dark); }
+
+.app-layout-header-right {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.header-org-picker { width: min(240px, 24vw); }
+.header-appearance-select { width: 104px; }
+
+.app-user {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 6px;
+}
+
+.app-user .ant-avatar { flex: none; background: #ccfbf1; color: #115e59; font-weight: 800; }
+.app-user-copy { max-width: 190px; display: grid; line-height: 1.1; }
+.app-user-copy .ant-typography { font-size: 12px; }
+.app-user-copy .ant-tag { width: fit-content; margin: 1px 0 0; padding: 0; background: transparent; color: var(--text-secondary-light); font-size: 10px; }
+html[data-theme='dark'] .app-user-copy .ant-tag { color: var(--text-secondary-dark) !important; background: transparent !important; }
+
+.app-context-bar {
+  position: sticky;
+  top: var(--app-header-height);
+  z-index: 900;
+  height: var(--app-context-height);
+  display: flex;
+  align-items: center;
+  background: rgba(248, 250, 252, 0.94);
+  border-bottom: 1px solid var(--border-color-light);
+  backdrop-filter: blur(14px);
+}
+
+html[data-theme='dark'] .app-context-bar { background: rgba(3, 7, 18, 0.94); border-bottom-color: var(--border-color-dark); }
+
+.app-context-inner {
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 0 clamp(16px, 3vw, 40px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.app-context-navigation { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.app-context-navigation .ant-btn { padding-inline: 0 8px; }
+.app-context-navigation .ant-breadcrumb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-context-title { flex: none; font-size: 13px; }
+
+.content-wrapper {
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: clamp(16px, 2.5vw, 36px) clamp(14px, 3vw, 40px) 56px;
+  outline: none;
+}
+
+/* ============================================================
+   NAVIGATION & WORKSPACES
+   ============================================================ */
+.admin-portal-layout { min-height: calc(100dvh - var(--app-header-height) - var(--app-context-height) - 72px); background: transparent; border-radius: var(--border-radius-xl); overflow: clip; }
+.admin-sider { border: 1px solid var(--border-color-light); border-radius: var(--border-radius-xl); overflow: hidden; box-shadow: var(--shadow-md); }
+html[data-theme='dark'] .admin-sider { border-color: var(--border-color-dark); }
+.admin-navigation { height: 100%; padding: 14px 10px 18px; display: flex; flex-direction: column; }
+.admin-navigation-heading { min-height: 52px; padding: 8px 12px 14px; display: grid; align-content: center; }
+.admin-navigation-heading span { font-weight: 800; letter-spacing: -0.01em; }
+.admin-navigation-heading small { margin-top: 3px; color: #64748b; }
+.admin-navigation-menu { border-inline-end: 0 !important; background: transparent !important; }
+.admin-navigation-menu .ant-menu-item { margin-block: 3px; height: 44px; line-height: 44px; font-weight: 600; }
+.admin-navigation-cta { height: 44px; margin: auto 8px 0; }
+.admin-content { min-width: 0; padding: 0 0 0 24px; background: transparent; }
+.admin-mobile-navigation { margin-bottom: 12px; }
+.admin-mobile-navigation .ant-btn { background: #0f766e; color: #fff; }
+.workspace-page { min-width: 0; }
+
+.workspace-tabs > .ant-tabs-nav {
+  margin-bottom: 18px;
+  padding: 5px;
+  border: 1px solid var(--border-color-light);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+}
+html[data-theme='dark'] .workspace-tabs > .ant-tabs-nav { border-color: var(--border-color-dark); background: rgba(15, 23, 42, 0.88); }
+.workspace-tabs > .ant-tabs-nav::before { display: none; }
+.workspace-tabs .ant-tabs-tab { min-height: 40px; padding: 8px 14px !important; border-radius: 10px; }
+.workspace-tabs .ant-tabs-tab-active { background: rgba(13, 148, 136, 0.1); }
+
+/* ============================================================
+   NEXT ACTIONS, PROGRESS & COMPLETION
+   ============================================================ */
+.next-action-panel {
+  position: relative;
+  margin: 0 0 22px;
+  padding: 20px 22px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid rgba(13, 148, 136, 0.32);
+  border-radius: var(--border-radius-lg);
+  background: linear-gradient(110deg, rgba(240, 253, 250, 0.98), rgba(255, 255, 255, 0.98));
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.next-action-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: #0d9488;
+}
+
+html[data-theme='dark'] .next-action-panel { border-color: rgba(45, 212, 191, 0.3); background: linear-gradient(110deg, rgba(19, 78, 74, 0.32), rgba(15, 23, 42, 0.98)); }
+.next-action-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 13px; background: #ccfbf1; color: #0f766e; font-size: 20px; }
+html[data-theme='dark'] .next-action-icon { background: rgba(45, 212, 191, 0.14); color: #5eead4; }
+.next-action-copy { min-width: 0; display: grid; gap: 3px; }
+.next-action-eyebrow { color: #0f766e !important; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.next-action-copy h4.ant-typography { margin: 0; font-size: 17px; }
+.next-action-buttons { justify-content: flex-end; }
+.next-action-panel--compact { margin-bottom: 18px; padding-block: 16px; }
+
+.workflow-progress .ant-steps { overflow-x: auto; padding-bottom: 4px; }
+.workflow-progress-next { margin-top: 16px; padding: 12px 14px; display: flex; gap: 11px; align-items: flex-start; border-radius: var(--border-radius-md); background: #f0fdfa; color: #0f766e; }
+html[data-theme='dark'] .workflow-progress-next { background: rgba(19, 78, 74, 0.35); color: #5eead4; }
+.workflow-progress-next > div { display: grid; gap: 2px; }
+.workflow-progress-next--complete { background: #f0fdf4; color: #15803d; }
+.completion-banner { margin-bottom: 20px; border-radius: var(--border-radius-lg); }
+.completion-banner .ant-alert-action { align-self: center; }
+
+/* ============================================================
+   LONG-FORM WORKFLOWS
+   ============================================================ */
+.workflow-page { width: 100%; max-width: 1120px; margin: 0 auto; }
+.workflow-page-heading { margin-bottom: 20px; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.workflow-page-heading h2.ant-typography { margin: 4px 0 6px; letter-spacing: -0.035em; }
+.workflow-back-button { margin-left: -15px; }
+.workflow-steps-card { margin-bottom: 20px; padding: 20px; border: 1px solid var(--border-color-light); border-radius: var(--border-radius-lg); background: var(--card-bg-light); box-shadow: var(--shadow-sm); }
+html[data-theme='dark'] .workflow-steps-card { border-color: var(--border-color-dark); background: var(--card-bg-dark); }
+.workflow-form { padding: clamp(18px, 3vw, 32px); border: 1px solid var(--border-color-light); border-radius: var(--border-radius-xl); background: var(--card-bg-light); box-shadow: var(--shadow-xl); }
+html[data-theme='dark'] .workflow-form { border-color: var(--border-color-dark); background: var(--card-bg-dark); }
+.workflow-form-section { margin: 30px -8px 20px; padding: 24px 8px 4px; border-top: 1px solid var(--border-color-light); }
+html[data-theme='dark'] .workflow-form-section { border-top-color: var(--border-color-dark); }
+.workflow-form-section--flat { margin-top: 0; padding-top: 0; border-top: 0; }
+.workflow-section-heading { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 18px; }
+.workflow-section-heading h3 { margin: 0; font-size: 18px; }
+.workflow-section-heading p { margin: 3px 0 0; color: var(--text-secondary-light); }
+html[data-theme='dark'] .workflow-section-heading p { color: var(--text-secondary-dark); }
+.workflow-section-number { flex: none; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: #0d9488; color: #fff; font-weight: 800; }
+.workflow-helper-text { color: var(--text-secondary-light); font-size: 13px; }
+html[data-theme='dark'] .workflow-helper-text { color: var(--text-secondary-dark); }
+.boq-line-item { width: 100%; padding: 12px; display: grid !important; grid-template-columns: auto minmax(220px, 2fr) minmax(130px, 1fr) 110px 140px auto; align-items: start !important; gap: 10px !important; border: 1px solid var(--border-color-light); border-radius: 12px; background: #f8fafc; }
+html[data-theme='dark'] .boq-line-item { border-color: var(--border-color-dark); background: #111827; }
+.boq-line-item .ant-form-item { width: auto !important; min-width: 0; margin-bottom: 0; }
+.workflow-action-bar { position: sticky; bottom: 12px; z-index: 20; margin: 32px -14px -14px; padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--border-color-light); border-radius: 15px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 18px 45px -18px rgba(15, 23, 42, 0.42); backdrop-filter: blur(16px); }
+html[data-theme='dark'] .workflow-action-bar { border-color: var(--border-color-dark); background: rgba(15, 23, 42, 0.94); }
+.workflow-action-bar > div:first-child { display: grid; gap: 2px; }
+
+/* ============================================================
+   COMPONENT POLISH & ACCESSIBILITY
+   ============================================================ */
+.ant-card { box-shadow: var(--shadow-sm); }
+.ant-card:hover { border-color: rgba(13, 148, 136, 0.28); }
+.ant-card-head-title { letter-spacing: -0.01em; }
+.ant-table-thead > tr > th { font-size: 12px; font-weight: 800 !important; letter-spacing: 0.025em; text-transform: uppercase; }
+.ant-table-tbody > tr > td { vertical-align: middle; }
+.ant-form-item-label > label { font-weight: 650; }
+.ant-input, .ant-input-number, .ant-picker, .ant-select-selector { min-height: 40px; }
+.ant-btn { font-weight: 650; }
+.ant-btn:not(.ant-btn-sm):not(.ant-btn-link):not(.ant-btn-text) { min-height: 40px; }
+.ant-btn:focus-visible,
+.ant-input:focus-visible,
+.ant-select-focused .ant-select-selector,
+.ant-picker-focused,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid rgba(13, 148, 136, 0.38) !important;
+  outline-offset: 2px !important;
+}
+.enhanced-empty { padding: 28px 16px; }
+.enhanced-empty h5.ant-typography { margin: 0 0 4px; }
+.enhanced-empty .ant-empty-description { max-width: 440px; margin-inline: auto; }
+
+.page-media-banner {
+  min-height: 132px;
+  border-radius: var(--border-radius-xl);
+  box-shadow: var(--shadow-xl);
+}
+.page-media-banner::before { background: linear-gradient(105deg, rgba(2, 6, 23, 0.9), rgba(15, 118, 110, 0.74)); }
+.page-media-actions .ant-btn:not(.ant-btn-primary) { border-color: rgba(255, 255, 255, 0.56); background: rgba(255, 255, 255, 0.94); color: #0f172a; }
+.page-media-actions .ant-tag { padding: 5px 10px; border-color: rgba(255,255,255,.35); background: rgba(15,23,42,.6); color: #fff; }
+
+@media (max-width: 1000px) {
+  .app-user-copy { display: none; }
+  .boq-line-item { grid-template-columns: auto minmax(180px, 2fr) minmax(120px, 1fr) 100px auto; }
+  .boq-line-item .ant-form-item:nth-of-type(4) { grid-column: 2 / 5; }
+}
+
+@media (max-width: 767px) {
+  :root { --app-header-height: 64px; --app-context-height: 46px; }
+  .app-layout-header { padding-inline: 12px; gap: 10px; overflow-x: auto; }
+  .app-brand-copy { display: none; }
+  .app-brand-mark { width: 38px; height: 38px; }
+  .header-org-picker { width: 150px; }
+  .header-appearance-select { width: 88px; }
+  .app-user { display: none; }
+  .app-context-inner { padding-inline: 12px; }
+  .app-context-title { display: none; }
+  .app-context-navigation { width: 100%; overflow: hidden; }
+  .content-wrapper { padding: 14px 12px 40px; }
+  .admin-portal-layout { display: block; overflow: visible; }
+  .admin-content, .admin-content--mobile { padding: 0; }
+  .next-action-panel { grid-template-columns: auto 1fr; padding: 16px; }
+  .next-action-buttons { grid-column: 1 / -1; width: 100%; justify-content: stretch; }
+  .next-action-buttons .ant-btn { flex: 1 1 auto; }
+  .page-media-banner { min-height: 0; padding: 22px 18px; background-position: 65% center; }
+  .page-media-actions { width: 100%; gap: 8px; }
+  .page-media-actions .ant-btn { flex: 1 1 auto; }
+  .workspace-tabs > .ant-tabs-nav { overflow-x: auto; }
+  .workflow-form { padding: 18px 14px; }
+  .boq-line-item { grid-template-columns: auto 1fr auto; }
+  .boq-line-item .ant-form-item { grid-column: 2 / 3 !important; width: 100% !important; }
+  .boq-line-item > .ant-btn { grid-column: 3; grid-row: 1; }
+  .workflow-action-bar { position: static; margin-inline: -4px; flex-direction: column; align-items: stretch; }
+  .workflow-action-bar .ant-space { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .workflow-action-bar .ant-space-item:last-child { grid-column: 1 / -1; }
+  .workflow-action-bar .ant-btn { width: 100%; }
+  .completion-banner .ant-alert { display: block; }
+}
+
+@media (max-width: 480px) {
+  .header-appearance-select { display: none; }
+  .header-org-picker { width: 138px; }
+  .next-action-icon { display: none; }
+  .next-action-panel { grid-template-columns: 1fr; }
+  .next-action-buttons { grid-column: 1; }
+  .page-media-actions .ant-btn { width: 100%; }
+}

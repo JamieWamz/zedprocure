@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Space, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Space, Table, Tag, Typography, message } from 'antd';
 import { AuditOutlined, ReloadOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import DigitalSignatureModal from './DigitalSignatureModal';
+import EnhancedEmpty from './EnhancedEmpty';
+import { useLocation } from 'react-router-dom';
 
 const { Text } = Typography;
 
@@ -17,6 +19,8 @@ export default function OrdersList() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [signingOrder, setSigningOrder] = useState(null);
+  const location = useLocation();
+  const [completedAction, setCompletedAction] = useState(location.state?.completedAction || null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,6 +74,18 @@ export default function OrdersList() {
   ];
 
   return (
+    <div className="workspace-page">
+    {completedAction && (
+      <Alert
+        className="completion-banner"
+        type="success"
+        showIcon
+        closable
+        onClose={() => setCompletedAction(null)}
+        message={completedAction.title}
+        description={completedAction.description}
+      />
+    )}
     <Card
       title="Orders & Paperless Contracts"
       className="table-card"
@@ -81,6 +97,7 @@ export default function OrdersList() {
         rowKey="id"
         columns={columns}
         scroll={{ x: 900 }}
+        locale={{ emptyText: <EnhancedEmpty title="No orders yet" description="Award a supplier response from bid evaluation to create the first order." ctaText="Review bids" ctaPath="/admin/bids" /> }}
       />
       <DigitalSignatureModal
         open={!!signingOrder}
@@ -91,5 +108,6 @@ export default function OrdersList() {
         onSigned={load}
       />
     </Card>
+    </div>
   );
 }

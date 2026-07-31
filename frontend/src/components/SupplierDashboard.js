@@ -15,6 +15,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { cdnImages } from '../cdnAssets';
 import DigitalSignatureModal from './DigitalSignatureModal';
 import ProgressSteps from './ProgressSteps';
+import EnhancedEmpty from './EnhancedEmpty';
+import NextActionPanel from './NextActionPanel';
 
 const { Text, Title } = Typography;
 
@@ -75,6 +77,7 @@ export default function SupplierDashboard() {
   const [payoutForm] = Form.useForm();
   const [payoutPreview, setPayoutPreview] = useState(null);
   const [subscription, setSubscription] = useState({ tier: 'free', monthly_bid_limit: 0, bids_used: 0, bid_credits: 0 });
+  const [activeTab, setActiveTab] = useState('bids');
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -343,8 +346,30 @@ function getOrderProgress(status) {
     },
   ];
 
+  const actionableOrder = orders.find(order => ['pending_acceptance', 'accepted', 'delivery_in_progress'].includes(order.status));
+  const nextAction = !isVerified
+    ? {
+        title: 'Complete supplier verification',
+        description: 'Upload the mandatory compliance documents. Verification unlocks bid responses and protects buyers.',
+        actionLabel: 'Continue verification',
+        onAction: () => setVerifModalOpen(true),
+      }
+    : actionableOrder
+      ? {
+          title: 'Move your active order forward',
+          description: `Order ${actionableOrder.id.slice(0, 8)} is at “${getOrderProgress(actionableOrder.status).label}”. Open the order list to complete the next fulfillment action.`,
+          actionLabel: 'Open active orders',
+          onAction: () => setActiveTab('orders'),
+        }
+      : {
+          title: 'Find your next opportunity',
+          description: 'Review open bids, confirm the requirements, and express interest before the supplier deadline.',
+          actionLabel: 'Browse available bids',
+          onAction: () => setActiveTab('bids'),
+        };
+
   return (
-    <div>
+    <div className="workspace-page">
       {/* Page Header */}
       <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.supplier})` }}>
         <div>
@@ -370,6 +395,8 @@ function getOrderProgress(status) {
           </Button>
         </div>
       </div>
+
+      <NextActionPanel {...nextAction} />
 
       {/* Verification banner */}
       {!isVerified && (
@@ -429,7 +456,9 @@ function getOrderProgress(status) {
 
       {/* Main Tabs */}
       <Tabs
-        defaultActiveKey="bids"
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        className="workspace-tabs"
         items={[
           {
             key: 'bids',
@@ -443,7 +472,7 @@ function getOrderProgress(status) {
                   pagination={{ pageSize: 10 }}
                   size="middle"
                   scroll={{ x: 700 }}
-                  locale={{ emptyText: 'No open bids available at this time. Check back later for new opportunities.' }}
+                  locale={{ emptyText: <EnhancedEmpty title="No open bids right now" description="New verified opportunities will appear here. Refresh later or review your active orders." /> }}
                 />
               </Card>
             ),
@@ -461,7 +490,7 @@ function getOrderProgress(status) {
                   pagination={{ pageSize: 10 }}
                   size="middle"
                   scroll={{ x: 900 }}
-                  locale={{ emptyText: 'No orders yet. Accepted bids will appear here once awarded.' }}
+                  locale={{ emptyText: <EnhancedEmpty title="No orders yet" description="When your response is awarded, the order and its required next action will appear here." ctaText="Browse bids" ctaPath="/supplier" /> }}
                 />
               </Card>
             ),

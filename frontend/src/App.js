@@ -77,6 +77,9 @@ function AppContent() {
           <Route path="/admin/*" element={
             <PrivateRoute requiredRoute="/admin"><AdminPortal /></PrivateRoute>
           } />
+          <Route path="/customer/bids/:bidId" element={
+            <PrivateRoute requiredRoute="/customer"><BidDetail /></PrivateRoute>
+          } />
           <Route path="/customer/*" element={
             <PrivateRoute requiredRoute="/customer"><CustomerDashboard /></PrivateRoute>
           } />

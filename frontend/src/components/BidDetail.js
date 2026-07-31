@@ -4,6 +4,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined, EditOutlined, AuditOutlined } from '@ant-design/icons';
 import { getFileUrl } from '../utils/fileUrl';
+import NextActionPanel from './NextActionPanel';
 
 import axios from 'axios';
 
@@ -102,7 +103,7 @@ export default function BidDetail() {
     }
   };
 
-  const isSupplier = () => user?.role === 'supplier_user';
+  const isSupplier = () => user?.user_type === 'supplier_user' || user?.role === 'supplier_user';
 
   const fetchBid = async () => {
     try {
@@ -249,9 +250,65 @@ export default function BidDetail() {
   const bidSupplierId = supplierEntry?.bid_supplier_id;
 
   const statusColor = { draft: 'default', open: 'blue', evaluation: 'orange', awarded: 'green', closed: 'red' };
+  const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const nextAction = isSupplier()
+    ? !supplierEntry
+      ? {
+          title: 'Express interest to unlock your response',
+          description: 'This opportunity is open to verified suppliers. Express interest, then accept the invitation and submit pricing.',
+          actionLabel: 'Go to supplier response',
+          onAction: () => scrollTo('supplier-response'),
+        }
+      : supplierEntry.accepted == null
+        ? {
+            title: 'Respond to the invitation',
+            description: 'Accept the invitation to unlock fee payment, bill-of-quantities pricing, and technical submission.',
+            actionLabel: 'Review invitation',
+            onAction: () => scrollTo('supplier-response'),
+          }
+        : !bid.bid_access?.confirmed
+          ? {
+              title: 'Activate bid access',
+              description: 'Use your wallet or included bid credit before submitting commercial pricing.',
+              actionLabel: 'Review access fee',
+              onAction: () => scrollTo('supplier-response'),
+            }
+          : {
+              title: 'Complete and submit your response',
+              description: 'Price every line item, attach supporting evidence, accept the terms, and submit before the deadline.',
+              actionLabel: 'Continue response',
+              onAction: () => scrollTo('supplier-response'),
+            }
+    : isAdmin()
+      ? bid.status === 'evaluation'
+        ? {
+            title: 'Compare responses and award the bid',
+            description: 'Review pricing and weighted criteria, confirm the buyer quote, then create the order.',
+            actionLabel: 'Evaluate & award',
+            onAction: () => navigate(`/admin/bids/${bidId}/evaluate`),
+          }
+        : bid.status === 'awarded'
+          ? {
+              title: 'Continue with order fulfillment',
+              description: 'The award is complete. Track acceptance, escrow, delivery, and completion from the order workspace.',
+              actionLabel: 'View orders',
+              onAction: () => navigate('/admin/orders'),
+            }
+          : {
+              title: 'Invite qualified suppliers',
+              description: 'Expand participation while the bid is open, then return here to monitor responses.',
+              actionLabel: 'Go to supplier invitations',
+              onAction: () => scrollTo('supplier-invitations'),
+            }
+      : {
+          title: 'Return to your procurement workspace',
+          description: 'Set your organization requirements or track the request as it moves into evaluation and ordering.',
+          actionLabel: 'Back to customer workspace',
+          onAction: () => navigate('/customer'),
+        };
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+    <div className="workflow-page bid-detail-page">
       <Space style={{ marginBottom: 16 }} wrap>
         <Title level={3} style={{ margin: 0 }}>{bid.title}</Title>
         <Tag color={statusColor[bid.status] || 'default'} style={{ fontSize: 14, padding: '2px 12px' }}>{bid.status.toUpperCase()}</Tag>
@@ -267,6 +324,8 @@ export default function BidDetail() {
           </Button>
         )}
       </Space>
+
+      <NextActionPanel {...nextAction} compact />
 
       {/* Bid Details */}
       <Card title="Bid Information" style={{ marginBottom: 20 }}>
@@ -338,6 +397,7 @@ export default function BidDetail() {
 
       {/* Invited Suppliers */}
       <Card
+        id="supplier-invitations"
         title={`Invited Suppliers (${bid.suppliers?.length || 0})`}
         extra={
           (user?.role === 'business_admin' || user?.role === 'system_admin' || user?.role === 'customer') && (
@@ -415,7 +475,7 @@ export default function BidDetail() {
 
       {/* Supplier Actions */}
       {isSupplier() && ['open', 'evaluation'].includes(bid.status) && (
-        <Card title="Your Response" style={{ marginBottom: 20 }}>
+        <Card id="supplier-response" title="Your Response" style={{ marginBottom: 20 }}>
           {bidSupplierId ? (
             <>
               <div style={{ marginBottom: 16 }}>

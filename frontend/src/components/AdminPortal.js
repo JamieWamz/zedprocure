@@ -10,6 +10,7 @@ import {
   UserOutlined,
   BankOutlined,
   MenuOutlined,
+  ArrowRightOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -113,54 +114,53 @@ export default function AdminPortal() {
     return <div style={{ padding: 24, textAlign: 'center' }}>Business admin access is required.</div>;
   }
 
-  const selectedKey = menuItems.find(item => (
-    item.key === location.pathname ||
-    (item.key !== '/admin' && location.pathname.startsWith(`${item.key}/`))
-  ))?.key || '/admin';
+  const selectedKey = [...menuItems]
+    .sort((a, b) => b.key.length - a.key.length)
+    .find(item => (
+      item.key === location.pathname ||
+      (item.key !== '/admin' && location.pathname.startsWith(`${item.key}/`))
+    ))?.key || '/admin';
 
   const sidebarMenu = (
-    <>
-      <div style={{ height: 32, margin: 16, background: 'rgba(128, 128, 128, 0.1)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-        Admin Panel
+    <div className="admin-navigation">
+      <div className="admin-navigation-heading">
+        <span>Manage</span>
+        {!collapsed && <small>Procurement operations</small>}
       </div>
       <Menu
+        className="admin-navigation-menu"
         mode="inline"
         selectedKeys={[selectedKey]}
         items={menuItems}
         onClick={handleMenuClick}
         theme={effectiveTheme}
       />
-    </>
+      {!collapsed && (
+        <Button className="admin-navigation-cta" type="primary" icon={<PlusOutlined />} onClick={() => handleMenuClick({ key: '/admin/bids/new' })}>
+          Start a new bid <ArrowRightOutlined />
+        </Button>
+      )}
+    </div>
   );
 
   return (
-    <Layout style={{ minHeight: '100vh' }} hasSider>
+    <Layout className="admin-portal-layout" hasSider>
       {/* Desktop Sider */}
       {!isMobile && (
-        <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} theme={effectiveTheme} width={220}>
+        <Sider className="admin-sider" collapsible collapsed={collapsed} onCollapse={setCollapsed} theme={effectiveTheme} width={248}>
           {sidebarMenu}
         </Sider>
       )}
 
       {/* Mobile hamburger button */}
       {isMobile && (
-        <div style={{
-          position: 'fixed',
-          top: 64,
-          left: 0,
-          zIndex: 100,
-          background: '#001529',
-          borderBottomRightRadius: 8,
-          padding: '4px 8px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        }}>
+        <div className="admin-mobile-navigation">
           <Button
             type="text"
             icon={<MenuOutlined />}
             onClick={() => setMobileDrawerOpen(true)}
-            style={{ color: '#fff', fontSize: 18 }}
             aria-label="Open navigation menu"
-          />
+          >Menu</Button>
         </div>
       )}
 
@@ -177,12 +177,7 @@ export default function AdminPortal() {
       </Drawer>
 
       {/* Main Content */}
-      <Content style={{ 
-        padding: isMobile ? '12px' : '24px', 
-        paddingLeft: isMobile ? '52px' : '24px',
-        background: 'transparent', 
-        minHeight: 280 
-      }}>
+      <Content className={`admin-content${isMobile ? ' admin-content--mobile' : ''}`}>
         {renderContent()}
       </Content>
     </Layout>

@@ -41,6 +41,14 @@ export function ThemeProvider({ children }) {
       colorBgContainer: isDark ? '#0f172a' : '#ffffff',
       colorBgLayout: isDark ? '#030712' : '#f8fafc',
       colorTextSecondary: isDark ? '#94a3b8' : '#475569',
+      borderRadius: 10,
+      borderRadiusLG: 16,
+      controlHeight: 40,
+      controlHeightLG: 48,
+      fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      boxShadowSecondary: isDark
+        ? '0 18px 40px -24px rgba(0, 0, 0, 0.85)'
+        : '0 18px 40px -24px rgba(15, 23, 42, 0.28)',
     };
   }, [resolvedTheme]);
 

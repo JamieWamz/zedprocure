@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReChartTooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { cdnImages } from '../cdnAssets';
 import ProgressSteps from './ProgressSteps';
+import NextActionPanel from './NextActionPanel';
 
 const { Text } = Typography;
 
@@ -264,9 +265,31 @@ export default function BusinessAdminDashboard() {
 
   const profitColor = parseFloat(revenue.netProfit) >= 0 ? '#389e0d' : '#cf1322';
   const ProfitIcon = parseFloat(revenue.netProfit) >= 0 ? RiseOutlined : FallOutlined;
+  const nextAction = Number(stats.totalBids || 0) === 0
+    ? {
+        title: 'Create and publish your first bid',
+        description: 'Define the scope, bill of quantities, deadline, and supplier visibility to start the procurement cycle.',
+        actionLabel: 'Create a bid',
+        onAction: () => navigate('/admin/bids/new'),
+      }
+    : verificationQueue.length > 0
+      ? {
+          title: `Review ${verificationQueue.length} supplier${verificationQueue.length === 1 ? '' : 's'} awaiting verification`,
+          description: 'Validate compliance documents so qualified suppliers can participate in open opportunities.',
+          actionLabel: 'Open verification queue',
+          onAction: () => navigate('/admin/verification'),
+        }
+      : {
+          title: 'Review the procurement pipeline',
+          description: 'Check approaching deadlines, evaluate responses, and move awarded bids into active orders.',
+          actionLabel: 'Review all bids',
+          onAction: () => navigate('/admin/bids'),
+          secondaryLabel: 'View orders',
+          onSecondary: () => navigate('/admin/orders'),
+        };
 
   return (
-    <div>
+    <div className="workspace-page">
       {/* Page Header with Wallet */}
       <div className="page-media-banner" style={{ backgroundImage: `url(${cdnImages.admin})` }}>
         <div>
@@ -289,6 +312,8 @@ export default function BusinessAdminDashboard() {
           </Button>
         </div>
       </div>
+
+      <NextActionPanel {...nextAction} />
 
       <Card title="Getting Started" style={{ marginBottom: 16 }}>
         <ProgressSteps steps={adminSteps} current={adminCurrentStep} />
