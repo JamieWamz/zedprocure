@@ -2,6 +2,9 @@
   "name": "zambia-procurement-frontend",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=24.14.1 <25"
+  },
   "proxy": "http://localhost:4000",
   "dependencies": {
     "@ant-design/icons": "^5.2.6",
