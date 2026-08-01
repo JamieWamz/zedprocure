@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../config/db');
 const { authenticate } = require('../middleware/authMiddleware');
+const { transitionEscrow } = require('../services/escrowStateMachine');
 const router = express.Router();
 
 function projectOrderForUser(order, user) {
@@ -10,6 +11,7 @@ function projectOrderForUser(order, user) {
     bid_id: order.bid_id,
     awarded_supplier_id: order.awarded_supplier_id,
     status: order.status,
+    escrow_state: order.escrow_state,
     contract_file_path: order.contract_file_path,
     created_at: order.created_at,
   };
@@ -33,10 +35,10 @@ router.get('/orders', authenticate, async (req, res) => {
   try {
     let query, params;
     const customerOrderColumns = `o.id, o.bid_id, o.awarded_supplier_id, o.total_amount,
-      o.status, o.contract_file_path, o.created_at, o.award_decision_notes, o.awarded_at,
+      o.status, o.escrow_state, o.contract_file_path, o.created_at, o.award_decision_notes, o.awarded_at,
       o.buyer_price, o.buyer_protection_fee, o.express_match_fee`;
     const supplierOrderColumns = `o.id, o.bid_id, o.awarded_supplier_id,
-      o.supplier_payout_amount AS total_amount, o.status, o.contract_file_path,
+      o.supplier_payout_amount AS total_amount, o.status, o.escrow_state, o.contract_file_path,
       o.created_at, o.award_decision_notes, o.awarded_at, o.supplier_price,
       o.supplier_payout_amount`;
     if (req.user.tenant_id) {
@@ -192,6 +194,23 @@ router.patch('/orders/:id/status', authenticate, async (req, res) => {
       'UPDATE orders SET status = $1 WHERE id = $2 RETURNING *',
       [status, id]
     );
+
+    // The order and escrow dispute states move atomically so no payout can
+    // slip through between the commercial dispute and the financial hold.
+    if (status === 'disputed') {
+      const { rows: [escrow] } = await client.query(
+        `SELECT * FROM escrow_transactions WHERE order_id=$1
+         AND status IN ('HELD_IN_ESCROW','DISBURSEMENT_PENDING') FOR UPDATE`, [id]
+      );
+      if (escrow) {
+        await transitionEscrow(client, escrow, 'DISPUTED', {
+          actorId: req.user.user_id,
+          actorType: req.user.user_type,
+          correlationId: req.correlationId,
+          reason: 'Order dispute opened',
+        });
+      }
+    }
 
     // Write audit log entry
     await client.query(

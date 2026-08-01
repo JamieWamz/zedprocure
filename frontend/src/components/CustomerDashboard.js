@@ -5,7 +5,7 @@ import {
   Badge, List, Empty, DatePicker, Tooltip
 } from 'antd';
 import {
-  AuditOutlined, BankOutlined, ClockCircleOutlined, FileTextOutlined, ReloadOutlined,
+  AuditOutlined, ClockCircleOutlined, FileTextOutlined, ReloadOutlined,
   SendOutlined, ShoppingCartOutlined, BellOutlined, CheckCircleOutlined,
   PlusOutlined, InfoCircleOutlined, DollarOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
@@ -81,7 +81,6 @@ export default function CustomerDashboard() {
   const [signingInvoice, setSigningInvoice] = useState(null);
   const [signingOrder, setSigningOrder] = useState(null);
   const [payingOrder, setPayingOrder] = useState(null);
-  const [fundingOrder, setFundingOrder] = useState(null);
   const [createReqModal, setCreateReqModal] = useState(false);
   const [activeTab, setActiveTab] = useState('bids_requirements');
 
@@ -91,7 +90,6 @@ export default function CustomerDashboard() {
   const [notifOpen, setNotifOpen] = useState(false);
 
   const [form] = Form.useForm();
-  const [fundForm] = Form.useForm();
   const [reqForm] = Form.useForm();
   const [customerBids, setCustomerBids] = useState([]);
   const { user } = useAuth();
@@ -230,25 +228,6 @@ ${values.warranty || 'No specific warranty requirements.'}
     }
   };
 
-  const submitEscrowFunding = async () => {
-    if (!fundingOrder) return;
-    try {
-      const values = await fundForm.validateFields();
-      await axios.post('/api/escrow/fund', {
-        order_id: fundingOrder.id,
-        amount: values.amount,
-        payment_method: values.payment_method,
-        transaction_ref: values.transaction_ref || `ESC-${Date.now()}-${fundingOrder.id.slice(0, 6)}`,
-      });
-      message.success('Escrow funded successfully');
-      setFundingOrder(null);
-      fundForm.resetFields();
-      loadPortal();
-    } catch (e) {
-      message.error(e.response?.data?.error || 'Failed to fund escrow');
-    }
-  };
-
   const handleUpdateOrderStatus = async (orderId, targetStatus) => {
     try {
       await axios.patch(`/api/orders/${orderId}/status`, { status: targetStatus });
@@ -256,6 +235,23 @@ ${values.warranty || 'No specific warranty requirements.'}
       loadPortal();
     } catch (e) {
       message.error(e.response?.data?.error || 'Failed to update order status');
+    }
+  };
+
+  const confirmReceiptAndRelease = async (row) => {
+    try {
+      if (row.status !== 'completed') {
+        await axios.patch(`/api/orders/${row.id}/status`, { status: 'completed' });
+      }
+      await axios.post('/api/escrow/release', {
+        order_id: row.id,
+        reason: 'Buyer confirmed goods receipt',
+      });
+      message.success('Receipt confirmed. The supplier payout is now processing.');
+      loadPortal();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Could not release protected payment');
+      loadPortal();
     }
   };
 
@@ -333,7 +329,13 @@ ${values.warranty || 'No specific warranty requirements.'}
     },
     {
       title: 'Payment protection',
-      render: (_, row) => <Tag color={['funded', 'released'].includes(row.escrow_status) ? 'success' : 'warning'}>{row.escrow_status || 'not funded'}</Tag>,
+      render: (_, row) => {
+        const state = row.escrow_state || row.escrow_status || 'not funded';
+        const color = ['HELD_IN_ESCROW', 'RELEASED', 'funded', 'released'].includes(state)
+          ? 'success'
+          : ['DISPUTED', 'FAILED', 'disputed'].includes(state) ? 'error' : 'warning';
+        return <Tag color={color}>{String(state).replace(/_/g, ' ').toLowerCase()}</Tag>;
+      },
     },
     {
       title: 'Actions',
@@ -342,18 +344,19 @@ ${values.warranty || 'No specific warranty requirements.'}
         <Space wrap>
           <Button size="small" icon={<AuditOutlined />} onClick={() => setSigningOrder(row)}>Sign</Button>
           {!['funded', 'released'].includes(row.escrow_status) && !['completed', 'disputed'].includes(row.status) && (
-            <>
-              <Button size="small" type="primary" icon={<DollarOutlined />} onClick={() => setPayingOrder(row)}>
-                Pay securely
-              </Button>
-              <Button size="small" icon={<BankOutlined />} onClick={() => {
-                fundForm.setFieldsValue({ amount: Number(row.total_amount), payment_method: 'bank_transfer' });
-                setFundingOrder(row);
-              }}>Record bank transfer</Button>
-            </>
+            <Button size="small" type="primary" icon={<DollarOutlined />} onClick={() => setPayingOrder(row)}>
+              Pay securely
+            </Button>
           )}
-          {['delivered', 'delivery_in_progress'].includes(row.status) && (
-            <Button size="small" type="primary" onClick={() => handleUpdateOrderStatus(row.id, 'completed')}>Complete Order</Button>
+          {['delivered', 'completed'].includes(row.status) &&
+            ['funded', 'HELD_IN_ESCROW'].includes(row.escrow_status || row.escrow_state) && (
+            <Button size="small" type="primary" onClick={() => confirmReceiptAndRelease(row)}>
+              Confirm receipt & release
+            </Button>
+          )}
+          {['delivered', 'delivery_in_progress'].includes(row.status) &&
+            !['funded', 'HELD_IN_ESCROW'].includes(row.escrow_status || row.escrow_state) && (
+            <Button size="small" onClick={() => handleUpdateOrderStatus(row.id, 'completed')}>Complete Order</Button>
           )}
           {!['completed', 'pending_acceptance', 'disputed'].includes(row.status) && (
             <Button size="small" danger onClick={() => handleUpdateOrderStatus(row.id, 'disputed')}>Dispute</Button>
@@ -721,28 +724,6 @@ ${values.warranty || 'No specific warranty requirements.'}
         orderLabel={payingOrder ? `Order ${payingOrder.id?.slice(0, 8)} — ${payingOrder.supplier_name || 'Supplier'}` : ''}
         onSuccess={() => { setPayingOrder(null); loadPortal(); }}
       />
-      <Modal
-        title={fundingOrder ? `Fund Escrow for Order ${fundingOrder.id.slice(0, 8)}` : 'Fund Escrow'}
-        open={!!fundingOrder}
-        onCancel={() => setFundingOrder(null)}
-        onOk={submitEscrowFunding}
-      >
-        <Form form={fundForm} layout="vertical">
-          <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Funds are held in escrow until Business Admin releases payment after fulfillment." />
-          <Form.Item name="amount" label="Amount (ZMW)" rules={[{ required: true }]}>
-            <InputNumber min={0.01} step={0.01} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="payment_method" label="Payment Method" rules={[{ required: true }]}>
-            <Select options={[
-              { value: 'mobile_money', label: 'Mobile Money (verified manual reference)' },
-              { value: 'bank_transfer', label: 'Bank Transfer (verified manual reference)' },
-            ]} />
-          </Form.Item>
-          <Form.Item name="transaction_ref" label="Transaction Reference">
-            <Input placeholder="Optional bank/mobile money reference" />
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   );
 }

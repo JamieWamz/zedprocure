@@ -75,6 +75,10 @@ export default function SupplierDashboard() {
   const [payoutLoading, setPayoutLoading] = useState(false);
   const [payoutForm] = Form.useForm();
   const [payoutPreview, setPayoutPreview] = useState(null);
+  const [payoutAccounts, setPayoutAccounts] = useState([]);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountForm] = Form.useForm();
   const [subscription, setSubscription] = useState({ tier: 'free', monthly_bid_limit: 0, bids_used: 0, bid_credits: 0 });
   const [activeTab, setActiveTab] = useState('bids');
 
@@ -95,13 +99,14 @@ export default function SupplierDashboard() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [bidsRes, statusRes, notifRes, countRes, walletRes, subscriptionRes] = await Promise.all([
+      const [bidsRes, statusRes, notifRes, countRes, walletRes, subscriptionRes, payoutAccountsRes] = await Promise.all([
         axios.get('/api/supplier/bids'),
         axios.get('/api/supplier/verification/status').catch(() => null),
         axios.get('/api/notifications').catch(() => ({ data: [] })),
         axios.get('/api/notifications/unread-count').catch(() => ({ data: { count: 0 } })),
         axios.get('/api/wallet').catch(() => ({ data: { balance: '0.00', transactions: [] } })),
         axios.get('/api/supplier/subscription').catch(() => ({ data: { tier: 'free', monthly_bid_limit: 0, bids_used: 0, bid_credits: 0 } })),
+        axios.get('/api/payout-accounts').catch(() => ({ data: [] })),
       ]);
       setBids(bidsRes.data);
       setVerificationStatus(statusRes?.data || null);
@@ -109,6 +114,7 @@ export default function SupplierDashboard() {
       setUnreadCount(countRes.data.count);
       setWallet(walletRes.data);
       setSubscription(subscriptionRes.data);
+      setPayoutAccounts(payoutAccountsRes.data);
     } catch (e) {
       console.error('Failed to load supplier dashboard:', e);
     } finally {
@@ -238,6 +244,21 @@ export default function SupplierDashboard() {
       setPayoutPreview(data);
     } catch (e) {
       if (e.response) msg.error(e.response?.data?.error || 'Unable to calculate payout');
+    }
+  };
+
+  const savePayoutAccount = async (values) => {
+    setAccountLoading(true);
+    try {
+      await axios.post('/api/payout-accounts', { ...values, is_primary: true });
+      msg.success('Payout account saved and sent for administrator verification.');
+      setAccountOpen(false);
+      accountForm.resetFields();
+      fetchData();
+    } catch (e) {
+      msg.error(e.response?.data?.error || 'Could not save payout account');
+    } finally {
+      setAccountLoading(false);
     }
   };
 
@@ -464,6 +485,19 @@ function getOrderProgress(status) {
           <Text type="secondary">Bidding allowance</Text>
           <Text strong className="portal-account-value">{remainingIncludedBids} included · {subscription.bid_credits || 0} credits</Text>
         </div>
+        <div className="portal-account-item">
+          <Text type="secondary">Order payout account</Text>
+          <Space size={6}>
+            {payoutAccounts[0]
+              ? <Tag color={payoutAccounts[0].is_verified ? 'success' : 'warning'}>
+                  {payoutAccounts[0].provider} •••• {payoutAccounts[0].destination_last4} · {payoutAccounts[0].is_verified ? 'verified' : 'review pending'}
+                </Tag>
+              : <Tag color="warning">Setup required</Tag>}
+            <Button type="link" size="small" onClick={() => setAccountOpen(true)}>
+              {payoutAccounts[0] ? 'Change' : 'Set up'}
+            </Button>
+          </Space>
+        </div>
         <div className="portal-account-item portal-account-item--action">
           <div>
             <Text type="secondary">Available balance</Text>
@@ -562,6 +596,60 @@ function getOrderProgress(status) {
         documentLabel={signingOrder ? `Order ${signingOrder.id.slice(0, 8)} – ${signingOrder.tenant_name || 'Tenant'}` : ''}
         onSigned={fetchOrders}
       />
+
+      <Modal
+        title="Order payout account"
+        open={accountOpen}
+        onCancel={() => setAccountOpen(false)}
+        footer={null}
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="Where should protected order payments be sent?"
+          description="For your protection, a platform administrator must verify every new account before it can receive an escrow release. Full account details are encrypted."
+          style={{ marginBottom: 16 }}
+        />
+        <Form form={accountForm} layout="vertical" onFinish={savePayoutAccount} initialValues={{ provider: 'MTN' }}>
+          <Form.Item name="provider" label="Payout provider" rules={[{ required: true }]}>
+            <Select options={[
+              { value: 'MTN', label: 'MTN Mobile Money' },
+              { value: 'AIRTEL', label: 'Airtel Money' },
+              { value: 'BANK', label: 'Bank account' },
+            ]} />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.provider !== current.provider}>
+            {({ getFieldValue }) => {
+              const provider = getFieldValue('provider');
+              const bank = provider === 'BANK';
+              return (
+                <>
+                  <Form.Item
+                    name="destination"
+                    label={bank ? 'Bank account number' : 'Mobile money number'}
+                    rules={bank
+                      ? [{ required: true }, { pattern: /^[A-Za-z0-9-]{6,34}$/, message: 'Enter 6–34 letters, digits, or hyphens' }]
+                      : [{ required: true }, { pattern: /^260\d{9}$/, message: 'Use 260XXXXXXXXX format' }]}
+                  >
+                    <Input autoComplete="off" placeholder={bank ? 'Account number' : '260971234567'} />
+                  </Form.Item>
+                  {bank && (
+                    <>
+                      <Form.Item name="bank_code" label="Bank code" rules={[{ required: true }]}>
+                        <Input autoComplete="off" placeholder="e.g. ZANACO" />
+                      </Form.Item>
+                      <Form.Item name="account_name" label="Account holder name" rules={[{ required: true, max: 150 }]}>
+                        <Input autoComplete="off" />
+                      </Form.Item>
+                    </>
+                  )}
+                </>
+              );
+            }}
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block loading={accountLoading}>Save payout account</Button>
+        </Form>
+      </Modal>
 
       <Modal
         title="Withdraw supplier balance"

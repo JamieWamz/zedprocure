@@ -1,257 +1,110 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const pool = require('../config/db');
-const { authenticate, requireRole } = require('../middleware/authMiddleware');
-const {
-  recordEscrowFunding, recordSubsidyFunding, recordEscrowRelease, recordEscrowRefund,
-} = require('../services/ledgerService');
-const { ensureWallet, creditWallet } = require('../services/walletService');
-const { requireEnum, requireUuid, cleanText } = require('../utils/requestValidation');
+const { authenticate } = require('../middleware/authMiddleware');
+const { requireUuid, cleanText } = require('../utils/requestValidation');
+const { triggerDisbursement, raiseDispute } = require('../services/escrowEngine');
+const { LockBusyError } = require('../services/distributedLock');
+
 const router = express.Router();
+const escrowMutationLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 6,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many escrow requests. Please wait before trying again.' },
+});
 
-// Customer funds escrow
-router.post('/escrow/fund', authenticate, async (req, res) => {
-  if (req.user.user_type !== 'tenant_user' || req.user.role !== 'customer') {
-    return res.status(403).json({ error: 'Only customers can fund escrow' });
-  }
-  const { amount } = req.body;
-  let order_id;
-  let payment_method;
-  let transaction_ref;
+// Manual references are not proof of settlement. All funding must enter through
+// a verified provider collection or bank webhook.
+router.post('/escrow/fund', authenticate, (_req, res) => {
+  res.status(410).json({
+    error: 'Manual escrow funding is disabled. Use the secure payment checkout.',
+    next: '/api/payments/mobile/initiate',
+  });
+});
+
+router.post('/escrow/release', escrowMutationLimiter, authenticate, async (req, res) => {
   try {
-    order_id = requireUuid(req.body.order_id, 'order_id');
-    payment_method = requireEnum(req.body.payment_method, ['mobile_money', 'bank_transfer'], 'payment_method');
-    transaction_ref = cleanText(req.body.transaction_ref, { required: true, maxLength: 100 });
-  } catch (e) {
-    return res.status(400).json({ error: e.message });
-  }
-  if (!order_id || !payment_method || !transaction_ref) {
-    return res.status(400).json({ error: 'order_id, payment_method and transaction_ref are required' });
-  }
-  const amountNum = Number(amount);
-  if (!Number.isFinite(amountNum) || amountNum <= 0) {
-    return res.status(400).json({ error: 'Invalid funding amount' });
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const { rows: [order] } = await client.query(
-      `SELECT b.tenant_id, o.total_amount, o.supplier_payout_amount,
-              o.platform_revenue_amount, o.subsidy_amount, o.status
-       FROM orders o JOIN bids b ON b.id = o.bid_id WHERE o.id = $1 FOR UPDATE OF o`,
-      [order_id]
-    );
-    if (!order) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Order not found' });
-    }
-    if (order.tenant_id !== req.user.tenant_id) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-    if (['completed', 'disputed'].includes(order.status)) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'This order can no longer be funded' });
-    }
-    if (amountNum !== Number(order.total_amount)) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Funding amount must match the order total' });
-    }
-
-    // Lock the escrow row so concurrent requests cannot both pass the status check.
-    const { rows: [existingEscrow] } = await client.query(
-      `SELECT status FROM escrow_accounts WHERE order_id = $1 FOR UPDATE`,
-      [order_id]
-    );
-    if (existingEscrow) {
-      if (existingEscrow.status === 'funded' || existingEscrow.status === 'released') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Escrow is already funded' });
-      }
-      if (existingEscrow.status === 'refunded') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Escrow has been refunded' });
-      }
-    }
-
-    await client.query(
-      `INSERT INTO escrow_accounts
-         (order_id, customer_user_id, amount, supplier_payout_amount, platform_fee_amount, subsidy_amount, status, funded_at)
-       VALUES ($1,$2,$3,$4,$5,$6,'funded',now())
-       ON CONFLICT (order_id) DO UPDATE SET status = 'funded', funded_at = now(),
-         amount = EXCLUDED.amount, supplier_payout_amount = EXCLUDED.supplier_payout_amount,
-         platform_fee_amount = EXCLUDED.platform_fee_amount, subsidy_amount = EXCLUDED.subsidy_amount`,
-      [order_id, req.user.user_id, amountNum, order.supplier_payout_amount,
-       Math.max(0, Number(order.platform_revenue_amount || 0)), order.subsidy_amount]
-    );
-    await client.query(
-      `INSERT INTO payment_transactions (from_user_id, amount, payment_method, transaction_ref, type, status)
-       VALUES ($1,$2,$3,$4,'escrow_funding','completed')`,
-      [req.user.user_id, amountNum, payment_method, transaction_ref]
-    );
-    await recordEscrowFunding(order_id, req.user.user_id, amountNum, client);
-    await recordSubsidyFunding(order_id, req.user.user_id, order.subsidy_amount, client);
-
-    await client.query('COMMIT');
-    res.json({ message: 'Escrow funded' });
-  } catch (e) {
-    await client.query('ROLLBACK');
-    if (e.code === '23505') {
-      return res.status(409).json({ error: 'Transaction reference already exists' });
-    }
-    console.error('Error funding escrow:', e);
-    res.status(500).json({ error: 'Failed to fund escrow' });
-  } finally {
-    client.release();
+    const orderId = requireUuid(req.body.order_id, 'order_id');
+    const reason = cleanText(req.body.reason, { maxLength: 500 });
+    const result = await triggerDisbursement({
+      orderId,
+      actor: req.user,
+      correlationId: req.correlationId,
+      operation: 'RELEASE',
+      reason,
+    });
+    res.status(202).json({ message: 'Supplier payout is being processed', ...result });
+  } catch (error) {
+    const status = error.status || (error instanceof LockBusyError ? 409 : 422);
+    res.status(status).json({ error: error.message || 'Failed to release escrow' });
   }
 });
 
-// Business Admin releases escrow to supplier after fulfillment checks.
-// Credits the supplier's in-app wallet atomically.
-router.post('/escrow/release', authenticate, requireRole('business_admin'), async (req, res) => {
-  let order_id;
+router.post('/escrow/refund', escrowMutationLimiter, authenticate, async (req, res) => {
   try {
-    order_id = requireUuid(req.body.order_id, 'order_id');
-  } catch (e) {
-    return res.status(400).json({ error: e.message });
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const { rows: [escrow] } = await client.query(
-      `SELECT ea.*, o.awarded_supplier_id FROM escrow_accounts ea
-       JOIN orders o ON o.id = ea.order_id
-       JOIN bids b ON b.id = o.bid_id
-       WHERE ea.order_id = $1 FOR UPDATE OF ea`,
-      [order_id]
-    );
-    if (!escrow) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Escrow not found' });
-    }
-    if (escrow.status !== 'funded') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Escrow not funded' });
-    }
-
-    // Get the supplier users to credit their wallets
-    const { rows: [supplierUser] } = await client.query(
-      'SELECT id FROM supplier_users WHERE supplier_id = $1 AND is_active = TRUE ORDER BY id LIMIT 1',
-      [escrow.awarded_supplier_id]
-    );
-    if (!supplierUser) throw new Error('Awarded supplier has no active payout user');
-    const supplierPayout = Number(escrow.supplier_payout_amount || escrow.amount);
-    const platformRevenue = Number(escrow.platform_fee_amount || 0);
-    const subsidyAmount = Number(escrow.subsidy_amount || 0);
-    const wallet = await ensureWallet(supplierUser.id, 'supplier_user', client);
-    await creditWallet(
-      wallet.id,
-      supplierPayout,
-      `Escrow release from order ${order_id}`,
-      client,
-      { reference: `escrow-release:${order_id}` }
-    );
-
-    await client.query(
-      'UPDATE escrow_accounts SET status = $1, released_at = now() WHERE order_id = $2',
-      ['released', order_id]
-    );
-
-    // Record double-entry ledger
-    await recordEscrowRelease(order_id, req.user.user_id, {
-      gross: Number(escrow.amount),
-      supplierPayout,
-      platformRevenue,
-      subsidyAmount,
-    }, client);
-
-    await client.query('COMMIT');
-    res.json({ message: 'Escrow released to supplier wallet', supplier_payout: supplierPayout });
-  } catch (e) {
-    await client.query('ROLLBACK');
-    console.error('Error releasing escrow:', e);
-    res.status(500).json({ error: 'Failed to release escrow' });
-  } finally {
-    client.release();
+    const orderId = requireUuid(req.body.order_id, 'order_id');
+    const reason = cleanText(req.body.reason, { required: true, maxLength: 500 });
+    const result = await triggerDisbursement({
+      orderId,
+      actor: req.user,
+      correlationId: req.correlationId,
+      operation: 'REFUND',
+      reason,
+    });
+    res.status(202).json({ message: 'Buyer refund is being processed', ...result });
+  } catch (error) {
+    const status = error.status || (error instanceof LockBusyError ? 409 : 422);
+    res.status(status).json({ error: error.message || 'Failed to refund escrow' });
   }
 });
 
-// Business Admin refunds escrow back to customer.
-// Reverse the journal entries and credit customer wallet.
-router.post('/escrow/refund', authenticate, requireRole('business_admin'), async (req, res) => {
-  let order_id;
-  let reason;
+router.post('/escrow/dispute', escrowMutationLimiter, authenticate, async (req, res) => {
   try {
-    order_id = requireUuid(req.body.order_id, 'order_id');
-    reason = cleanText(req.body.reason, { maxLength: 1000 });
-  } catch (e) {
-    return res.status(400).json({ error: e.message });
+    const orderId = requireUuid(req.body.order_id, 'order_id');
+    const reason = cleanText(req.body.reason, { required: true, maxLength: 500 });
+    const escrow = await raiseDispute({
+      orderId,
+      actor: req.user,
+      reason,
+      correlationId: req.correlationId,
+    });
+    res.status(201).json({ message: 'Dispute opened; payout is now on hold', status: escrow.status });
+  } catch (error) {
+    const status = error.status || (error instanceof LockBusyError ? 409 : 422);
+    res.status(status).json({ error: error.message });
   }
-  if (!order_id) return res.status(400).json({ error: 'order_id is required' });
+});
 
-  const client = await pool.connect();
+router.get('/escrow/:orderId/status', authenticate, async (req, res) => {
   try {
-    await client.query('BEGIN');
-
-    const { rows: [escrow] } = await client.query(
-      `SELECT ea.*, o.awarded_supplier_id FROM escrow_accounts ea
-       JOIN orders o ON o.id = ea.order_id
-       WHERE ea.order_id = $1 FOR UPDATE OF ea`,
-      [order_id]
+    const orderId = requireUuid(req.params.orderId, 'order_id');
+    const { rows: [escrow] } = await pool.query(
+      `SELECT et.id, et.order_id, et.transaction_ref, et.amount, et.currency, et.platform_fee,
+              et.payout_amount, et.status, et.collection_provider, et.payout_provider,
+              et.collection_msisdn_last4, et.failure_stage, et.failure_code, et.failure_message,
+              et.initiated_at, et.held_at, et.disbursement_requested_at, et.released_at,
+              et.disputed_at, et.refunded_at, b.tenant_id, et.seller_id
+       FROM escrow_transactions et JOIN orders o ON o.id=et.order_id JOIN bids b ON b.id=o.bid_id
+       WHERE et.order_id=$1`, [orderId]
     );
-    if (!escrow) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Escrow not found' });
-    }
-    if (escrow.status !== 'funded') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Escrow must be in funded state to refund. Current state: ' + escrow.status });
-    }
+    if (!escrow) return res.status(404).json({ error: 'Escrow transaction not found' });
 
-    // Credit the customer's wallet
-    const wallet = await ensureWallet(escrow.customer_user_id, 'tenant_user', client);
-    if (wallet.id) {
-      await creditWallet(
-        wallet.id,
-        escrow.amount,
-        `Escrow refund for order ${order_id}${reason ? ': ' + reason : ''}`,
-        client
+    let allowed = req.user.user_type === 'platform_admin' ||
+      (req.user.user_type === 'tenant_user' && req.user.tenant_id === escrow.tenant_id);
+    if (req.user.user_type === 'supplier_user') {
+      const { rows: [supplier] } = await pool.query(
+        'SELECT supplier_id FROM supplier_users WHERE id=$1', [req.user.user_id]
       );
+      allowed = supplier?.supplier_id === escrow.seller_id;
     }
-
-    // Mark escrow as refunded
-    await client.query(
-      'UPDATE escrow_accounts SET status = $1 WHERE order_id = $2',
-      ['refunded', order_id]
-    );
-    await recordEscrowRefund(
-      order_id,
-      req.user.user_id,
-      Number(escrow.amount),
-      Number(escrow.subsidy_amount || 0),
-      client
-    );
-
-    // Record reversal in payment_transactions
-    await client.query(
-      `INSERT INTO payment_transactions (from_user_id, to_user_id, amount, payment_method, transaction_ref, type, status, gateway_response)
-       VALUES ($1, $2, $3, $4, $5, 'refund', 'completed', $6)`,
-      [req.user.user_id, escrow.customer_user_id, escrow.amount, 'bank_transfer',
-       `REF-${Date.now()}-${require('crypto').randomUUID().slice(0, 8)}`,
-       JSON.stringify({ reason: reason || null, escrow_id: escrow.id, order_id })]
-    );
-
-    await client.query('COMMIT');
-    res.json({ message: 'Escrow refunded to customer wallet', amount: escrow.amount });
-  } catch (e) {
-    await client.query('ROLLBACK');
-    console.error('Error refunding escrow:', e);
-    res.status(500).json({ error: 'Failed to refund escrow' });
-  } finally {
-    client.release();
+    if (!allowed) return res.status(403).json({ error: 'Access denied' });
+    delete escrow.tenant_id;
+    delete escrow.seller_id;
+    res.json(escrow);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 

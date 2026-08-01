@@ -29,12 +29,29 @@ services:
       SYSTEM_ADMIN_PASSWORD: ${SYSTEM_ADMIN_PASSWORD:-}
       BUSINESS_ADMIN_PASSWORD: ${BUSINESS_ADMIN_PASSWORD:-}
       APP_URL: ${APP_URL:-http://localhost}
+      REDIS_URL: redis://redis:6379
+      PAYMENT_DATA_ENCRYPTION_KEY: ${PAYMENT_DATA_ENCRYPTION_KEY:-}
+      PAYMENT_CALLBACK_BASE_URL: ${PAYMENT_CALLBACK_BASE_URL:-http://localhost:4000}
     ports:
       - "4000:4000"
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     command: ["sh", "-c", "DATABASE_URL=$$DATABASE_URL npx node-pg-migrate --migrations-dir src/db/migrations up && node src/index.js"]
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     restart: unless-stopped
     networks:
       - app-network

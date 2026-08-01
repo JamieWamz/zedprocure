@@ -12,6 +12,13 @@ databases:
     # Internal connection details are injected as DATABASE_URL automatically.
 
 services:
+  - type: keyvalue
+    name: zambia-procurement-redis
+    region: frankfurt
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+
   - type: web
     name: zambia-procurement-backend
     runtime: node
@@ -31,12 +38,49 @@ services:
         fromDatabase:
           name: zambia-procurement-db
           property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: zambia-procurement-redis
+          property: connectionString
       - key: NODE_ENV
         value: production
       - key: JWT_SECRET
         sync: false # Set this as a secret in the Render dashboard
       - key: SIGNATURE_SECRET
         sync: false # Separate secret for tamper-evident digital signatures
+      - key: PAYMENT_DATA_ENCRYPTION_KEY
+        generateValue: true
+      - key: PAYMENT_CALLBACK_BASE_URL
+        value: https://zambia-procurement-backend.onrender.com
+      - key: MTN_WEBHOOK_TOKEN
+        generateValue: true
+      - key: AIRTEL_WEBHOOK_TOKEN
+        generateValue: true
+      - key: BANK_WEBHOOK_TOKEN
+        generateValue: true
+      - key: MTN_MOMO_COLLECTION_SUBSCRIPTION_KEY
+        sync: false
+      - key: MTN_MOMO_COLLECTION_API_USER
+        sync: false
+      - key: MTN_MOMO_COLLECTION_API_KEY
+        sync: false
+      - key: MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY
+        sync: false
+      - key: MTN_MOMO_DISBURSEMENT_API_USER
+        sync: false
+      - key: MTN_MOMO_DISBURSEMENT_API_KEY
+        sync: false
+      - key: AIRTEL_CLIENT_ID
+        sync: false
+      - key: AIRTEL_CLIENT_SECRET
+        sync: false
+      - key: AIRTEL_DISBURSEMENT_PIN
+        sync: false
+      - key: BANK_API_BASE_URL
+        sync: false
+      - key: BANK_API_KEY
+        sync: false
       - key: CORS_ORIGINS
         value: https://zedprocure.onrender.com
       - key: COOKIE_SECURE

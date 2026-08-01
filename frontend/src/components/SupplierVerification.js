@@ -26,12 +26,17 @@ export default function SupplierVerification() {
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [rejectNotes, setRejectNotes] = useState('');
+  const [payoutAccounts, setPayoutAccounts] = useState([]);
 
   const fetchSuppliers = async () => {
     setLoading(true);
     try {
-      const { data } = await axios.get('/api/admin/verification/suppliers');
-      setSuppliers(data);
+      const [supplierRes, payoutRes] = await Promise.all([
+        axios.get('/api/admin/verification/suppliers'),
+        axios.get('/api/admin/payout-accounts').catch(() => ({ data: [] })),
+      ]);
+      setSuppliers(supplierRes.data);
+      setPayoutAccounts(payoutRes.data);
     } catch {
       message.error('Failed to load suppliers');
     } finally {
@@ -146,6 +151,16 @@ export default function SupplierVerification() {
     return <Tag color={color}>{doc.verification_status || 'pending'}</Tag>;
   };
 
+  const verifyPayoutAccount = async (id) => {
+    try {
+      await axios.post(`/api/admin/payout-accounts/${id}/verify`);
+      message.success('Payout account verified. It can now receive escrow releases.');
+      fetchSuppliers();
+    } catch (e) {
+      message.error(e.response?.data?.error || 'Payout account verification failed');
+    }
+  };
+
   const columns = [
     { 
       title: 'Company', 
@@ -248,6 +263,43 @@ export default function SupplierVerification() {
         loading={loading}
         scroll={{ x: 800 }}
       />
+
+      <Card
+        id="payout-accounts"
+        title="Escrow payout accounts"
+        style={{ marginTop: 24 }}
+      >
+        <Alert
+          type="warning"
+          showIcon
+          message="Verify ownership before enabling payouts"
+          description="Only masked account details are shown. Confirm the account against the supplier's approved records or provider verification before selecting Verify."
+          style={{ marginBottom: 16 }}
+        />
+        <Table
+          dataSource={payoutAccounts}
+          rowKey="id"
+          pagination={{ pageSize: 8 }}
+          columns={[
+            { title: 'Supplier', dataIndex: 'company_name', render: value => <Text strong>{value}</Text> },
+            { title: 'Provider', dataIndex: 'provider', render: value => <Tag>{value}</Tag> },
+            { title: 'Destination', render: (_, row) => <Text>•••• {row.destination_last4}</Text> },
+            { title: 'Account name', dataIndex: 'account_name', render: value => value || 'Mobile wallet' },
+            {
+              title: 'Status',
+              render: (_, row) => row.is_verified
+                ? <Tag color="success">Verified</Tag>
+                : <Tag color="warning">Review required</Tag>,
+            },
+            {
+              title: 'Action',
+              render: (_, row) => row.is_verified
+                ? <Text type="secondary">No action needed</Text>
+                : <Button type="primary" size="small" onClick={() => verifyPayoutAccount(row.id)}>Verify</Button>,
+            },
+          ]}
+        />
+      </Card>
 
       {/* Verify Supplier Modal */}
       <Modal

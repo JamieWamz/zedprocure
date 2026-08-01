@@ -47,9 +47,10 @@ There is no tenant-admin role. Customers and suppliers self-register. Suppliers 
 | Layer | Technology |
 |---|---|
 | **Frontend** | React 18, Ant Design 5, React Router, Axios, Recharts |
-| **Backend** | Node.js 22, Express 4, httpOnly cookie JWT auth, Multer uploads, Winston logging |
+| **Backend** | Node.js 24, Express 4, httpOnly cookie JWT auth, Multer uploads, Winston logging |
 | **Database** | PostgreSQL 15 with `uuid-ossp`, `node-pg-migrate` |
-| **Payments** | MTN Mobile Money, Airtel Money, Zamtel Kwacha, Bank Transfer |
+| **Payments** | MTN MoMo Collection/Disbursement, Airtel C2B/B2C, Zamtel Collection, configurable Bank APIs |
+| **Queue/Locks** | Redis-compatible Render Key Value with PostgreSQL advisory-lock fallback |
 | **Deployment** | Render (web service + static site + managed Postgres) |
 | **CI/CD** | GitHub Actions |
 | **Docker** | Docker Compose for local/self-hosted environments |
@@ -69,13 +70,13 @@ There is no tenant-admin role. Customers and suppliers self-register. Suppliers 
 │  Auth · Bids · Orders · Escrow · Invoices    │
 │  Ledger · Signatures · Notifications         │
 │  ┌─────────────────────────────────────┐    │
-│  │       Payment Service (Unified)      │    │
-│  │  MTN MoMo · Airtel · Zamtel · Bank  │    │
+│  │ Payment + Escrow State Machine       │    │
+│  │ MTN C2B/B2C · Airtel C2B/B2C · Bank │    │
 │  └─────────────────────────────────────┘    │
 └──────────────────────┬──────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────┐
-│           PostgreSQL 15 Database             │
+│ PostgreSQL 15 + Redis-compatible lock store  │
 │  Tenants · Users · Bids · Orders · Escrow   │
 │  Invoices · Ledger · Signatures · Payments  │
 └─────────────────────────────────────────────┘
@@ -181,7 +182,7 @@ features/your-feature  →  staging  →  test  →  production
 ### Finance & Accounting
 - AR/AP invoicing with aging, payment recording, reminders, and CSV/PDF export
 - **Double-entry ledger** — chart of accounts, journal, trial balance, income statement, balance sheet, cash-flow reporting
-- **Escrow** — buyer funds held in escrow, released by Business Admin after fulfillment
+- **Escrow** — explicit collection, hold, dispute, release, refund, and failure states; buyer/admin release after fulfillment
 - **Mobile money & bank payments** — MTN, Airtel, Zamtel, Bank (see §7)
 - Wallet system for supplier bidding fees
 
@@ -216,9 +217,10 @@ ZedProcure integrates with all major Zambian payment providers. See [docs/PAYMEN
 2. Selects provider and enters their mobile number
 3. A payment prompt is sent to their phone instantly
 4. The platform polls the provider every 4 seconds
-5. On success → escrow account is automatically funded
-6. Providers can also push status updates via the webhook endpoint:
-   `POST /api/payments/mobile/callback?provider=mtn`
+5. On success → funds move to `HELD_IN_ESCROW`; no seller payout occurs yet
+6. Buyer/admin confirmation starts an asynchronous supplier disbursement
+7. Provider-specific callbacks arrive at `/api/webhooks/mtn`, `/airtel`, or `/bank`
+8. A reconciliation worker polls transactions still pending after five minutes
 
 **To activate:** Set the required env vars in the Render dashboard (see §15).
 
@@ -384,7 +386,10 @@ Passwords are **never hardcoded**. Set `SYSTEM_ADMIN_PASSWORD` and `BUSINESS_ADM
 
 ```env
 DATABASE_URL=postgresql://user:pass@host:5432/dbname
+REDIS_URL=redis://localhost:6379
 JWT_SECRET=<64-char hex string>
+PAYMENT_DATA_ENCRYPTION_KEY=<base64-encoded-32-byte-key>
+PAYMENT_CALLBACK_BASE_URL=https://zambia-procurement-backend.onrender.com
 CORS_ORIGINS=https://zedprocure.onrender.com
 COOKIE_SECURE=true
 NODE_ENV=production
@@ -398,15 +403,29 @@ APP_URL=https://zedprocure.onrender.com
 ```env
 # MTN Mobile Money — register at momodeveloper.mtn.com
 MTN_MOMO_BASE_URL=https://sandbox.momodeveloper.mtn.com
-MTN_MOMO_SUBSCRIPTION_KEY=your_subscription_key
-MTN_MOMO_API_USER=your_api_user_uuid
-MTN_MOMO_API_KEY=your_api_key
 MTN_MOMO_ENV=sandbox   # → 'production' when going live
+MTN_MOMO_COLLECTION_SUBSCRIPTION_KEY=your_collection_key
+MTN_MOMO_COLLECTION_API_USER=your_collection_api_user
+MTN_MOMO_COLLECTION_API_KEY=your_collection_api_key
+MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY=your_disbursement_key
+MTN_MOMO_DISBURSEMENT_API_USER=your_disbursement_api_user
+MTN_MOMO_DISBURSEMENT_API_KEY=your_disbursement_api_key
+MTN_WEBHOOK_TOKEN=<random-provider-callback-token>
 
 # Airtel Money — register at developers.airtel.africa
 AIRTEL_BASE_URL=https://openapiuat.airtel.africa
 AIRTEL_CLIENT_ID=your_client_id
 AIRTEL_CLIENT_SECRET=your_client_secret
+AIRTEL_DISBURSEMENT_PIN=<provider-issued-encrypted-pin>
+AIRTEL_WEBHOOK_TOKEN=<random-provider-callback-token>
+
+# Selected bank's bilateral API contract
+BANK_API_BASE_URL=https://bank-api.example
+BANK_API_KEY=<secret>
+BANK_COLLECTION_PATH=/collections
+BANK_DISBURSEMENT_PATH=/disbursements
+BANK_STATUS_PATH=/transactions/:id
+BANK_WEBHOOK_TOKEN=<random-provider-callback-token>
 
 # Zamtel Kwacha — contact enterprise@zamtel.co.zm
 ZAMTEL_BASE_URL=https://api.zamtel.co.zm

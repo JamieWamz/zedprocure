@@ -4,7 +4,7 @@ const { randomUUID } = require('crypto');
 const { authenticate } = require('../middleware/authMiddleware');
 const { recordBiddingFee } = require('../services/ledgerService');
 const { consumeBidAccess, BidAccessError } = require('../services/bidFeeService');
-const { requireUuid, requireEnum } = require('../utils/requestValidation');
+const { requireUuid, requireEnum, cleanText } = require('../utils/requestValidation');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
@@ -128,7 +128,9 @@ router.post('/payments/confirm', biddingFeeLimiter, authenticate, async (req, re
 // ═══════════════════════════════════════════════════════════════════════════
 
 const { initiatePayment, syncPaymentStatus, processWebhook } = require('../services/payments/paymentService');
+const { createCollection, syncEscrowPaymentStatus, money: normalizeMoney } = require('../services/escrowEngine');
 const crypto = require('crypto');
+const { processVerifiedWebhook } = require('../services/webhookService');
 
 async function customerOrder(req, orderId) {
   if (req.user.user_type !== 'tenant_user' || req.user.role !== 'customer') return null;
@@ -149,7 +151,24 @@ async function customerOrder(req, orderId) {
  * Body: { provider, amount, msisdn, orderId, description? }
  */
 router.post('/payments/mobile/initiate', authenticate, async (req, res) => {
-  const { provider, amount, msisdn, orderId, description } = req.body;
+  let { provider, amount, msisdn, orderId, description } = req.body;
+
+  provider = String(provider || '').toLowerCase();
+  try {
+    orderId = requireUuid(orderId, 'orderId');
+    provider = requireEnum(provider, ['mtn', 'airtel', 'zamtel', 'bank'], 'provider');
+    description = cleanText(description, { maxLength: 120 });
+    if (['mtn', 'airtel', 'zamtel'].includes(provider)) {
+      msisdn = String(msisdn || '').replace(/[\s()+-]/g, '');
+      if (!/^260\d{9}$/.test(msisdn)) throw new Error('msisdn must be a valid Zambian number in 260XXXXXXXXX format');
+    } else {
+      // Bank collection can issue a transfer reference without collecting the
+      // buyer's bank account in the browser.
+      msisdn = String(req.body.account || orderId).trim();
+    }
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
 
   if (!provider || !amount || !orderId) {
     return res.status(400).json({ error: 'provider, amount, and orderId are required' });
@@ -176,20 +195,36 @@ router.post('/payments/mobile/initiate', authenticate, async (req, res) => {
       return res.status(409).json({ error: 'A payment for this order is already awaiting confirmation' });
     }
     // The amount is server-authoritative: never trust a value supplied by the browser.
-    if (Number(amount) !== Number(order.total_amount)) {
+    let requestedAmount;
+    try {
+      if (!/^\d{1,13}(\.\d{1,2})?$/.test(String(amount))) throw new Error('Invalid money format');
+      requestedAmount = normalizeMoney(amount);
+    } catch {
+      return res.status(400).json({ error: 'amount must be a positive value with no more than two decimals' });
+    }
+    if (requestedAmount !== normalizeMoney(order.total_amount)) {
       return res.status(400).json({ error: 'Payment amount must match the order total' });
     }
 
-    const result = await initiatePayment({
-      provider, amount: order.total_amount, msisdn, orderId,
-      description: description || 'ZedProcure Order Payment',
-      initiatedBy: req.user.user_id,
-    });
+    const result = provider === 'zamtel'
+      ? await initiatePayment({
+        provider, amount: order.total_amount, msisdn, orderId,
+        description: description || 'ZedProcure Order Payment',
+        initiatedBy: req.user.user_id,
+      })
+      : await createCollection({
+        orderId,
+        provider,
+        destination: msisdn,
+        buyer: req.user,
+        description: description || 'ZedProcure Order Payment',
+        correlationId: req.correlationId,
+      });
 
     res.status(201).json(result);
   } catch (e) {
     console.error('[Payment] Initiation error:', e.message);
-    const status = e.code === '23505' ? 409 : (e.message.includes('not configured') ? 503 : 502);
+    const status = e.status || (e.code === '23505' ? 409 : (e.message.includes('not configured') ? 503 : 502));
     res.status(status).json({ error: e.message });
   }
 });
@@ -209,7 +244,8 @@ router.get('/payments/mobile/:paymentLogId/status', authenticate, async (req, re
     if (req.user.user_type !== 'tenant_user' || req.user.role !== 'customer' || !rows.length) {
       return res.status(404).json({ error: 'Payment not found or access denied' });
     }
-    const status = await syncPaymentStatus(req.params.paymentLogId);
+    const status = await syncEscrowPaymentStatus(req.params.paymentLogId, req.correlationId) ||
+      await syncPaymentStatus(req.params.paymentLogId);
     res.json({ status });
   } catch (e) {
     console.error('[Payment] Status sync error:', e.message);
@@ -252,6 +288,15 @@ router.post('/payments/mobile/callback', async (req, res) => {
 
   try {
     const bodyStr = Buffer.isBuffer(req.body) ? req.body.toString() : JSON.stringify(req.body);
+    if (['mtn', 'airtel', 'bank'].includes(String(provider).toLowerCase())) {
+      const result = await processVerifiedWebhook({
+        provider,
+        rawBody: Buffer.from(bodyStr),
+        headers: req.headers,
+        correlationId: req.correlationId,
+      });
+      return res.status(200).json({ received: true, duplicate: result.duplicate, status: result.status });
+    }
     const secret = process.env.PAYMENT_WEBHOOK_SECRET;
     if (!secret) return res.status(503).json({ error: 'Webhook verification is not configured' });
     const supplied = String(req.get('x-webhook-signature') || '').replace(/^sha256=/, '');
