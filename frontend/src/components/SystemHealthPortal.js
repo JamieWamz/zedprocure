@@ -14,6 +14,8 @@ import {
 import axios from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
 import AdminSupportInbox from './AdminSupportInbox';
+import RotatingMediaBanner from './RotatingMediaBanner';
+import { cdnImages } from '../cdnAssets';
 
 const { Text } = Typography;
 const IMMUTABLE_EMAIL = 'wamuyuwamundia@gmail.com';
@@ -715,7 +717,7 @@ export default function SystemHealthPortal() {
 
   return (
     <div className="workspace-page system-control-plane">
-      <div className="page-media-banner">
+      <RotatingMediaBanner images={cdnImages.systemHeroes} imagePosition="center 45%" ariaLabel="System command center">
         <div>
           <h2><CloudServerOutlined /> System Command Center</h2>
           <p>Test, maintain, upgrade and deploy the platform from one guarded operations workspace.</p>
@@ -723,7 +725,7 @@ export default function SystemHealthPortal() {
         <div className="page-media-actions">
           <Button icon={<ReloadOutlined />} onClick={loadAll} loading={loading}>Refresh</Button>
         </div>
-      </div>
+      </RotatingMediaBanner>
 
       <Tabs
         id="system-control-tabs"

@@ -14,6 +14,9 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReChartTooltip
 import ProgressSteps from './ProgressSteps';
 import NextActionPanel from './NextActionPanel';
 import { getNotificationDestination, isActivationKey } from '../utils/notificationNavigation';
+import RotatingMediaBanner from './RotatingMediaBanner';
+import { cdnImages } from '../cdnAssets';
+import ProcurementRequestDetails from './ProcurementRequestDetails';
 
 const { Text } = Typography;
 
@@ -73,6 +76,7 @@ export default function BusinessAdminDashboard() {
 
   // Customer Procurement Requests State
   const [adminProcurementRequests, setAdminProcurementRequests] = useState([]);
+  const [viewingRequest, setViewingRequest] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -323,7 +327,7 @@ export default function BusinessAdminDashboard() {
   return (
     <div className="workspace-page">
       {/* Page Header with Wallet */}
-      <div className="page-media-banner">
+      <RotatingMediaBanner images={cdnImages.adminHeroes} ariaLabel="Business administration overview">
         <div>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Business Dashboard</h2>
           <p>Financial overview, invoice controls, cash movement and platform procurement metrics.</p>
@@ -343,7 +347,7 @@ export default function BusinessAdminDashboard() {
             Wallet: ZMW {wallet?.balance || '0.00'}
           </Button>
         </div>
-      </div>
+      </RotatingMediaBanner>
 
       <NextActionPanel {...nextAction} />
 
@@ -717,7 +721,12 @@ export default function BusinessAdminDashboard() {
                     title: 'Actions',
                     render: (_, record) => (
                       <Space size="small">
-                        {record.status === 'pending' && (
+                        <Button size="small" onClick={() => setViewingRequest(record)}>View details</Button>
+                        {record.converted_bid_id ? (
+                          <Button size="small" type="primary" onClick={() => navigate(`/admin/bids/${record.converted_bid_id}`)}>
+                            Open generated bid
+                          </Button>
+                        ) : record.status === 'pending' ? (
                           <>
                             <Button size="small" type="primary" onClick={() => handleUpdateProcurementRequestStatus(record.id, 'approved')}>
                               Approve
@@ -729,12 +738,11 @@ export default function BusinessAdminDashboard() {
                               Reject
                             </Button>
                           </>
-                        )}
-                        {record.status !== 'pending' && (
+                        ) : record.status !== 'rejected' ? (
                           <Button size="small" onClick={() => navigate('/admin/bids/new', { state: { request: record } })}>
                             Create Tender
                           </Button>
-                        )}
+                        ) : null}
                       </Space>
                     ),
                   },
@@ -744,6 +752,25 @@ export default function BusinessAdminDashboard() {
           </Card>
         </Col>
       </Row>
+
+      <Modal
+        title="Customer procurement request"
+        open={Boolean(viewingRequest)}
+        onCancel={() => setViewingRequest(null)}
+        width={780}
+        footer={viewingRequest ? (
+          <Space>
+            <Button onClick={() => setViewingRequest(null)}>Close</Button>
+            {viewingRequest.converted_bid_id ? (
+              <Button type="primary" onClick={() => navigate(`/admin/bids/${viewingRequest.converted_bid_id}`)}>Open generated bid</Button>
+            ) : (
+              <Button type="primary" onClick={() => navigate('/admin/bids/new', { state: { request: viewingRequest } })}>Convert to bid</Button>
+            )}
+          </Space>
+        ) : null}
+      >
+        <ProcurementRequestDetails request={viewingRequest} />
+      </Modal>
 
       {/* Recent Transactions */}
       <Row gutter={[16, 16]}>

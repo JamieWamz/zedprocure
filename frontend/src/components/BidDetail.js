@@ -2,13 +2,26 @@ import React, { useEffect, useState } from 'react';
 import { Card, Descriptions, Tag, List, Typography, Spin, Alert, Button, message, Input, Divider, Space, Steps, Table, InputNumber, Modal, Select, Form } from 'antd';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined, EditOutlined, AuditOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseCircleOutlined, DollarOutlined, FileTextOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined, EditOutlined, AuditOutlined, ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 import { getFileUrl } from '../utils/fileUrl';
 import NextActionPanel from './NextActionPanel';
 
 import axios from 'axios';
 
 const { Text, Title } = Typography;
+
+function formatDeliveryWindow(value) {
+  if (!value) return 'Not specified';
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (typeof value === 'object') {
+    const units = ['years', 'months', 'days', 'hours', 'minutes', 'seconds'];
+    const parts = units
+      .filter(unit => Number(value[unit]))
+      .map(unit => `${Number(value[unit])} ${unit.replace(/s$/, Number(value[unit]) === 1 ? '' : 's')}`);
+    return parts.join(' ') || 'Not specified';
+  }
+  return 'Not specified';
+}
 
 export default function BidDetail() {
   // Extract bidId from either route params (for /supplier/bids/:bidId) or from pathname (for /admin/bids/:bidId)
@@ -107,13 +120,10 @@ export default function BidDetail() {
 
   const fetchBid = async () => {
     try {
-      console.log(`[BidDetail] Fetching bid details for bidId: ${bidId}`);
       const { data } = await axios.get(`/api/bids/${bidId}`);
-      console.log('[BidDetail] Successfully fetched bid details:', data);
       setBid(data);
       setError(null);
     } catch (err) {
-      console.error('[BidDetail] Error fetching bid details:', err);
       setError(err.response?.data?.error || 'Failed to load bid details');
     } finally {
       setLoading(false);
@@ -248,8 +258,23 @@ export default function BidDetail() {
     finally { setSubmittingResponse(false); }
   };
 
+  const backDestination = isSupplier() ? '/supplier?tab=bids' : isAdmin() ? '/admin/bids' : '/customer?tab=bids_requirements';
+
   if (loading) return <Spin size="large" style={{ display: 'block', margin: '40px auto' }} />;
-  if (error) return <Alert type="error" message={error} showIcon />;
+  if (error) return (
+    <div className="workflow-page bid-detail-page">
+      <Button type="link" icon={<ArrowLeftOutlined />} onClick={() => navigate(backDestination)} className="workflow-back-button">
+        Back to bids
+      </Button>
+      <Alert
+        type="error"
+        message="We could not open this bid"
+        description={error}
+        showIcon
+        action={<Button icon={<ReloadOutlined />} onClick={() => { setLoading(true); fetchBid(); }}>Try again</Button>}
+      />
+    </div>
+  );
   if (!bid) return <Alert type="warning" message="Bid not found" showIcon />;
 
   const supplierEntry = isSupplier() && bid.suppliers ? bid.suppliers.find(s => s.company_name) : null;
@@ -315,10 +340,14 @@ export default function BidDetail() {
 
   return (
     <div className="workflow-page bid-detail-page">
+      <Button type="link" icon={<ArrowLeftOutlined />} onClick={() => navigate(backDestination)} className="workflow-back-button">
+        {isSupplier() ? 'Back to opportunities' : isAdmin() ? 'Back to all bids' : 'Back to customer workspace'}
+      </Button>
       <Space style={{ marginBottom: 16 }} wrap>
         <Title level={3} style={{ margin: 0 }}>{bid.title}</Title>
         <Tag color={statusColor[bid.status] || 'default'} style={{ fontSize: 14, padding: '2px 12px' }}>{bid.status.toUpperCase()}</Tag>
         {bid.express_match && <Tag color="volcano">EXPRESS MATCH</Tag>}
+        <Button type="link" onClick={() => scrollTo('customer-requirements')}>View requirements</Button>
         {/* Admin-only: Evaluate & Award button — visible only during evaluation stage */}
         {isAdmin() && (
           <Button
@@ -406,7 +435,7 @@ export default function BidDetail() {
         id="supplier-invitations"
         title={`Invited Suppliers (${bid.suppliers?.length || 0})`}
         extra={
-          (user?.role === 'business_admin' || user?.role === 'system_admin' || user?.role === 'customer') && (
+          isAdmin() && (
             <Button
               type="primary"
               size="small"
@@ -467,11 +496,11 @@ export default function BidDetail() {
                   </Button>
                 </div>
               )}
-              <Descriptions column={2} bordered size="small">
-                <Descriptions.Item label="Budget (ZMW)">{req.budget_amount != null ? Number(req.budget_amount).toLocaleString() : 'Not specified'}</Descriptions.Item>
-                <Descriptions.Item label="Expected Delivery">{req.expected_delivery_time || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Payment Method">{req.payment_method || 'N/A'}</Descriptions.Item>
-                <Descriptions.Item label="Certification Standards">{req.certification_standards || 'N/A'}</Descriptions.Item>
+              <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
+                {!isSupplier() && <Descriptions.Item label="Budget guide (ZMW)">{req.budget_amount != null ? Number(req.budget_amount).toLocaleString() : 'Not specified'}</Descriptions.Item>}
+                <Descriptions.Item label="Expected delivery">{formatDeliveryWindow(req.expected_delivery_time)}</Descriptions.Item>
+                <Descriptions.Item label="Payment method">{req.payment_method ? String(req.payment_method).replaceAll('_', ' ') : 'Not specified'}</Descriptions.Item>
+                <Descriptions.Item label="Specifications and standards" span={2}><span className="bid-requirement-copy">{req.certification_standards || 'Not specified'}</span></Descriptions.Item>
                 {req.specifications_file_path && <Descriptions.Item label="Specifications File" span={2}><a href={getFileUrl(req.specifications_file_path)} target="_blank" rel="noreferrer">View File</a></Descriptions.Item>}
               </Descriptions>
             </div>

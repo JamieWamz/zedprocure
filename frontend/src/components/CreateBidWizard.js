@@ -6,6 +6,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import ProgressSteps from './ProgressSteps';
+import { buildProcurementRequestPrefill } from '../utils/procurementRequestPrefill';
 
 const { Dragger } = Upload;
 const { Title, Text } = Typography;
@@ -74,16 +75,14 @@ export default function CreateBidWizard() {
 
   const [techSpecFile, setTechSpecFile] = useState(null);
   const [saveAsDraft, setSaveAsDraft] = useState(false);
+  const [sourceRequest, setSourceRequest] = useState(null);
 
   useEffect(() => {
     const requestData = location.state?.request;
     if (requestData) {
-      form.setFieldsValue({
-        title: requestData.title,
-        description: requestData.description,
-        tenant_id: requestData.tenant_id,
-        bidding_fee_amount: 0,
-      });
+      const prefill = buildProcurementRequestPrefill(requestData);
+      setSourceRequest(requestData);
+      form.setFieldsValue(prefill);
       if (requestData.tenant_id) {
         setActiveTenantId(requestData.tenant_id);
       }
@@ -128,6 +127,7 @@ export default function CreateBidWizard() {
         unit_price_estimate: item.unit_price_estimate ? Number(item.unit_price_estimate) : null,
         line_order: idx + 1,
       }))));
+      if (sourceRequest?.id) formData.append('source_request_id', sourceRequest.id);
 
       if (techSpecFile) {
         formData.append('technical_specifications_file', techSpecFile);
@@ -192,6 +192,17 @@ export default function CreateBidWizard() {
         style={{ marginBottom: 16 }}
         message="Open Marketplace Mode — Bids require a structured Bill of Quantities, Incoterms, and at least one line item before publishing."
       />
+      {sourceRequest && (
+        <Alert
+          className="request-prefill-alert"
+          type="success"
+          showIcon
+          closable={false}
+          style={{ marginBottom: 16 }}
+          message={`Prepared from customer request: ${sourceRequest.title}`}
+          description="Scope, quantity, budget estimate, technical requirements and the needed-by date were transferred into this tender. Confirm the suggested supplier deadline and delivery window before publishing."
+        />
+      )}
       <Form
         className="workflow-form"
         form={form}
@@ -236,16 +247,47 @@ export default function CreateBidWizard() {
           </Select>
         </Form.Item>
 
-        <Form.Item name="deadline" label="Bid Deadline *" rules={[{ required: true, message: 'Bid deadline is required' }]}>
-          <DatePicker showTime style={{ width: '100%' }} />
+        <Form.Item name="deadline" label="Supplier response deadline *" rules={[{ required: true, message: 'Supplier response deadline is required' }]}>
+          <DatePicker showTime style={{ width: '100%' }} disabledDate={date => date && date.endOf('day').isBefore(new Date())} />
         </Form.Item>
 
-        <Form.Item name="delivery_start" label="Delivery Start">
-          <DatePicker showTime style={{ width: '100%' }} />
+        <Form.Item
+          name="delivery_start"
+          label="Delivery Start"
+          dependencies={['deadline']}
+          rules={[
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                const deadlineValue = getFieldValue('deadline');
+                if (value && deadlineValue && !value.isAfter(deadlineValue)) {
+                  return Promise.reject(new Error('Delivery must start after the supplier response deadline'));
+                }
+                return Promise.resolve();
+              },
+            }),
+          ]}
+        >
+          <DatePicker showTime style={{ width: '100%' }} disabledDate={date => date && date.endOf('day').isBefore(new Date())} />
         </Form.Item>
 
-        <Form.Item name="delivery_end" label="Delivery End">
-          <DatePicker showTime style={{ width: '100%' }} />
+        <Form.Item
+          name="delivery_end"
+          label="Delivery End / Customer Needed-by Date"
+          dependencies={['deadline', 'delivery_start']}
+          rules={[
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value) return Promise.resolve();
+                const deadlineValue = getFieldValue('deadline');
+                const startValue = getFieldValue('delivery_start');
+                if (deadlineValue && !value.isAfter(deadlineValue)) return Promise.reject(new Error('Delivery end must be after the response deadline'));
+                if (startValue && value.isBefore(startValue)) return Promise.reject(new Error('Delivery end cannot be before delivery start'));
+                return Promise.resolve();
+              },
+            }),
+          ]}
+        >
+          <DatePicker showTime style={{ width: '100%' }} disabledDate={date => date && date.endOf('day').isBefore(new Date())} />
         </Form.Item>
 
         <Form.Item name="visibility" label="Visibility" rules={[{ required: true }]}>

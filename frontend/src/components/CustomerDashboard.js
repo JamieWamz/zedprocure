@@ -19,6 +19,9 @@ import ProgressSteps from './ProgressSteps';
 import DashboardStatistic from './DashboardStatistic';
 import NextActionPanel from './NextActionPanel';
 import { getNotificationDestination, isActivationKey } from '../utils/notificationNavigation';
+import RotatingMediaBanner from './RotatingMediaBanner';
+import { cdnImages } from '../cdnAssets';
+import ProcurementRequestDetails from './ProcurementRequestDetails';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -36,6 +39,12 @@ const PAYMENT_METHOD_OPTIONS = [
   { value: 'zamtel', label: 'Zamtel Kwacha' },
   { value: 'bank_transfer', label: 'Bank Transfer (Zanaco / Stanbic / FNB)' },
   { value: 'escrow', label: 'Direct Escrow Account' },
+];
+
+const REQUEST_CATEGORIES = [
+  'Construction & Infrastructure', 'ICT & Software', 'Healthcare & Medical',
+  'Agriculture & Food', 'Transport & Logistics', 'Education & Training',
+  'Professional Services', 'Manufacturing', 'Energy & Utilities', 'Other',
 ];
 
 function money(value) {
@@ -82,6 +91,7 @@ export default function CustomerDashboard() {
   const [signingOrder, setSigningOrder] = useState(null);
   const [payingOrder, setPayingOrder] = useState(null);
   const [createReqModal, setCreateReqModal] = useState(false);
+  const [viewingRequest, setViewingRequest] = useState(null);
   const [activeTab, setActiveTab] = useState('bids_requirements');
 
   // Notifications state
@@ -215,7 +225,16 @@ ${values.warranty || 'No specific warranty requirements.'}
         description: structuredDescription,
         estimated_budget: values.estimated_budget,
         payment_method: values.payment_method,
-        required_delivery_date: values.required_delivery_date ? values.required_delivery_date.toISOString() : null,
+        required_delivery_date: values.required_delivery_date
+          ? values.required_delivery_date.hour(12).minute(0).second(0).millisecond(0).toISOString()
+          : null,
+        requirements: {
+          specification: values.description,
+          quantity: values.quantity,
+          unit_of_measure: values.unit_of_measure,
+          warranty: values.warranty || '',
+          business_category: values.business_category || '',
+        },
       });
       message.success('Procurement Request sent to Business Admin!');
       reqForm.resetFields();
@@ -367,7 +386,7 @@ ${values.warranty || 'No specific warranty requirements.'}
   ];
 
   const requestColumns = [
-    { title: 'Title', dataIndex: 'title', render: v => <Text strong>{v}</Text> },
+    { title: 'Title', dataIndex: 'title', render: (v, row) => <Button type="link" className="table-record-link" onClick={() => setViewingRequest(row)}>{v}</Button> },
     { title: 'Est. Budget', dataIndex: 'estimated_budget', render: v => v ? money(v) : 'N/A' },
     { title: 'Payment Method', dataIndex: 'payment_method', render: v => <Tag>{v || 'N/A'}</Tag> },
     {
@@ -379,6 +398,7 @@ ${values.warranty || 'No specific warranty requirements.'}
       ),
     },
     { title: 'Submitted', dataIndex: 'created_at', render: v => new Date(v).toLocaleDateString() },
+    { title: 'Action', render: (_, row) => <Button size="small" onClick={() => setViewingRequest(row)}>View details</Button> },
   ];
 
   const openRequirements = () => {
@@ -411,7 +431,12 @@ ${values.warranty || 'No specific warranty requirements.'}
 
   return (
     <div className="workspace-page">
-      <div className="page-media-banner portal-welcome-header">
+      <RotatingMediaBanner
+        images={cdnImages.customerHeroes}
+        className="portal-welcome-header"
+        imagePosition="center 52%"
+        ariaLabel="Customer workspace overview"
+      >
         <div>
           <Text className="portal-welcome-eyebrow">Customer workspace</Text>
           <h2>Welcome, {customerName}</h2>
@@ -430,7 +455,7 @@ ${values.warranty || 'No specific warranty requirements.'}
             Request something
           </Button>
         </div>
-      </div>
+      </RotatingMediaBanner>
 
       <NextActionPanel {...nextAction} />
 
@@ -513,8 +538,8 @@ ${values.warranty || 'No specific warranty requirements.'}
                           ))}
                         </Select>
                       </Form.Item>
-                      <Form.Item name="budget_amount" label="Budget guide (ZMW, optional)">
-                        <InputNumber min={0} style={{ width: '100%' }} placeholder="e.g. 50000" />
+                      <Form.Item name="budget_amount" label="Budget guide (ZMW)" rules={[{ required: true, message: 'Enter the maximum budget available for this requirement' }]}>
+                        <InputNumber min={0.01} precision={2} style={{ width: '100%' }} placeholder="e.g. 50000" />
                       </Form.Item>
                       <Form.Item name="expected_delivery_time" label="When do you need it? (optional)">
                         <Input placeholder="e.g. 14 business days" />
@@ -667,6 +692,12 @@ ${values.warranty || 'No specific warranty requirements.'}
             <Input.TextArea rows={3} placeholder="Include important specifications, dimensions, preferred features, or service scope." />
           </Form.Item>
 
+          <Form.Item name="business_category" label="Category (optional)">
+            <Select placeholder="Select the closest category" allowClear>
+              {REQUEST_CATEGORIES.map(category => <Option key={category} value={category}>{category}</Option>)}
+            </Select>
+          </Form.Item>
+
           <Form.Item name="warranty" label="Warranty or support needed (optional)">
             <Input placeholder="e.g. 1 Year Local Warranty and onsite support" />
           </Form.Item>
@@ -687,8 +718,12 @@ ${values.warranty || 'No specific warranty requirements.'}
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="required_delivery_date" label="Needed by (optional)">
-            <DatePicker style={{ width: '100%' }} />
+          <Form.Item
+            name="required_delivery_date"
+            label="Needed by (optional)"
+            extra="This date becomes the delivery target when procurement creates the bid."
+          >
+            <DatePicker style={{ width: '100%' }} disabledDate={date => date && date.endOf('day').isBefore(new Date())} />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={requestLoading} block icon={<SendOutlined />}>
@@ -696,6 +731,16 @@ ${values.warranty || 'No specific warranty requirements.'}
             </Button>
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Procurement request details"
+        open={Boolean(viewingRequest)}
+        onCancel={() => setViewingRequest(null)}
+        footer={<Button type="primary" onClick={() => setViewingRequest(null)}>Done</Button>}
+        width={760}
+      >
+        <ProcurementRequestDetails request={viewingRequest} />
       </Modal>
 
       {/* Modals for Signatures, Mobile Payments, Manual Escrow */}

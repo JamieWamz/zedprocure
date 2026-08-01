@@ -958,6 +958,98 @@ html[data-theme='dark'] .page-media-banner {
 html[data-theme='dark'] .page-media-banner h2 { color: var(--text-color-dark) !important; }
 html[data-theme='dark'] .page-media-banner p { color: var(--text-secondary-dark) !important; }
 
+.page-media-banner--image {
+  min-height: 168px;
+  padding: 28px 30px;
+  overflow: hidden;
+  isolation: isolate;
+  border: 0;
+  background: #173b38 !important;
+  color: #fff;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16);
+}
+
+.page-media-banner-image,
+.page-media-banner-scrim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.page-media-banner-image {
+  z-index: 0;
+  object-fit: cover;
+  animation: portalMediaReveal 700ms ease both;
+}
+
+.page-media-banner-scrim {
+  z-index: 1;
+  background: linear-gradient(90deg, rgba(5, 27, 25, 0.94) 0%, rgba(5, 27, 25, 0.78) 48%, rgba(5, 27, 25, 0.34) 100%);
+}
+
+.page-media-banner--image h2,
+html[data-theme='dark'] .page-media-banner--image h2 {
+  color: #fff !important;
+  font-size: clamp(23px, 3vw, 30px) !important;
+}
+
+.page-media-banner--image p,
+html[data-theme='dark'] .page-media-banner--image p {
+  color: rgba(255, 255, 255, 0.88) !important;
+  font-size: 14px;
+}
+
+.page-media-banner--image .portal-welcome-eyebrow,
+html[data-theme='dark'] .page-media-banner--image .portal-welcome-eyebrow {
+  color: #99f6e4 !important;
+}
+
+.page-media-banner--image .page-media-actions .ant-btn:not(.ant-btn-primary) {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.52);
+  background: rgba(15, 23, 42, 0.34);
+  backdrop-filter: blur(8px);
+}
+
+.page-media-banner--image .page-media-actions .ant-btn:not(.ant-btn-primary):hover,
+.page-media-banner--image .page-media-actions .ant-btn:not(.ant-btn-primary):focus-visible {
+  color: #fff;
+  border-color: #fff;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.page-media-banner-dots {
+  position: absolute;
+  z-index: 3;
+  right: 14px;
+  bottom: 12px;
+  display: flex;
+  gap: 5px;
+}
+
+.page-media-banner-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.48);
+  transition: width 180ms ease, background-color 180ms ease;
+}
+
+.page-media-banner-dots span.is-active {
+  width: 18px;
+  background: #fff;
+}
+
+@keyframes portalMediaReveal {
+  from { opacity: 0.35; transform: scale(1.015); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-media-banner-image { animation: none; }
+}
+
 /* ============================================================
    SYSTEM APPEARANCE CONTRAST & READABILITY OVERRIDES
    ============================================================ */
@@ -1629,6 +1721,8 @@ a:focus-visible,
   .next-action-buttons { grid-column: 1 / -1; width: 100%; justify-content: stretch; }
   .next-action-buttons .ant-btn { flex: 1 1 auto; }
   .page-media-banner { min-height: 0; padding: 22px 18px; background-position: 65% center; }
+  .page-media-banner--image { min-height: 184px; padding: 24px 20px; }
+  .page-media-banner-scrim { background: linear-gradient(90deg, rgba(5, 27, 25, 0.94), rgba(5, 27, 25, 0.68)); }
   .page-media-actions { width: 100%; gap: 8px; }
   .page-media-actions .ant-btn { flex: 1 1 auto; }
   .portal-welcome-header { align-items: flex-start; }
@@ -1707,6 +1801,22 @@ html[data-theme='dark'] .notification-item[data-unread='true'] { background: rgb
   background: #fef9c3 !important;
   box-shadow: inset 0 2px 0 #eab308, inset 0 -2px 0 #eab308;
   animation: notificationFocusPulse 1.2s ease-out;
+}
+
+.request-detail-copy {
+  margin-bottom: 0 !important;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bid-requirement-copy {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.procurement-request-details .ant-descriptions-item-content {
+  min-width: 0;
 }
 
 html[data-theme='dark'] .notification-focus-row > td { background: rgba(234, 179, 8, 0.16) !important; }

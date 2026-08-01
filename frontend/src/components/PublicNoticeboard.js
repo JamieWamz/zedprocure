@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Typography, Select, Tag, Spin, Empty, Input, Space, Card, Statistic, Row, Col } from 'antd';
+import { Table, Typography, Select, Tag, Empty, Input, Space, Card, Statistic, Row, Col, Button, Modal, Descriptions } from 'antd';
 import { SearchOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 
-const { Title } = Typography;
+const { Title, Paragraph } = Typography;
 
 const businessCategories = [
   'All Categories',
@@ -32,6 +33,8 @@ export default function PublicNoticeboard() {
   const [loading, setLoading] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
   const [searchText, setSearchText] = useState('');
+  const [selectedBid, setSelectedBid] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     setLoading(true);
@@ -58,6 +61,7 @@ export default function PublicNoticeboard() {
       dataIndex: 'title', 
       key: 'title',
       sorter: (a, b) => a.title.localeCompare(b.title),
+      render: (value, bid) => <Button type="link" className="table-record-link" onClick={() => setSelectedBid(bid)}>{value}</Button>,
     },
     { 
       title: 'Procuring Entity', 
@@ -100,6 +104,11 @@ export default function PublicNoticeboard() {
       render: (v) => <Tag color={statusColors[v] || 'default'}>{v?.toUpperCase()}</Tag>,
     },
     { title: 'Views', dataIndex: 'views_count', key: 'views_count', sorter: (a, b) => a.views_count - b.views_count },
+    {
+      title: 'Action',
+      key: 'action',
+      render: (_, bid) => <Button size="small" type="primary" onClick={() => setSelectedBid(bid)}>View details</Button>,
+    },
   ];
 
   return (
@@ -179,6 +188,34 @@ export default function PublicNoticeboard() {
         locale={{ emptyText: <Empty description="No open bids found" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
         scroll={{ x: 800 }}
       />
+
+      <Modal
+        title="Public bid details"
+        open={Boolean(selectedBid)}
+        onCancel={() => setSelectedBid(null)}
+        width={760}
+        footer={[
+          <Button key="close" onClick={() => setSelectedBid(null)}>Close</Button>,
+          <Button key="login" type="primary" onClick={() => navigate('/login')}>Sign in to participate</Button>,
+        ]}
+      >
+        {selectedBid && (
+          <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
+            <Descriptions.Item label="Opportunity" span={2}>{selectedBid.title}</Descriptions.Item>
+            <Descriptions.Item label="Procuring entity">{selectedBid.tenant_name}</Descriptions.Item>
+            <Descriptions.Item label="Category">{selectedBid.business_category || 'General'}</Descriptions.Item>
+            <Descriptions.Item label="Response deadline">{new Date(selectedBid.deadline).toLocaleString()}</Descriptions.Item>
+            <Descriptions.Item label="Delivery terms">{selectedBid.delivery_terms || 'Not specified'}</Descriptions.Item>
+            <Descriptions.Item label="Line items">{selectedBid.total_line_items || 0}</Descriptions.Item>
+            <Descriptions.Item label="Evaluation">{selectedBid.evaluation_method === 'lowest_price' ? 'Lowest price' : 'Best value'}</Descriptions.Item>
+            <Descriptions.Item label="Scope and requirements" span={2}>
+              <Paragraph className="request-detail-copy">{selectedBid.description || 'No additional scope was provided.'}</Paragraph>
+            </Descriptions.Item>
+            {selectedBid.delivery_start && <Descriptions.Item label="Delivery starts">{new Date(selectedBid.delivery_start).toLocaleString()}</Descriptions.Item>}
+            {selectedBid.delivery_end && <Descriptions.Item label="Delivery due">{new Date(selectedBid.delivery_end).toLocaleString()}</Descriptions.Item>}
+          </Descriptions>
+        )}
+      </Modal>
     </div>
   );
 }

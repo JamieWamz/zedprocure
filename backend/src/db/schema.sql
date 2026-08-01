@@ -127,7 +127,7 @@ CREATE TABLE bid_requirements (
     bid_id UUID NOT NULL REFERENCES bids(id),
     customer_user_id UUID NOT NULL REFERENCES tenant_users(id),
     budget_amount DECIMAL(15,2),
-    expected_delivery_time INTERVAL,
+    expected_delivery_time VARCHAR(120),
     payment_method VARCHAR(50),
     certification_standards TEXT,
     specifications_file_path VARCHAR(500),

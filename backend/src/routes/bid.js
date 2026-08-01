@@ -154,7 +154,7 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
     title, description, deadline, delivery_start, delivery_end,
     requires_large_contract, evaluation_method, bidding_fee_amount,
     delivery_terms, technical_specifications,
-    line_items, business_category, visibility, express_match
+    line_items, business_category, visibility, express_match, source_request_id
   } = req.body;
 
   // Validate required fields
@@ -173,6 +173,34 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
   }
   if (!deadline) {
     return res.status(400).json({ error: 'Bid deadline is required' });
+  }
+  const deadlineDate = new Date(deadline);
+  const deliveryStartDate = delivery_start ? new Date(delivery_start) : null;
+  const deliveryEndDate = delivery_end ? new Date(delivery_end) : null;
+  if (Number.isNaN(deadlineDate.getTime()) || deadlineDate.getTime() <= Date.now()) {
+    return res.status(400).json({ error: 'Bid deadline must be a valid future date and time' });
+  }
+  if (deliveryStartDate && Number.isNaN(deliveryStartDate.getTime())) {
+    return res.status(400).json({ error: 'Delivery start date is invalid' });
+  }
+  if (deliveryEndDate && Number.isNaN(deliveryEndDate.getTime())) {
+    return res.status(400).json({ error: 'Delivery end date is invalid' });
+  }
+  if (deliveryEndDate && deliveryEndDate <= deadlineDate) {
+    return res.status(400).json({ error: 'Delivery end must be after the supplier response deadline' });
+  }
+  if (deliveryStartDate && deliveryStartDate <= deadlineDate) {
+    return res.status(400).json({ error: 'Delivery start must be after the supplier response deadline' });
+  }
+  if (deliveryStartDate && deliveryEndDate && deliveryStartDate > deliveryEndDate) {
+    return res.status(400).json({ error: 'Delivery start must be on or before delivery end' });
+  }
+  if (source_request_id) {
+    try {
+      requireUuid(source_request_id, 'source_request_id');
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
   }
   if (!delivery_terms) {
     return res.status(400).json({ error: 'Delivery terms (Incoterms) is required. Valid values: ' + VALID_INCOTERMS.join(', ') });
@@ -225,6 +253,30 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
   try {
     await client.query('BEGIN');
 
+    if (source_request_id) {
+      const { rows: [sourceRequest] } = await client.query(
+        `SELECT id, tenant_id, status, converted_bid_id
+         FROM procurement_requests WHERE id = $1 FOR UPDATE`,
+        [source_request_id]
+      );
+      if (!sourceRequest) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Source procurement request was not found' });
+      }
+      if (sourceRequest.tenant_id !== tenantId) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Source request does not belong to the selected organization' });
+      }
+      if (sourceRequest.status === 'rejected') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'A rejected request cannot be converted to a bid' });
+      }
+      if (sourceRequest.converted_bid_id) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'This procurement request has already been converted to a bid' });
+      }
+    }
+
     const { rows: [monetizationSettings] } = await client.query(
       'SELECT express_match_fee FROM platform_monetization_settings WHERE singleton_id = TRUE'
     );
@@ -234,16 +286,26 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
       `INSERT INTO bids (tenant_id, title, description, deadline, delivery_start, delivery_end,
         requires_large_contract, evaluation_method, bidding_fee_amount, delivery_terms,
         technical_specifications, technical_specifications_path, visibility, business_category, created_by, status,
-        express_match, express_match_fee)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'draft',$16,$17) RETURNING *`,
+        express_match, express_match_fee, source_request_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'draft',$16,$17,$18) RETURNING *`,
       [
         tenantId, safeTitle, safeDescription, deadline, delivery_start || null, delivery_end || null,
         isLargeContract, evalMethod, bidFee, delivery_terms,
         safeTechnicalSpecifications, techSpecPath, visibility || 'global', business_category || null, req.user.user_id,
-        isExpressMatch, isExpressMatch ? Number(monetizationSettings?.express_match_fee || 0) : 0
+        isExpressMatch, isExpressMatch ? Number(monetizationSettings?.express_match_fee || 0) : 0,
+        source_request_id || null
       ]
     );
     const bid = bidRes.rows[0];
+
+    if (source_request_id) {
+      await client.query(
+        `UPDATE procurement_requests
+         SET status = 'converted_to_bid', converted_bid_id = $1, updated_at = now()
+         WHERE id = $2`,
+        [bid.id, source_request_id]
+      );
+    }
 
     // Insert line items
     for (let i = 0; i < parsedLineItems.length; i++) {
@@ -360,10 +422,12 @@ router.get('/bids/my-tenant-bids', authenticate, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT id, title, deadline
-       FROM bids
-       WHERE tenant_id = $1 AND status = 'open' AND deadline > now()
-       ORDER BY deadline ASC`,
+      `SELECT b.id, b.title, b.description, b.deadline, b.delivery_start, b.delivery_end,
+              b.delivery_terms, b.business_category,
+              (SELECT COUNT(*)::int FROM bid_line_items bli WHERE bli.bid_id = b.id) AS total_line_items
+       FROM bids b
+       WHERE b.tenant_id = $1 AND b.status = 'open' AND b.deadline > now()
+       ORDER BY b.deadline ASC`,
       [req.user.tenant_id]
     );
     res.json(rows);
@@ -376,10 +440,12 @@ router.get('/bids/my-tenant-bids', authenticate, async (req, res) => {
 // ─── Get bid details – includes line items, suppliers, increments views ──────
 router.get('/bids/:bidId', authenticate, async (req, res) => {
   try {
+    requireUuid(req.params.bidId, 'bidId');
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  try {
     const { bidId } = req.params;
-    console.log(`[GET /bids/:bidId] Request received for bidId: ${bidId}, user_type: ${req.user.user_type}, user_id: ${req.user.user_id}`);
-    
-    await pool.query('UPDATE bids SET views_count = views_count + 1 WHERE id = $1', [bidId]);
     
     // Select specific columns to avoid leaking sensitive data
     const { rows: [bid] } = await pool.query(
@@ -445,7 +511,15 @@ router.get('/bids/:bidId', authenticate, async (req, res) => {
       bid.suppliers = suppliers;
     }
 
-    const { rows: requirements } = await pool.query('SELECT * FROM bid_requirements WHERE bid_id=$1', [bidId]);
+    await pool.query('UPDATE bids SET views_count = views_count + 1 WHERE id = $1', [bidId]);
+
+    const { rows: requirements } = await pool.query(
+      `SELECT id, bid_id, customer_user_id, budget_amount,
+              expected_delivery_time::text AS expected_delivery_time,
+              payment_method, certification_standards, specifications_file_path, created_at
+       FROM bid_requirements WHERE bid_id = $1 ORDER BY created_at DESC`,
+      [bidId]
+    );
     bid.requirements = requirements;
 
     res.json(bid);
@@ -466,11 +540,17 @@ router.post('/bids/:bidId/requirements', authenticate, requireRole('customer'), 
   }
   let safeStandards;
   let safeFilePath;
+  let safeDeliveryWindow;
   try {
-    safeStandards = cleanText(certification_standards, { maxLength: 5000 });
+    requireUuid(bidId, 'bidId');
+    safeStandards = cleanText(certification_standards, { required: true, maxLength: 5000 });
     safeFilePath = cleanText(file_path, { maxLength: 500 });
+    safeDeliveryWindow = cleanText(expected_delivery_time, { maxLength: 120 });
   } catch (e) {
     return res.status(400).json({ error: e.message });
+  }
+  if (!['mtn', 'airtel', 'zamtel', 'bank_transfer', 'escrow'].includes(payment_method)) {
+    return res.status(400).json({ error: 'Select a supported payment method' });
   }
 
   try {
@@ -498,7 +578,7 @@ router.post('/bids/:bidId/requirements', authenticate, requireRole('customer'), 
          certification_standards = EXCLUDED.certification_standards,
          specifications_file_path = COALESCE(EXCLUDED.specifications_file_path, bid_requirements.specifications_file_path)
        RETURNING *`,
-      [bidId, req.user.user_id, buyerBudget, expected_delivery_time, payment_method, safeStandards, safeFilePath]
+      [bidId, req.user.user_id, buyerBudget, safeDeliveryWindow, payment_method, safeStandards, safeFilePath]
     );
 
     // Notify Business Admin immediately
@@ -584,8 +664,10 @@ router.put('/bids/:bidId/requirements/:requirementId', authenticate, async (req,
 router.get('/public/bids', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT b.id, b.title, b.description, b.deadline, b.evaluation_method,
-              b.delivery_terms, b.views_count, t.name AS tenant_name
+      `SELECT b.id, b.title, b.description, b.deadline, b.delivery_start, b.delivery_end,
+              b.evaluation_method, b.delivery_terms, b.business_category, b.express_match, b.status,
+              b.views_count, t.name AS tenant_name,
+              (SELECT COUNT(*)::int FROM bid_line_items bli WHERE bli.bid_id = b.id) AS total_line_items
        FROM bids b JOIN tenants t ON t.id = b.tenant_id
        WHERE b.status = 'open' ORDER BY b.created_at DESC`
     );

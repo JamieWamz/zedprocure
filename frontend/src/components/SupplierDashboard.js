@@ -18,6 +18,8 @@ import EnhancedEmpty from './EnhancedEmpty';
 import NextActionPanel from './NextActionPanel';
 import { useAuth } from '../context/AuthContext';
 import { getNotificationDestination, isActivationKey } from '../utils/notificationNavigation';
+import RotatingMediaBanner from './RotatingMediaBanner';
+import { cdnImages } from '../cdnAssets';
 
 const { Text } = Typography;
 
@@ -448,7 +450,12 @@ function getOrderProgress(status) {
 
   return (
     <div className="workspace-page">
-      <div className="page-media-banner portal-welcome-header">
+      <RotatingMediaBanner
+        images={cdnImages.supplierHeroes}
+        className="portal-welcome-header"
+        imagePosition="center 55%"
+        ariaLabel="Supplier workspace overview"
+      >
         <div>
           <Text className="portal-welcome-eyebrow">Supplier workspace</Text>
           <h2>Welcome, {supplierName}</h2>
@@ -465,7 +472,7 @@ function getOrderProgress(status) {
             <Button icon={<ReloadOutlined />} onClick={() => { fetchData(); fetchOrders(); }} aria-label="Refresh workspace" />
           </Tooltip>
         </div>
-      </div>
+      </RotatingMediaBanner>
 
       <NextActionPanel {...nextAction} />
 
