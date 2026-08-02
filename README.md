@@ -40,6 +40,16 @@ ZedProcure is a **multi-tenant SaaS** platform that digitises the full procureme
 
 There is no tenant-admin role. Customers and suppliers self-register. Suppliers start as `pending` and must be verified by Business Admin before participating in bids.
 
+### Latest developments (August 2026)
+
+- **Responsive portal experience:** shared responsive styles now support screens down to 320px, with overflow-safe tables, forms and modals plus stacked mobile controls. Business Admin has mobile navigation, an action grid, swipeable metric cards and responsive invoice/review workflows; System Admin user maintenance changes from a table to compact cards below 768px.
+- **Enforced invite-only procurement:** restricted bids require at least one active, verified supplier. The bid wizard loads the verified-supplier directory, persists invitations, prevents publishing without invitees and keeps restricted bids out of public/general discovery. Uninvited suppliers cannot view, express interest in or respond to them.
+- **Reliable self-registration:** customer and supplier account creation is transactional, performs normalized cross-account email checks and is not rolled back if a welcome email cannot be sent. The registration repair migration restores missing supplier-category, verification and document metadata on older databases.
+- **Shorter login throttle:** the login endpoint permits up to 10 requests per IP in a 10-minute window, reduced from 15 minutes.
+- **System user maintenance:** System Admin can search and filter platform, organisation and supplier accounts, view their affiliation, and edit full name, normalized email or active status. Changes are audited and protect the primary administrator, the current administrator, active role seats and cross-account email ownership.
+- **Safer identity handling:** `identityEmailGuard.js` coordinates normalized email writes across all account tables using transaction-scoped advisory locks. Login, password-reset and wallet-recipient resolution fail closed when legacy data contains ambiguous identities.
+- **Professional source names:** unclear route, service, component and utility filenames were replaced with purpose-specific names while preserving existing public URLs and portal behavior.
+
 ---
 
 ## 2. Tech Stack
@@ -83,7 +93,8 @@ There is no tenant-admin role. Customers and suppliers self-register. Suppliers 
 ```
 
 **Key design principles:**
-- **Tenant isolation** enforced via `X-Tenant-ID` headers and DB-level filtering on every query
+- **Tenant and ownership isolation** enforced through authenticated role/ownership checks and tenant filters on tenant-owned queries
+- **Global identity safety** through normalized cross-table email checks, transactional advisory locks and fail-closed identity resolution
 - **Double-entry bookkeeping** — all financial events create immutable journal entries
 - **Escrow-first** — buyer funds are held in escrow and released only after fulfillment
 - **Zero client-side payment secrets** — all provider calls happen server-side
@@ -105,6 +116,7 @@ zedprocure/
 │       ├── routes/           # Express route handlers
 │       │   ├── auth.js
 │       │   ├── bid.js
+│       │   ├── currentUser.js
 │       │   ├── order.js
 │       │   ├── payment.js    # Bidding fees + mobile money endpoints
 │       │   ├── escrow.js
@@ -112,7 +124,9 @@ zedprocure/
 │       │   ├── ledger.js
 │       │   ├── signatures.js
 │       │   ├── supplier.js
+│       │   ├── system.js
 │       │   ├── verification.js
+│       │   ├── verifiedSupplierDirectory.js
 │       │   └── ...
 │       └── services/
 │           ├── payments/
@@ -120,12 +134,23 @@ zedprocure/
 │           │   ├── airtelMoneyService.js  # Airtel Money
 │           │   ├── zamtelKwachaService.js # Zamtel Kwacha
 │           │   └── paymentService.js      # Unified payment layer
+│           ├── bidSubmissionValidator.js
+│           ├── identityEmailGuard.js
+│           ├── invoicePdfService.js
 │           ├── ledgerService.js
 │           ├── notificationService.js
 │           └── walletService.js
 ├── frontend/
 │   └── src/
 │       ├── components/       # All React components
+│       │   ├── AuthenticationPage.js
+│       │   ├── InvitationAcceptancePage.js
+│       │   ├── BusinessAdminPortal.js
+│       │   ├── SystemAdministrationPortal.js
+│       │   ├── BidManagement.js
+│       │   ├── InvoiceManagement.js
+│       │   ├── OrganizationManagement.js
+│       │   ├── ActionableEmptyState.js
 │       │   ├── PaymentModal.js          # MTN/Airtel/Zamtel/Bank UI
 │       │   ├── CustomerDashboard.js
 │       │   ├── SupplierDashboard.js
@@ -133,6 +158,10 @@ zedprocure/
 │       │   └── ...
 │       ├── context/
 │       │   └── AuthContext.js  # JWT + tenant header management
+│       ├── utils/
+│       │   ├── paymentPollingState.js
+│       │   └── systemUserMaintenance.js
+│       ├── remoteImageAssets.js
 │       ├── App.js
 │       └── index.js
 ├── docs/
@@ -173,11 +202,12 @@ features/your-feature  →  staging  →  test  →  production
 ## 6. Platform Capabilities
 
 ### Procurement
-- Organic customer registration with buyer organisation creation
-- Organic supplier registration with compliance document upload and Business Admin verification
+- Transactional customer registration with buyer organisation creation
+- Transactional supplier registration with compliance document upload and Business Admin verification
 - Multi-step bid creation wizard (title, requirements, BoQ, suppliers, deadline, visibility)
-- Public bid noticeboard for open/global bids
-- Supplier bid invitation, response submission, and bidding-fee workflow
+- Public bid noticeboard for open/global bids; restricted bids never appear in public discovery
+- Invite-only bids require at least one active, verified supplier and enforce invitation access on detail, interest and response routes
+- Verified-supplier directory, persisted invitations, targeted notifications, response submission and bidding-fee workflow
 - Bid evaluation, award, and order creation with audit trail
 - Order status lifecycle: `pending_acceptance → accepted → delivery_in_progress → delivered → completed`
 
@@ -191,13 +221,14 @@ features/your-feature  →  staging  →  test  →  production
 ### Portals
 | Portal | Key Features |
 |---|---|
-| **Customer Portal** | Requirements, invoices, orders, **Pay Now** (mobile money), escrow funding, digital signatures |
-| **Supplier Portal** | Bid opportunities, compliance verification & document upload, orders & contracts, digital signatures, notifications |
-| **Business Admin** | Full procurement ops, supplier verification, bid/order management, invoicing, escrow release, financial reports |
-| **System Admin** | Platform health, user management, organisation oversight, audit logs |
+| **Customer Portal** | Responsive requirements, invoices, orders, **Pay Now** (mobile money), escrow funding and digital signatures |
+| **Supplier Portal** | Responsive global/invited bid opportunities, compliance verification and document upload, orders, contracts, signatures and notifications |
+| **Business Admin** | Full procurement operations, verified-supplier invitation lists, supplier review, bids/orders, invoices, escrow and reports, with mobile navigation, actions and financial metrics |
+| **System Admin** | Platform health, organisation oversight, audit logs and unified user maintenance with search, type/status filters, mobile cards and affiliation-aware editing |
 
 ### Other
-- Real-time notifications with 30s polling and mark-as-read
+- Near-real-time notifications with 30s polling and mark-as-read
+- Responsive layouts across all portals, including 320px phone screens, overflow-safe data views and touch-friendly mobile controls
 - Paperless **digital signatures** on invoices and orders (signer identity, consent, SHA hash, timestamp, IP/user-agent, audit log)
 - Supplier compliance tracking with per-document status (PACRA, ZRA TPIN, Tax Clearance, Business License, Directors ID, Bank Reference)
 
@@ -231,7 +262,10 @@ ZedProcure integrates with all major Zambian payment providers. See [docs/PAYMEN
 ## 8. Security Model
 
 - **Authentication**: httpOnly, SameSite cookies. Tokens never stored in `localStorage`.
-- **Tenant isolation**: Every query is scoped by `tenant_id` extracted from the authenticated user.
+- **Login throttling**: Maximum 10 login requests per IP in each 10-minute window.
+- **Identity uniqueness**: Emails are trimmed, lowercased and checked across platform, organisation and supplier account tables while transaction advisory locks serialize concurrent writers.
+- **Ambiguous identity safety**: Login, password reset and wallet recipient lookup reject legacy identities that resolve to more than one account.
+- **Tenant isolation**: Tenant-owned operations apply authenticated role, ownership and `tenant_id` checks; system-wide and public endpoints use explicit role/visibility rules.
 - **CORS**: Restricted to `CORS_ORIGINS` — no wildcard in production.
 - **Passwords**: Minimum 10 characters, uppercase + lowercase + number + symbol required.
 - **Uploads**: Validated by both MIME type and file extension; random filenames; 10MB limit.
@@ -239,7 +273,9 @@ ZedProcure integrates with all major Zambian payment providers. See [docs/PAYMEN
 - **Escrow**: Fund/release operations use DB transactions + row-level locks.
 - **Ledger**: Journal entries and lines are immutable by design.
 - **Signatures**: Record signer identity, consent text, SHA-256 hash, timestamp, IP, user-agent, and write audit log entries.
-- **Admin seats**: Only one active System Admin and one Business Admin seat at any time.
+- **Invite-only access**: Restricted bids validate eligible invitees and deny public discovery or uninvited supplier participation.
+- **User maintenance**: System-admin-only edits are audited and protect the primary administrator, self-deactivation and occupied active administrator seats.
+- **Admin seats**: Create/reactivation paths enforce one active System Admin and one active Business Admin. Migration `1672531200009` adds a partial unique index when legacy seat data is clean and otherwise defers the constraint for maintenance remediation.
 - **Payment secrets**: All provider API calls are server-side — no credentials ever reach the browser.
 
 **Never commit:** `.env`, private keys, `DATABASE_URL`, database dumps, or uploaded files.
@@ -262,10 +298,15 @@ The project uses a **Render Blueprint** (`render.yaml`) to define both services:
 git push origin main
 ```
 
-Database migrations run automatically as a `preDeployCommand`:
+Render's free-tier web service does not support a pre-deploy command, so the backend `startCommand` runs migrations immediately before starting the API:
 ```bash
-npm run migrate:up
+npm run migrate:up && node src/index.js
 ```
+
+Recent forward-only compatibility migrations include:
+
+- `1672531200008_registration_schema_repair.js` — idempotently restores supplier business categories, verification fields, required document definitions and document metadata needed by registration.
+- `1672531200009_prepare_platform_admin_active_role_constraint.js` — adds the one-active-admin-per-role index when legacy data is clean, or warns and defers it so conflicting seats can be repaired through System Admin maintenance.
 
 **Required secrets in Render Dashboard → Environment:**
 
@@ -298,7 +339,7 @@ docker compose up --build
 ```bash
 cd backend
 npm ci
-cp .env.example .env   # fill in DATABASE_URL, JWT_SECRET, etc.
+cp ../.env.example .env   # fill in DATABASE_URL, JWT_SECRET, etc.
 npm run dev
 ```
 
@@ -311,6 +352,29 @@ npm start
 
 Requires a local or Docker PostgreSQL 15 instance.
 
+### Validation
+
+Use Node.js 24.14.1 or a compatible Node 24 release. The current validation baseline is **20 backend Jest suites / 122 tests** and **5 frontend suites / 26 tests**, plus a successful production frontend build.
+
+> Backend integration suites reset database tables. Run them only against a disposable, fully migrated test database—not a development or production database containing data you need.
+
+```bash
+# Backend (with DATABASE_URL pointing to a disposable migrated test database)
+cd backend
+npm test -- --runInBand
+npm run typecheck:payments
+npx eslint src/
+
+# Frontend
+cd ../frontend
+CI=true npm test -- --runInBand
+npm run build
+
+# Repository root
+cd ..
+docker compose config --quiet
+```
+
 ---
 
 ## 11. CI/CD Pipelines
@@ -319,9 +383,11 @@ Workflows live in [`.github/workflows/`](.github/workflows/).
 
 | Workflow | Trigger | Steps |
 |---|---|---|
-| `ci.yml` | Push / PR to `main` | `npm ci` → syntax check → frontend build → Docker Compose validate → Docker image build |
-| `pages.yml` | Push to `main` | Build React → deploy to GitHub Pages |
-| `cd.yml` | Manual (`workflow_dispatch`) | SSH into server → `git pull` → `docker compose up --build -d` |
+| `ci.yml` | Push to `main` / pull request | Backend install and syntax checks; non-blocking backend Jest run; frontend install/build; Docker Compose validation/image builds; separate non-blocking backend/frontend lint job |
+| `pages.yml` | Manual (`workflow_dispatch`) | Build React → deploy to GitHub Pages |
+| `cd.yml` | Push to `main` or manual | Validate deploy secrets → SSH into server → fast-forward pull → `docker compose up --build -d` |
+
+Frontend Jest tests are part of the local validation baseline above but are not currently executed by `ci.yml`.
 
 ---
 
@@ -330,10 +396,10 @@ Workflows live in [`.github/workflows/`](.github/workflows/).
 | Area | Endpoints |
 |---|---|
 | **Auth** | `POST /api/auth/login`, `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/me` |
-| **Registration** | `POST /api/register`, `POST /api/forgot-password`, `POST /api/reset-password` |
-| **Suppliers** | `GET /api/supplier/profile`, `POST /api/supplier/documents`, `GET /api/supplier/verification/status` |
-| **Bids** | `GET /api/public/bids`, `GET /api/tenant/bids`, `POST /api/tenants/:id/bids`, `GET /api/supplier/bids` |
-| **Requirements** | `POST /api/bids/:id/requirements` (upsert) |
+| **Registration** | `POST /api/register`, `POST /api/register-supplier`, `GET /api/required-documents`, `POST /api/forgot-password`, `POST /api/reset-password` |
+| **Suppliers** | `GET /api/supplier/profile`, `POST /api/supplier/documents`, `GET /api/supplier/verification/status`, `GET /api/suppliers/verified` |
+| **Bids** | `GET /api/public/bids`, `GET /api/tenant/bids`, `POST /api/tenants/:tid/bids`, `PUT /api/bids/:bidId/publish`, `POST /api/bids/:bidId/invite`, `GET /api/supplier/bids`, `POST /api/supplier/bids/:bidSupplierId/response` |
+| **Requirements** | `POST /api/bids/:bidId/requirements` (upsert) |
 | **Orders** | `GET /api/orders`, `POST /api/bids/:id/award`, `PATCH /api/orders/:id/status` |
 | **Payments (Bidding Fee)** | `POST /api/payments/bidding-fee`, `POST /api/payments/confirm` |
 | **Payments (Mobile Money)** | `POST /api/payments/mobile/initiate`, `GET /api/payments/mobile/:id/status` |
@@ -344,7 +410,7 @@ Workflows live in [`.github/workflows/`](.github/workflows/).
 | **Ledger** | `GET /api/ledger/accounts`, `GET /api/ledger/trial-balance`, `GET /api/ledger/income-statement` |
 | **Signatures** | `POST /api/signatures`, `GET /api/signatures/:type/:id` |
 | **Notifications** | `GET /api/notifications`, `PUT /api/notifications/:id/read` |
-| **System User Maintenance** | `GET /api/system/users`, `PATCH /api/system/users/:userType/:id` |
+| **System User Maintenance** | System-admin-only `GET /api/system/users` and `PATCH /api/system/users/:userType/:id`; `userType` is `platform_admin`, `tenant_user` or `supplier_user`, and editable fields are `full_name`, `email` and `is_active` |
 | **Admin** | `GET /api/admin/*`, `GET /api/system/*` |
 
 ---
@@ -358,7 +424,7 @@ Seeded administrator emails:
 | System Admin | `wamuyuwamundia@gmail.com` |
 | Business Admin | `brightilunga6@gmail.com` |
 
-Passwords are **never hardcoded**. Set `SYSTEM_ADMIN_PASSWORD` and `BUSINESS_ADMIN_PASSWORD` in the environment before first startup. If omitted, strong random passwords are generated and printed once in backend logs — store them securely.
+Passwords are **never hardcoded**. Set `SYSTEM_ADMIN_PASSWORD` and `BUSINESS_ADMIN_PASSWORD` in the environment before the first production startup or administrator login. Without those values, the seeded rows retain an unusable placeholder password hash.
 
 ---
 
@@ -379,7 +445,7 @@ Passwords are **never hardcoded**. Set `SYSTEM_ADMIN_PASSWORD` and `BUSINESS_ADM
    - Directors' ID Copies
    - Bank Reference Letter
 3. Business Admin reviews and verifies your account
-4. Once verified, you appear in bid invitation flows and can respond to bids
+4. Once verified, you appear in bid invitation flows, can discover global bids and can respond to restricted bids when directly invited
 
 ---
 
