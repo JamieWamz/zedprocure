@@ -164,7 +164,7 @@ export default function AdminPortal() {
             icon={<MenuOutlined />}
             onClick={() => setMobileDrawerOpen(true)}
             aria-label="Open navigation menu"
-          >Menu</Button>
+          >Menu <span className="admin-mobile-current-page">· {menuItems.find(item => item.key === selectedKey)?.label}</span></Button>
         </div>
       )}
 

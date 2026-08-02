@@ -3,6 +3,7 @@ import { Form, Input, Button, Card, Typography, message } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
+import { strongPasswordRule } from '../utils/passwordValidation';
 
 const { Title, Text } = Typography;
 
@@ -65,7 +66,8 @@ export default function AcceptInvite() {
             <Input size="large" placeholder="Your Company Ltd" />
           </Form.Item>
           
-          <Form.Item name="password" label="Password" rules={[{ required: true, min: 6 }]}>
+          <Form.Item name="password" label="Password" rules={[strongPasswordRule]}
+            extra="Use 10+ characters with uppercase, lowercase, a number, and a special character.">
             <Input.Password size="large" placeholder="Create a strong password" />
           </Form.Item>
 

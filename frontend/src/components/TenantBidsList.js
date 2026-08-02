@@ -151,7 +151,7 @@ export default function TenantBidsList() {
         </Col>
       </Row>
 
-      <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
+      <Space className="responsive-control-row admin-bid-filters" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
         <Input
           placeholder="Search bids"
           prefix={<SearchOutlined />}

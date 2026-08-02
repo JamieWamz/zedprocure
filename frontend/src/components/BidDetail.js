@@ -649,7 +649,7 @@ export default function BidDetail() {
       {/* Invite Suppliers Modal */}
       <Modal
         title={
-          <Space>
+          <Space wrap size={6}>
             <PlusOutlined style={{ color: '#1677ff' }} />
             <span>Invite Suppliers to Bid: {bid.title}</span>
           </Space>

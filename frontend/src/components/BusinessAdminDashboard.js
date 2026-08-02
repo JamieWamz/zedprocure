@@ -325,22 +325,22 @@ export default function BusinessAdminDashboard() {
         };
 
   return (
-    <div className="workspace-page">
+    <div className="workspace-page business-admin-dashboard">
       {/* Page Header with Wallet */}
       <RotatingMediaBanner images={cdnImages.adminHeroes} ariaLabel="Business administration overview">
         <div>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Business Dashboard</h2>
           <p>Financial overview, invoice controls, cash movement and platform procurement metrics.</p>
         </div>
-        <div className="page-media-actions">
+        <div className="page-media-actions admin-dashboard-actions">
           <Popover content={notificationContent} title="Notifications" trigger="click"
             open={notifOpen} onOpenChange={setNotifOpen}>
-            <Badge count={unreadCount} size="small" style={{ marginRight: 8 }}>
-              <Button icon={<BellOutlined />} aria-label="Open notifications" />
+            <Badge count={unreadCount} size="small">
+              <Button icon={<BellOutlined />} aria-label="Open notifications">Notifications</Button>
             </Badge>
           </Popover>
           <Button icon={<UserAddOutlined />} onClick={() => setInviteModalOpen(true)}>Invite Supplier</Button>
-          <Button icon={<ReloadOutlined />} onClick={fetchData} style={{ marginRight: 12 }}>Refresh</Button>
+          <Button icon={<ReloadOutlined />} onClick={fetchData}>Refresh</Button>
           <Button icon={<FileTextOutlined />} onClick={() => navigate('/admin/invoices')}>Invoices</Button>
           <Button icon={<DollarOutlined />} onClick={() => navigate('/admin/ledger')}>Ledger</Button>
           <Button type="primary" icon={<WalletOutlined />} onClick={() => setWalletModal(true)}>
@@ -356,7 +356,7 @@ export default function BusinessAdminDashboard() {
       </Card>
 
       {/* Executive financial summary */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+      <Row className="admin-metric-carousel" gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} lg={6}>
           <Card className="stat-card executive-metric executive-metric--revenue">
             <Statistic title="Total Revenue"
@@ -390,7 +390,7 @@ export default function BusinessAdminDashboard() {
       </Row>
 
       {/* Invoice Control Tower */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+      <Row className="admin-metric-carousel" gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} lg={6}>
           <Card className="stat-card" hoverable onClick={() => navigate('/admin/invoices')} style={{ cursor: 'pointer' }}>
             <Statistic title="AR Open" value={money(invoices.arOpen)} prefix={<FileTextOutlined />} valueStyle={{ color: '#1677ff' }} />

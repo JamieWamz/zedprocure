@@ -8,10 +8,26 @@ const crypto = require('crypto');
 const multer = require('multer');
 const path = require('path');
 const pool = require('../config/db');
-const { authenticate, requireRole } = require('../middleware/authMiddleware');
 const { validatePassword } = require('../utils/validation');
-const { sendPasswordReset, sendWelcome, sendInvitation } = require('../services/emailService');
+const { cleanText } = require('../utils/requestValidation');
+const { sendPasswordReset, sendWelcome } = require('../services/emailService');
 const router = express.Router();
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeEmail(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function sendWelcomeSafely(email, fullName) {
+  const logFailure = error => {
+    console.error('Welcome email could not be sent:', error.message);
+  };
+  try {
+    Promise.resolve(sendWelcome(email, fullName)).catch(logFailure);
+  } catch (error) {
+    logFailure(error);
+  }
+}
 
 // Configure multer for document uploads during registration
 const storage = multer.diskStorage({
@@ -57,6 +73,114 @@ const MANDATORY_DOCUMENT_TYPES = [
   'business_license',
 ];
 
+// ─── Self-service customer / supplier registration ──────────────────────────
+router.post('/register', async (req, res) => {
+  const email = normalizeEmail(req.body.email);
+  const { password, account_type } = req.body;
+
+  let fullName;
+  let organization;
+  let registrationNumber;
+  try {
+    fullName = cleanText(req.body.full_name, { required: true, maxLength: 150 });
+    organization = cleanText(req.body.organization, { required: true, maxLength: 255 });
+    registrationNumber = cleanText(req.body.registration_number, { maxLength: 100 }) || null;
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  if (!EMAIL_PATTERN.test(email) || email.length > 254) {
+    return res.status(400).json({ error: 'A valid email address is required' });
+  }
+  if (!['customer', 'supplier'].includes(account_type)) {
+    return res.status(400).json({ error: 'Account type must be customer or supplier' });
+  }
+  const passwordError = validatePassword(password);
+  if (passwordError) return res.status(400).json({ error: passwordError });
+
+  let client;
+  let committed = false;
+  let account;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    // Serialize registrations for the same normalized email so simultaneous
+    // requests cannot create identities in different user tables.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [email]);
+    const { rows: existing } = await client.query(
+      `SELECT email FROM (
+        SELECT email FROM platform_admins UNION ALL
+        SELECT email FROM tenant_users UNION ALL
+        SELECT email FROM supplier_users
+       ) users WHERE LOWER(email) = $1 LIMIT 1`,
+      [email]
+    );
+    if (existing.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    if (account_type === 'customer') {
+      const tenantId = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO tenants (id, name, registration_number)
+         VALUES ($1, $2, $3)`,
+        [tenantId, organization, registrationNumber]
+      );
+      const { rows: [user] } = await client.query(
+        `INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role)
+         VALUES ($1, $2, $3, $4, $5, 'customer')
+         RETURNING id, email, full_name, role`,
+        [crypto.randomUUID(), tenantId, email, passwordHash, fullName]
+      );
+      account = { ...user, account_type, tenant_id: tenantId };
+    } else {
+      const supplierId = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO suppliers
+           (id, company_name, registration_number, verification_status, is_active)
+         VALUES ($1, $2, $3, 'pending', false)`,
+        [supplierId, organization, registrationNumber]
+      );
+      const { rows: [user] } = await client.query(
+        `INSERT INTO supplier_users (id, supplier_id, email, password_hash, full_name)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, email, full_name`,
+        [crypto.randomUUID(), supplierId, email, passwordHash, fullName]
+      );
+      account = { ...user, account_type, supplier_id: supplierId, supplier_status: 'pending' };
+    }
+
+    await client.query('COMMIT');
+    committed = true;
+  } catch (error) {
+    if (!committed && client) {
+      try { await client.query('ROLLBACK'); } catch { /* connection may already be unavailable */ }
+    }
+    if (error.code === '23505') {
+      return res.status(409).json({
+        error: registrationNumber
+          ? 'An account or organization with these registration details already exists'
+          : 'An account with these details already exists',
+      });
+    }
+    console.error('Self-service registration error:', error);
+    return res.status(500).json({ error: 'Registration could not be completed' });
+  } finally {
+    client?.release();
+  }
+
+  sendWelcomeSafely(email, fullName);
+  return res.status(201).json({
+    message: account_type === 'customer'
+      ? 'Customer account created successfully'
+      : 'Supplier account created. Complete verification to participate in bids.',
+    ...account,
+  });
+});
+
 // ─── Get Required Document Types ─────────────────────────────────────────────
 router.get('/required-documents', async (req, res) => {
   try {
@@ -81,11 +205,15 @@ router.post('/register-supplier', upload.fields([
   { name: 'directors_id', maxCount: 1 },
   { name: 'bank_reference', maxCount: 1 }
 ]), async (req, res) => {
-  const { email, password, full_name, company_name, registration_number, business_category } = req.body;
+  const email = normalizeEmail(req.body.email);
+  const { password, full_name, company_name, registration_number, business_category } = req.body;
   
   // Validate required fields
   if (!email || !password || !full_name || !company_name || !business_category) {
     return res.status(400).json({ error: 'Email, password, full name, company name, and business category are required' });
+  }
+  if (!EMAIL_PATTERN.test(email) || email.length > 254) {
+    return res.status(400).json({ error: 'A valid email address is required' });
   }
   
   const pwErr = validatePassword(password);
@@ -103,9 +231,12 @@ router.post('/register-supplier', upload.fields([
     });
   }
 
-  const client = await pool.connect();
+  let client;
+  let committed = false;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [email]);
     
     // Check if email already exists
     const { rows: existing } = await client.query(
@@ -113,7 +244,7 @@ router.post('/register-supplier', upload.fields([
         SELECT email FROM platform_admins UNION ALL
         SELECT email FROM tenant_users UNION ALL
         SELECT email FROM supplier_users
-      ) u WHERE email=$1 LIMIT 1`,
+      ) u WHERE LOWER(email)=$1 LIMIT 1`,
       [email]
     );
     if (existing.length) {
@@ -145,13 +276,14 @@ router.post('/register-supplier', upload.fields([
       const file = files[0];
       await client.query(
         `INSERT INTO supplier_documents (supplier_id, document_type, file_path, document_category)
-         VALUES ($1, $2, $3, 'required')`,
-        [supplierId, docType, file.path]
+         VALUES ($1, $2, $3, $4)`,
+        [supplierId, docType, file.path, MANDATORY_DOCUMENT_TYPES.includes(docType) ? 'required' : 'optional']
       );
     }
 
     await client.query('COMMIT');
-    await sendWelcome(email, full_name);
+    committed = true;
+    sendWelcomeSafely(email, full_name);
     
     res.status(201).json({
       message: 'Supplier account created with documents. Business Admin will review and verify.',
@@ -161,11 +293,16 @@ router.post('/register-supplier', upload.fields([
       documents_uploaded: Object.keys(uploadedDocs).length,
     });
   } catch (e) {
-    await client.query('ROLLBACK');
+    if (!committed && client) {
+      try { await client.query('ROLLBACK'); } catch { /* connection may already be unavailable */ }
+    }
+    if (e.code === '23505') {
+      return res.status(409).json({ error: 'An account with this email or registration number already exists' });
+    }
     console.error('Supplier registration error:', e);
     res.status(500).json({ error: 'Registration failed: ' + e.message });
   } finally {
-    client.release();
+    client?.release();
   }
 });
 

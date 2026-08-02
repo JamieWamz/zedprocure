@@ -240,7 +240,7 @@ export default function FinancialLedger() {
         <Card
           className="table-card"
           title={trialBalance?.balanced ? <Tag color="success">Balanced</Tag> : <Tag color="error">Out of balance</Tag>}
-          extra={<Space><Text strong>Dr {money(trialBalance?.totalDebit)} / Cr {money(trialBalance?.totalCredit)}</Text><Button icon={<DownloadOutlined />} onClick={exportTrialBalance}>Export</Button></Space>}
+          extra={<Space wrap><Text strong>Dr {money(trialBalance?.totalDebit)} / Cr {money(trialBalance?.totalCredit)}</Text><Button icon={<DownloadOutlined />} onClick={exportTrialBalance}>Export</Button></Space>}
         >
           <ExpandableTable title="Trial Balance" rowKey="code" loading={loading} dataSource={trialBalance?.lines || []} columns={trialColumns} pagination={false} scroll={{ x: 760 }} />
         </Card>

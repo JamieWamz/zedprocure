@@ -378,7 +378,7 @@ export default function SupplierVerification() {
         <p><Text strong>Category:</Text> <Tag>{selectedDocument.document_category || 'required'}</Tag></p>
         <p><Text strong>Uploaded:</Text> {new Date(selectedDocument.upload_date).toLocaleString()}</p>
             
-            <Space style={{ marginTop: 16 }}>
+            <Space className="admin-document-review-actions" wrap style={{ marginTop: 16 }}>
               <Button 
                 type="primary" 
                 icon={<CheckCircleOutlined />}

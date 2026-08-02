@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { cdnImages } from '../cdnAssets';
 import { useTheme } from '../context/ThemeContext';
+import { strongPasswordRule } from '../utils/passwordValidation';
 
 const LOGIN_HERO_IMAGES = cdnImages.loginHeroes?.length ? cdnImages.loginHeroes : [cdnImages.loginHero];
 
@@ -56,21 +57,18 @@ export default function UnifiedLogin() {
     try {
       await axios.post('/api/register', values);
       
-      if (values.account_type === 'supplier') {
-        message.success('Supplier account created. Business Admin will verify it before bidding access is enabled.');
-        registerForm.resetFields();
-        registerForm.setFieldValue('account_type', 'customer');
-      } else {
-        message.success('Customer account created. Signing you in now.');
-        registerForm.resetFields();
-        registerForm.setFieldValue('account_type', 'customer');
-        try {
-          const route = await login(values.email, values.password);
-          navigate(route);
-          return;
-        } catch {
-          navigate('/login');
-        }
+      message.success(values.account_type === 'supplier'
+        ? 'Supplier account created. Opening your verification workspace.'
+        : 'Customer account created. Signing you in now.');
+      registerForm.resetFields();
+      registerForm.setFieldValue('account_type', 'customer');
+      try {
+        const route = await login(values.email, values.password);
+        navigate(route);
+        return;
+      } catch {
+        loginForm.setFieldsValue({ email: values.email });
+        setActiveTab('login');
       }
     } catch (e) {
       message.error(e.response?.data?.error || 'Registration failed');
@@ -260,12 +258,17 @@ export default function UnifiedLogin() {
                       <Input prefix={<BankOutlined style={{ color: '#94a3b8' }} />} size="large" placeholder="e.g. Freshstart Enterprises Ltd" />
                     </Form.Item>
 
-                    <Form.Item name="registration_number" label="PACRA Registration # (Optional)">
+                    <Form.Item name="registration_number" label={accountType === 'supplier' ? 'PACRA Registration # (Optional)' : 'Organization Registration # (Optional)'}>
                       <Input prefix={<SafetyCertificateOutlined style={{ color: '#94a3b8' }} />} size="large" placeholder="e.g. PACRA-2024-00123" />
                     </Form.Item>
 
-                    <Form.Item name="password" label="Password" rules={[{ required: true, min: 8, message: 'Minimum 8 characters' }]}>
-                      <Input.Password prefix={<LockOutlined style={{ color: '#94a3b8' }} />} size="large" placeholder="At least 8 characters" autoComplete="new-password" />
+                    <Form.Item
+                      name="password"
+                      label="Password"
+                      rules={[strongPasswordRule]}
+                      extra="Use 10+ characters with uppercase, lowercase, a number, and a special character."
+                    >
+                      <Input.Password prefix={<LockOutlined style={{ color: '#94a3b8' }} />} size="large" placeholder="Create a strong password" autoComplete="new-password" />
                     </Form.Item>
 
                     <Form.Item style={{ marginTop: 20 }}>

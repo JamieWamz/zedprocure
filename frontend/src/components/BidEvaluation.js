@@ -276,7 +276,7 @@ export default function BidEvaluation() {
                     const finalScore = entry.total_weight > 0 ? entry.weighted_score_sum / entry.total_weight : 0;
                     return (
                       <Card key={entry.supplier_id} size="small" style={{ marginBottom: 12 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <div className="admin-evaluation-score-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                           <Text strong style={{ fontSize: 16 }}>{entry.supplier_name}</Text>
                           <Tag color={finalScore >= 70 ? 'success' : finalScore >= 50 ? 'warning' : 'error'}>
                             Weighted Score: {finalScore.toFixed(2)}
@@ -287,6 +287,7 @@ export default function BidEvaluation() {
                           rowKey="criteria_name"
                           pagination={false}
                           size="small"
+                          scroll={{ x: 620 }}
                           columns={[
                             { title: 'Criteria', dataIndex: 'criteria_name' },
                             { title: 'Score', dataIndex: 'score', render: v => <Text strong>{v}/100</Text> },
@@ -368,7 +369,7 @@ export default function BidEvaluation() {
                           icon={<TrophyOutlined />}
                           onClick={() => openAwardModal(resp)}
                         >
-                          Award to {resp.supplier_name}
+                          Award bid
                         </Button>
                       </Space>
                     </div>

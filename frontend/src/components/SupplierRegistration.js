@@ -5,6 +5,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { cdnImages } from '../cdnAssets';
+import { strongPasswordRule } from '../utils/passwordValidation';
 
 const { Step } = Steps;
 const { Text } = Typography;
@@ -137,8 +138,8 @@ export default function SupplierRegistration() {
           <Form.Item 
             name="password" 
             label="Password" 
-            rules={[{ required: true, min: 10 }]}
-            extra="Minimum 10 characters. Use a strong password for security"
+            rules={[strongPasswordRule]}
+            extra="Use 10+ characters with uppercase, lowercase, a number, and a special character."
           >
             <Input.Password size="large" placeholder="Create a secure password" />
           </Form.Item>

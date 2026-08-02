@@ -459,13 +459,14 @@ export default function FinanceInvoices() {
 
       {/* ─── Invoice Detail Drawer ───────────────────────────────────────── */}
       <Drawer title={view ? `Invoice ${view.invoice_no}` : 'Invoice'} width={680}
+        rootClassName="admin-invoice-drawer"
         open={!!view} onClose={() => setView(null)}>
         {view && (
           <>
-            <Row gutter={16} style={{ marginBottom: 12 }}>
-              <Col span={8}><Statistic title="Total" value={money(view.total_amount, view.currency)} /></Col>
-              <Col span={8}><Statistic title="Paid" value={money(view.paid_amount, view.currency)} /></Col>
-              <Col span={8}><Statistic title="Balance" value={money(parseFloat(view.total_amount) - parseFloat(view.paid_amount), view.currency)} valueStyle={{ color: '#cf1322' }} /></Col>
+            <Row gutter={[16, 12]} style={{ marginBottom: 12 }}>
+              <Col xs={24} sm={8}><Statistic title="Total" value={money(view.total_amount, view.currency)} /></Col>
+              <Col xs={24} sm={8}><Statistic title="Paid" value={money(view.paid_amount, view.currency)} /></Col>
+              <Col xs={24} sm={8}><Statistic title="Balance" value={money(parseFloat(view.total_amount) - parseFloat(view.paid_amount), view.currency)} valueStyle={{ color: '#cf1322' }} /></Col>
             </Row>
             <Alert
               type={view.due_date < dayjs().format('YYYY-MM-DD') && OPEN_STATUSES.includes(view.status) ? 'warning' : 'info'}
@@ -474,7 +475,7 @@ export default function FinanceInvoices() {
               message={`${view.party_name}${view.party_email ? ` · ${view.party_email}` : ''}`}
               description={`Issued ${view.issue_date}. Due ${view.due_date}. ${view.notes || ''}`}
             />
-            <Space style={{ marginBottom: 12 }}>
+            <Space className="admin-invoice-actions" wrap style={{ marginBottom: 12 }}>
               {statusTag(view)}
               {view.status === 'draft' && (
                 <Button size="small" icon={<SendOutlined />} onClick={() => changeStatus(view.id, 'sent')}>Mark Sent</Button>
@@ -498,7 +499,7 @@ export default function FinanceInvoices() {
             </Space>
 
             <Card size="small" title="Line Items" style={{ marginBottom: 12 }}>
-              <Table rowKey="id" size="small" pagination={false}
+              <Table rowKey="id" size="small" pagination={false} scroll={{ x: 620 }}
                 dataSource={view.lines}
                 columns={[
                   { title: 'Description', dataIndex: 'description' },
@@ -511,7 +512,7 @@ export default function FinanceInvoices() {
 
             <Card size="small" title="Payments">
               {view.payments.length ? (
-                <Table rowKey="id" size="small" pagination={false} dataSource={view.payments}
+                <Table rowKey="id" size="small" pagination={false} dataSource={view.payments} scroll={{ x: 520 }}
                   columns={[
                     { title: 'Date', dataIndex: 'payment_date' },
                     { title: 'Method', dataIndex: 'method' },

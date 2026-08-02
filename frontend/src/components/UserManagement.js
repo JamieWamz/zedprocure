@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, message, Tag, Switch } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { strongPasswordRule } from '../utils/passwordValidation';
 
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
@@ -105,7 +106,7 @@ export default function UserManagement() {
           <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="password" label="Password" rules={[{ required: true, min: 6 }]}>
+          <Form.Item name="password" label="Password" rules={[strongPasswordRule]}>
             <Input.Password />
           </Form.Item>
           <Form.Item label="Role">
