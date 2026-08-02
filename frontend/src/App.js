@@ -3,13 +3,13 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import SplashScreen from './components/SplashScreen';
-import UnifiedLogin from './components/UnifiedLogin';
-import SystemHealthPortal from './components/SystemHealthPortal';
-import AdminPortal from './components/AdminPortal';
+import AuthenticationPage from './components/AuthenticationPage';
+import SystemAdministrationPortal from './components/SystemAdministrationPortal';
+import BusinessAdminPortal from './components/BusinessAdminPortal';
 import CustomerDashboard from './components/CustomerDashboard';
 import SupplierDashboard from './components/SupplierDashboard';
 import SupplierRegistration from './components/SupplierRegistration';
-import AcceptInvite from './components/AcceptInvite';
+import InvitationAcceptancePage from './components/InvitationAcceptancePage';
 import BidDetail from './components/BidDetail';
 import PublicNoticeboard from './components/PublicNoticeboard';
 import AppLayout from './components/AppLayout';
@@ -30,14 +30,14 @@ function PrivateRoute({ children, requiredRoute }) {
 function AppContent() {
   return (
     <Routes>
-          <Route path="/login" element={<UnifiedLogin />} />
+          <Route path="/login" element={<AuthenticationPage />} />
           <Route path="/register/supplier" element={<SupplierRegistration />} />
-          <Route path="/accept-invite" element={<AcceptInvite />} />
+          <Route path="/accept-invite" element={<InvitationAcceptancePage />} />
           <Route path="/system-health" element={
-            <PrivateRoute requiredRoute="/system-health"><SystemHealthPortal /></PrivateRoute>
+            <PrivateRoute requiredRoute="/system-health"><SystemAdministrationPortal /></PrivateRoute>
           } />
           <Route path="/admin/*" element={
-            <PrivateRoute requiredRoute="/admin"><AdminPortal /></PrivateRoute>
+            <PrivateRoute requiredRoute="/admin"><BusinessAdminPortal /></PrivateRoute>
           } />
           <Route path="/customer/bids/:bidId" element={
             <PrivateRoute requiredRoute="/customer"><BidDetail /></PrivateRoute>

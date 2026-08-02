@@ -56,7 +56,7 @@ function statusTag(inv) {
   return <Tag color={m.color}>{m.label}</Tag>;
 }
 
-export default function FinanceInvoices() {
+export default function InvoiceManagement() {
   const [invoices, setInvoices] = useState([]);
   const [aging, setAging] = useState({ ar: null, ap: null });
   const [summary, setSummary] = useState(null);

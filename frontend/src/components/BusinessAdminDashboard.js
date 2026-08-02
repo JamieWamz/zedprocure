@@ -15,7 +15,7 @@ import ProgressSteps from './ProgressSteps';
 import NextActionPanel from './NextActionPanel';
 import { getNotificationDestination, isActivationKey } from '../utils/notificationNavigation';
 import RotatingMediaBanner from './RotatingMediaBanner';
-import { cdnImages } from '../cdnAssets';
+import { remoteImages } from '../remoteImageAssets';
 import ProcurementRequestDetails from './ProcurementRequestDetails';
 
 const { Text } = Typography;
@@ -327,7 +327,7 @@ export default function BusinessAdminDashboard() {
   return (
     <div className="workspace-page business-admin-dashboard">
       {/* Page Header with Wallet */}
-      <RotatingMediaBanner images={cdnImages.adminHeroes} ariaLabel="Business administration overview">
+      <RotatingMediaBanner images={remoteImages.adminHeroes} ariaLabel="Business administration overview">
         <div>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Business Dashboard</h2>
           <p>Financial overview, invoice controls, cash movement and platform procurement metrics.</p>

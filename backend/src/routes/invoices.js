@@ -10,7 +10,7 @@ const { randomUUID } = require('crypto');
 const pool = require('../config/db');
 const { authenticate } = require('../middleware/authMiddleware');
 const { recordInvoiceIssue, recordInvoicePayment } = require('../services/ledgerService');
-const { generateInvoicePDF } = require('../services/pdfService');
+const { generateInvoicePdf } = require('../services/invoicePdfService');
 const { sendMail } = require('../services/emailService');
 
 const router = express.Router({ strict: false });
@@ -391,7 +391,7 @@ router.get('/:id/pdf', authenticate, async (req, res) => {
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename=invoice-${inv.invoice_no}.pdf`);
 
-      generateInvoicePDF(inv, res);
+      generateInvoicePdf(inv, res);
 
     } finally {
       client.release();

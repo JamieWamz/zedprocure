@@ -14,12 +14,12 @@ import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import DigitalSignatureModal from './DigitalSignatureModal';
 import ProgressSteps from './ProgressSteps';
-import EnhancedEmpty from './EnhancedEmpty';
+import ActionableEmptyState from './ActionableEmptyState';
 import NextActionPanel from './NextActionPanel';
 import { useAuth } from '../context/AuthContext';
 import { getNotificationDestination, isActivationKey } from '../utils/notificationNavigation';
 import RotatingMediaBanner from './RotatingMediaBanner';
-import { cdnImages } from '../cdnAssets';
+import { remoteImages } from '../remoteImageAssets';
 
 const { Text } = Typography;
 
@@ -451,7 +451,7 @@ function getOrderProgress(status) {
   return (
     <div className="workspace-page">
       <RotatingMediaBanner
-        images={cdnImages.supplierHeroes}
+        images={remoteImages.supplierHeroes}
         className="portal-welcome-header"
         imagePosition="center 55%"
         ariaLabel="Supplier workspace overview"
@@ -567,7 +567,7 @@ function getOrderProgress(status) {
                   pagination={{ pageSize: 10 }}
                   size="middle"
                   scroll={{ x: 700 }}
-                  locale={{ emptyText: <EnhancedEmpty title="No opportunities are open right now" description="New opportunities and invitations will appear here automatically." ctaText="Refresh opportunities" onAction={fetchData} /> }}
+                  locale={{ emptyText: <ActionableEmptyState title="No opportunities are open right now" description="New opportunities and invitations will appear here automatically." ctaText="Refresh opportunities" onAction={fetchData} /> }}
                 />
               </Card>
             ),
@@ -586,7 +586,7 @@ function getOrderProgress(status) {
                   pagination={{ pageSize: 10 }}
                   size="middle"
                   scroll={{ x: 900 }}
-                  locale={{ emptyText: <EnhancedEmpty title="No orders yet" description="When a response is awarded, the order and its next step will appear here." ctaText="Find opportunities" ctaPath="/supplier?tab=bids" /> }}
+                  locale={{ emptyText: <ActionableEmptyState title="No orders yet" description="When a response is awarded, the order and its next step will appear here." ctaText="Find opportunities" ctaPath="/supplier?tab=bids" /> }}
                 />
               </Card>
             ),

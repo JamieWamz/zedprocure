@@ -31,7 +31,10 @@ Thumbs.db
 
 # Documentation
 README.md
-agents.md
+docs/
+
+# Local design-tool configuration
+webServerApiSettings.json
 
 # Docker
 docker-compose.yml

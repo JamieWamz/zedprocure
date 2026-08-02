@@ -12,7 +12,7 @@ const statusColors = {
   closed: 'red',
 };
 
-export default function TenantBidsList() {
+export default function BidManagement() {
   const [bids, setBids] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');

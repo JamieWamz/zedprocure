@@ -2,7 +2,13 @@ const express = require('express');
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const { authenticate, requireRole } = require('../middleware/authMiddleware');
-const { validatePassword } = require('../utils/validation');
+const { validatePassword } = require('../utils/passwordValidation');
+const { cleanText, requireUuid } = require('../utils/requestValidation');
+const {
+  assertIdentityEmailAvailable,
+  normalizeIdentityEmail,
+  requireValidIdentityEmail,
+} = require('../services/identityEmailGuard');
 const os = require('os');
 const rateLimit = require('express-rate-limit');
 const {
@@ -25,6 +31,115 @@ const ADMIN_ROLE_LABELS = {
   system_admin: 'System Admin',
   business_admin: 'Business Admin',
 };
+const USER_TYPE_CONFIG = Object.freeze({
+  platform_admin: Object.freeze({
+    table: 'platform_admins',
+    detailQuery: `
+      SELECT pa.id, 'platform_admin'::text AS user_type, pa.role, pa.email,
+             pa.full_name, pa.is_active,
+             NULL::uuid AS organization_id, NULL::text AS organization_name,
+             NULL::uuid AS company_id, NULL::text AS company_name
+      FROM platform_admins pa
+      WHERE pa.id = $1`,
+  }),
+  tenant_user: Object.freeze({
+    table: 'tenant_users',
+    detailQuery: `
+      SELECT tu.id, 'tenant_user'::text AS user_type, tu.role, tu.email,
+             tu.full_name, tu.is_active,
+             t.id AS organization_id, t.name AS organization_name,
+             NULL::uuid AS company_id, NULL::text AS company_name
+      FROM tenant_users tu
+      JOIN tenants t ON t.id = tu.tenant_id
+      WHERE tu.id = $1`,
+  }),
+  supplier_user: Object.freeze({
+    table: 'supplier_users',
+    detailQuery: `
+      SELECT su.id, 'supplier_user'::text AS user_type, su.role, su.email,
+             su.full_name, su.is_active,
+             NULL::uuid AS organization_id, NULL::text AS organization_name,
+             s.id AS company_id, s.company_name
+      FROM supplier_users su
+      JOIN suppliers s ON s.id = su.supplier_id
+      WHERE su.id = $1`,
+  }),
+});
+
+const SYSTEM_USERS_QUERY = `
+  SELECT users.*
+  FROM (
+    SELECT pa.id, 'platform_admin'::text AS user_type, pa.role, pa.email,
+           pa.full_name, pa.is_active,
+           NULL::uuid AS organization_id, NULL::text AS organization_name,
+           NULL::uuid AS company_id, NULL::text AS company_name
+    FROM platform_admins pa
+    UNION ALL
+    SELECT tu.id, 'tenant_user'::text AS user_type, tu.role, tu.email,
+           tu.full_name, tu.is_active,
+           t.id AS organization_id, t.name AS organization_name,
+           NULL::uuid AS company_id, NULL::text AS company_name
+    FROM tenant_users tu
+    JOIN tenants t ON t.id = tu.tenant_id
+    UNION ALL
+    SELECT su.id, 'supplier_user'::text AS user_type, su.role, su.email,
+           su.full_name, su.is_active,
+           NULL::uuid AS organization_id, NULL::text AS organization_name,
+           s.id AS company_id, s.company_name
+    FROM supplier_users su
+    JOIN suppliers s ON s.id = su.supplier_id
+  ) users
+  ORDER BY users.user_type, users.full_name, users.email`;
+
+function serializeSystemUser(row, actorId = null) {
+  const normalizedEmail = normalizeIdentityEmail(row.email);
+  const isPlatformAdmin = row.user_type === 'platform_admin';
+  const protectedAccount = isPlatformAdmin && normalizedEmail === IMMUTABLE_EMAIL;
+  const isCurrentAdmin = isPlatformAdmin
+    && actorId
+    && String(row.id).toLowerCase() === String(actorId).toLowerCase();
+  return {
+    id: row.id,
+    user_type: row.user_type,
+    role: row.role,
+    email: normalizedEmail,
+    full_name: row.full_name,
+    is_active: row.is_active,
+    protected: protectedAccount,
+    can_edit_status: !protectedAccount && !isCurrentAdmin,
+    organization: row.organization_id
+      ? { id: row.organization_id, name: row.organization_name }
+      : null,
+    company: row.company_id
+      ? { id: row.company_id, name: row.company_name }
+      : null,
+  };
+}
+
+function validateUserUpdate(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new Error('A JSON object is required');
+  }
+
+  const allowedFields = new Set(['full_name', 'email', 'is_active']);
+  const fields = Object.keys(body);
+  const unknownField = fields.find(field => !allowedFields.has(field));
+  if (unknownField) throw new Error(`Unknown field: ${unknownField}`);
+  if (fields.length === 0) throw new Error('At least one field is required');
+
+  const update = {};
+  if (Object.prototype.hasOwnProperty.call(body, 'full_name')) {
+    update.full_name = cleanText(body.full_name, { required: true, maxLength: 150 });
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'email')) {
+    update.email = requireValidIdentityEmail(body.email);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'is_active')) {
+    if (typeof body.is_active !== 'boolean') throw new Error('is_active must be a boolean');
+    update.is_active = body.is_active;
+  }
+  return update;
+}
 
 // ─── System Stats ───────────────────────────────────────────
 router.get('/system/stats', authenticate, requireRole('system_admin'), async (req, res) => {
@@ -157,8 +272,200 @@ router.get('/system/stats', authenticate, requireRole('system_admin'), async (re
       dbStatus: 'connected',
       timestamp: new Date().toISOString()
     });
-  } catch (e) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch system stats' });
+  }
+});
+
+// ─── Unified User Maintenance ───────────────────────────────
+router.get('/system/users', authenticate, requireRole('system_admin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(SYSTEM_USERS_QUERY);
+    const actorId = req.user.id || req.user.user_id;
+    return res.json({ users: rows.map(row => serializeSystemUser(row, actorId)) });
+  } catch (error) {
+    console.error('Error loading system users:', error);
+    return res.status(500).json({ error: 'Failed to load users' });
+  }
+});
+
+router.patch('/system/users/:userType/:id', authenticate, requireRole('system_admin'), async (req, res) => {
+  const { userType } = req.params;
+  const config = USER_TYPE_CONFIG[userType];
+  if (!config) {
+    return res.status(400).json({
+      error: `userType must be one of: ${Object.keys(USER_TYPE_CONFIG).join(', ')}`,
+    });
+  }
+
+  let userId;
+  let update;
+  try {
+    userId = requireUuid(req.params.id, 'id');
+    update = validateUserUpdate(req.body);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  let client;
+  let transactionStarted = false;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    transactionStarted = true;
+
+    if (userType === 'platform_admin') {
+      await client.query('LOCK TABLE platform_admins IN EXCLUSIVE MODE');
+    }
+
+    const { rows: [existing] } = await client.query(
+      `SELECT id, email, full_name, role, is_active
+       FROM ${config.table}
+       WHERE id = $1
+       FOR UPDATE`,
+      [userId]
+    );
+    if (!existing) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const existingEmail = normalizeIdentityEmail(existing.email);
+    const actualUpdate = {};
+    if (update.full_name !== undefined && update.full_name !== existing.full_name) {
+      actualUpdate.full_name = update.full_name;
+    }
+    if (update.email !== undefined && update.email !== existingEmail) {
+      actualUpdate.email = update.email;
+    }
+    if (update.is_active !== undefined && update.is_active !== existing.is_active) {
+      actualUpdate.is_active = update.is_active;
+    }
+
+    if (userType === 'platform_admin') {
+      const isPrimarySystemAdmin = existingEmail === IMMUTABLE_EMAIL;
+      if (isPrimarySystemAdmin && actualUpdate.email !== undefined) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(403).json({ error: 'Cannot change the primary system administrator email' });
+      }
+      if (isPrimarySystemAdmin && actualUpdate.is_active === false) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(403).json({ error: 'Cannot deactivate the primary system administrator' });
+      }
+
+      const actorId = String(req.user.id || req.user.user_id || '').toLowerCase();
+      if (actorId === userId.toLowerCase() && actualUpdate.is_active === false) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(403).json({ error: 'You cannot deactivate your own account' });
+      }
+
+      if (actualUpdate.is_active === true) {
+        const { rows: [activeSeat] } = await client.query(
+          `SELECT id
+           FROM platform_admins
+           WHERE role = $1 AND is_active = true AND id <> $2
+           LIMIT 1`,
+          [existing.role, userId]
+        );
+        if (activeSeat) {
+          await client.query('ROLLBACK');
+          transactionStarted = false;
+          return res.status(403).json({
+            error: `${ADMIN_ROLE_LABELS[existing.role]} already has an active administrator.`,
+          });
+        }
+      }
+    }
+
+    if (actualUpdate.email !== undefined || actualUpdate.is_active === true) {
+      await assertIdentityEmailAvailable(
+        client,
+        actualUpdate.email || existingEmail,
+        { userType, id: userId, lockEmails: [existingEmail] }
+      );
+    }
+
+    const changedFields = Object.keys(actualUpdate);
+    if (changedFields.length === 0) {
+      const { rows: [unchangedUser] } = await client.query(config.detailQuery, [userId]);
+      const serializedUser = serializeSystemUser(
+        unchangedUser,
+        req.user.id || req.user.user_id
+      );
+      await client.query('COMMIT');
+      transactionStarted = false;
+      return res.json({
+        message: 'No changes were necessary',
+        user: serializedUser,
+      });
+    }
+
+    const assignments = [];
+    const values = [];
+    for (const field of ['full_name', 'email', 'is_active']) {
+      if (actualUpdate[field] !== undefined) {
+        values.push(actualUpdate[field]);
+        assignments.push(`${field} = $${values.length}`);
+      }
+    }
+    if (userType === 'platform_admin') assignments.push('updated_at = now()');
+    values.push(userId);
+    await client.query(
+      `UPDATE ${config.table}
+       SET ${assignments.join(', ')}
+       WHERE id = $${values.length}`,
+      values
+    );
+
+    await client.query(
+      `INSERT INTO audit_log
+         (actor_id, actor_type, actor_email, action, target_type, target_id, details)
+       VALUES ($1, $2, $3, 'system_user_updated', $4, $5, $6)`,
+      [
+        req.user.id || req.user.user_id,
+        req.user.user_type || 'platform_admin',
+        req.user.email || null,
+        userType,
+        userId,
+        JSON.stringify({
+          changed_fields: changedFields,
+          email_changed: actualUpdate.email !== undefined,
+          status_changed: actualUpdate.is_active !== undefined,
+        }),
+      ]
+    );
+
+    const { rows: [updatedUser] } = await client.query(config.detailQuery, [userId]);
+    const serializedUser = serializeSystemUser(updatedUser, req.user.id || req.user.user_id);
+    await client.query('COMMIT');
+    transactionStarted = false;
+    return res.json({
+      message: 'User updated successfully',
+      user: serializedUser,
+    });
+  } catch (error) {
+    if (transactionStarted && client) {
+      try { await client.query('ROLLBACK'); } catch { /* connection may be unavailable */ }
+    }
+    if (error.statusCode === 409) {
+      return res.status(409).json({ error: error.message });
+    }
+    if (error.code === '23505') {
+      const isSeatConflict = error.constraint === 'platform_admins_one_active_role_idx';
+      return res.status(isSeatConflict ? 403 : 409).json({
+        error: isSeatConflict
+          ? 'That platform administrator role already has an active account'
+          : 'An account with this email already exists',
+      });
+    }
+    console.error('Error updating system user:', error);
+    return res.status(500).json({ error: 'Failed to update user' });
+  } finally {
+    client?.release();
   }
 });
 
@@ -175,7 +482,7 @@ router.get('/system/control-plane', authenticate, requireRole('system_admin'), a
 router.get('/system/operations/history', authenticate, requireRole('system_admin'), async (req, res) => {
   try {
     res.json(await getOperationHistory(req.query.limit));
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Failed to load operation history.' });
   }
 });
@@ -206,103 +513,255 @@ router.get('/system/admins', authenticate, requireRole('system_admin'), async (r
 });
 
 router.put('/system/admins/:id', authenticate, requireRole('system_admin'), async (req, res) => {
-  const { id } = req.params;
-  const { email, full_name, role, password, is_active } = req.body;
+  let id;
+  try {
+    id = requireUuid(req.params.id, 'id');
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  const body = req.body || {};
+  const { role, password } = body;
+  let email;
+  let fullName;
+  let isActive;
+  try {
+    if (Object.prototype.hasOwnProperty.call(body, 'email')) {
+      email = requireValidIdentityEmail(body.email);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'full_name')) {
+      fullName = cleanText(body.full_name, { required: true, maxLength: 150 });
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'is_active')) {
+      if (typeof body.is_active !== 'boolean') throw new Error('is_active must be a boolean');
+      isActive = body.is_active;
+    }
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
   if (role !== undefined && !['system_admin', 'business_admin'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
   }
+  if (password) {
+    const passwordError = validatePassword(password);
+    if (passwordError) return res.status(400).json({ error: passwordError });
+  }
 
-  const client = await pool.connect();
+  let client;
+  let transactionStarted = false;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
+    transactionStarted = true;
     await client.query('LOCK TABLE platform_admins IN EXCLUSIVE MODE');
 
-    const { rows: [existing] } = await client.query('SELECT * FROM platform_admins WHERE id = $1', [id]);
+    const { rows: [existing] } = await client.query(
+      'SELECT * FROM platform_admins WHERE id = $1 FOR UPDATE',
+      [id]
+    );
     if (!existing) {
       await client.query('ROLLBACK');
+      transactionStarted = false;
       return res.status(404).json({ error: 'Admin not found' });
     }
 
-    // Immutability checks
-    if (existing.email === IMMUTABLE_EMAIL) {
-      if (email !== undefined && email !== IMMUTABLE_EMAIL) {
-        await client.query('ROLLBACK');
-        return res.status(403).json({ error: 'Cannot change the immutable admin email.' });
-      }
-      if (role !== undefined) {
-        await client.query('ROLLBACK');
-        return res.status(403).json({ error: 'Cannot change role of immutable admin.' });
-      }
-      if (is_active === false) {
-        await client.query('ROLLBACK');
-        return res.status(403).json({ error: 'Cannot deactivate the immutable admin.' });
-      }
-      // Allow password and name changes only
+    const existingEmail = normalizeIdentityEmail(existing.email);
+    const actualUpdate = {};
+    if (email !== undefined && email !== existingEmail) actualUpdate.email = email;
+    if (fullName !== undefined && fullName !== existing.full_name) actualUpdate.full_name = fullName;
+    if (role !== undefined && role !== existing.role) actualUpdate.role = role;
+    if (isActive !== undefined && isActive !== existing.is_active) actualUpdate.is_active = isActive;
+    if (password && !(await bcrypt.compare(password, existing.password_hash))) {
+      actualUpdate.password_hash = await bcrypt.hash(password, 12);
     }
 
-    const nextRole = role || existing.role;
-    const nextActive = is_active !== undefined ? is_active : existing.is_active;
-    if (nextRole === 'system_admin' && existing.email !== IMMUTABLE_EMAIL) {
+    const isPrimarySystemAdmin = existingEmail === IMMUTABLE_EMAIL;
+    if (isPrimarySystemAdmin) {
+      if (actualUpdate.email !== undefined) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(403).json({ error: 'Cannot change the immutable admin email.' });
+      }
+      if (actualUpdate.role !== undefined) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(403).json({ error: 'Cannot change role of immutable admin.' });
+      }
+      if (actualUpdate.is_active === false) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(403).json({ error: 'Cannot deactivate the immutable admin.' });
+      }
+    }
+
+    const actorId = String(req.user.id || req.user.user_id || '').toLowerCase();
+    if (actorId === id.toLowerCase() && actualUpdate.is_active === false) {
       await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(403).json({ error: 'You cannot deactivate your own account' });
+    }
+
+    const nextRole = actualUpdate.role || existing.role;
+    const nextActive = actualUpdate.is_active !== undefined
+      ? actualUpdate.is_active
+      : existing.is_active;
+    if (nextRole === 'system_admin' && !isPrimarySystemAdmin) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
       return res.status(403).json({ error: 'The system admin seat is reserved for the primary administrator.' });
     }
 
-    if (nextActive === true) {
+    if (nextActive === true && (actualUpdate.role !== undefined || actualUpdate.is_active === true)) {
       const { rows: [seat] } = await client.query(
         'SELECT id, email FROM platform_admins WHERE role = $1 AND is_active = true AND id != $2',
         [nextRole, id]
       );
       if (seat) {
         await client.query('ROLLBACK');
+        transactionStarted = false;
         return res.status(403).json({ error: `${ADMIN_ROLE_LABELS[nextRole]} already has an active administrator.` });
       }
     }
 
+    if (actualUpdate.email !== undefined || actualUpdate.is_active === true) {
+      await assertIdentityEmailAvailable(
+        client,
+        actualUpdate.email || existingEmail,
+        { userType: 'platform_admin', id, lockEmails: [existingEmail] }
+      );
+    }
+
+    const changedFields = Object.keys(actualUpdate).map(field => (
+      field === 'password_hash' ? 'password' : field
+    ));
+    if (changedFields.length === 0) {
+      await client.query('COMMIT');
+      transactionStarted = false;
+      return res.json({ success: true, no_changes: true });
+    }
+
     const updates = [];
     const values = [];
-    let paramIdx = 1;
-
-    if (email !== undefined) { updates.push(`email = $${paramIdx++}`); values.push(email); }
-    if (full_name !== undefined) { updates.push(`full_name = $${paramIdx++}`); values.push(full_name); }
-    if (role !== undefined) { updates.push(`role = $${paramIdx++}`); values.push(role); }
-    if (is_active !== undefined) { updates.push(`is_active = $${paramIdx++}`); values.push(is_active); }
-    if (password) {
-      const pwErr = validatePassword(password);
-      if (pwErr) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: pwErr });
+    for (const field of ['email', 'full_name', 'role', 'is_active', 'password_hash']) {
+      if (actualUpdate[field] !== undefined) {
+        values.push(actualUpdate[field]);
+        updates.push(`${field} = $${values.length}`);
       }
-      const hash = await bcrypt.hash(password, 12);
-      updates.push(`password_hash = $${paramIdx++}`);
-      values.push(hash);
     }
-    if (updates.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'No fields to update' });
-    }
-
-    updates.push(`updated_at = now()`);
+    updates.push('updated_at = now()');
     values.push(id);
-    await client.query(`UPDATE platform_admins SET ${updates.join(', ')} WHERE id = $${paramIdx}`, values);
+    await client.query(
+      `UPDATE platform_admins SET ${updates.join(', ')} WHERE id = $${values.length}`,
+      values
+    );
+    await client.query(
+      `INSERT INTO audit_log
+         (actor_id, actor_type, actor_email, action, target_type, target_id, details)
+       VALUES ($1, $2, $3, 'platform_admin_updated', 'platform_admin', $4, $5)`,
+      [
+        req.user.id || req.user.user_id,
+        req.user.user_type || 'platform_admin',
+        req.user.email || null,
+        id,
+        JSON.stringify({
+          changed_fields: changedFields,
+          email_changed: actualUpdate.email !== undefined,
+          status_changed: actualUpdate.is_active !== undefined,
+        }),
+      ]
+    );
     await client.query('COMMIT');
+    transactionStarted = false;
     res.json({ success: true });
   } catch (e) {
-    await client.query('ROLLBACK');
+    if (transactionStarted && client) {
+      try { await client.query('ROLLBACK'); } catch { /* connection may be unavailable */ }
+    }
+    if (e.statusCode === 409) return res.status(409).json({ error: e.message });
+    if (e.code === '23505') {
+      const isSeatConflict = e.constraint === 'platform_admins_one_active_role_idx';
+      return res.status(isSeatConflict ? 403 : 409).json({
+        error: isSeatConflict
+          ? 'That platform administrator role already has an active account.'
+          : 'An account with this email already exists',
+      });
+    }
     console.error('Error updating admin:', e);
-    res.status(500).json({ error: 'Failed to update admin: ' + e.message });
+    res.status(500).json({ error: 'Failed to update admin' });
   } finally {
-    client.release();
+    client?.release();
   }
 });
 
 router.delete('/system/admins/:id', authenticate, requireRole('system_admin'), async (req, res) => {
-  const { id } = req.params;
-  const { rows: [existing] } = await pool.query('SELECT email FROM platform_admins WHERE id = $1', [id]);
-  if (!existing) return res.status(404).json({ error: 'Admin not found' });
-  if (existing.email === IMMUTABLE_EMAIL) return res.status(403).json({ error: 'Cannot delete the immutable admin.' });
+  let id;
+  try {
+    id = requireUuid(req.params.id, 'id');
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
 
-  await pool.query('UPDATE platform_admins SET is_active = false, updated_at = now() WHERE id = $1', [id]);
-  res.json({ success: true });
+  let client;
+  let transactionStarted = false;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    transactionStarted = true;
+    await client.query('LOCK TABLE platform_admins IN EXCLUSIVE MODE');
+    const { rows: [existing] } = await client.query(
+      'SELECT id, email, role, is_active FROM platform_admins WHERE id = $1 FOR UPDATE',
+      [id]
+    );
+    if (!existing) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(404).json({ error: 'Admin not found' });
+    }
+    if (normalizeIdentityEmail(existing.email) === IMMUTABLE_EMAIL) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(403).json({ error: 'Cannot delete the immutable admin.' });
+    }
+    const actorId = String(req.user.id || req.user.user_id || '').toLowerCase();
+    if (actorId === id.toLowerCase()) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(403).json({ error: 'You cannot deactivate your own account' });
+    }
+    if (!existing.is_active) {
+      await client.query('COMMIT');
+      transactionStarted = false;
+      return res.json({ success: true, no_changes: true });
+    }
+
+    await client.query(
+      'UPDATE platform_admins SET is_active = false, updated_at = now() WHERE id = $1',
+      [id]
+    );
+    await client.query(
+      `INSERT INTO audit_log
+         (actor_id, actor_type, actor_email, action, target_type, target_id, details)
+       VALUES ($1, $2, $3, 'platform_admin_deactivated', 'platform_admin', $4, $5)`,
+      [
+        req.user.id || req.user.user_id,
+        req.user.user_type || 'platform_admin',
+        req.user.email || null,
+        id,
+        JSON.stringify({ changed_fields: ['is_active'], status_changed: true }),
+      ]
+    );
+    await client.query('COMMIT');
+    transactionStarted = false;
+    return res.json({ success: true });
+  } catch (error) {
+    if (transactionStarted && client) {
+      try { await client.query('ROLLBACK'); } catch { /* connection may be unavailable */ }
+    }
+    console.error('Error deactivating admin:', error);
+    return res.status(500).json({ error: 'Failed to deactivate admin' });
+  } finally {
+    client?.release();
+  }
 });
 
 // ─── Server Console ──────────────────────────────────────────

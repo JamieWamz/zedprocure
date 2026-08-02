@@ -3,7 +3,7 @@ import { Table, Button, Modal, Form, Input, message, Tag, Statistic, Row, Col, C
 import { PlusOutlined, BankOutlined, TeamOutlined, FileTextOutlined } from '@ant-design/icons';
 import axios from 'axios';
 
-export default function TenantManagement() {
+export default function OrganizationManagement() {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);

@@ -35,7 +35,7 @@ const systemHeroes = [
   envImage('SYSTEM_3', `${UNSPLASH}/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1800&q=80`),
 ];
 
-export const cdnImages = {
+export const remoteImages = {
   loginHero: envImage('LOGIN_HERO', loginHeroes[0]),
   loginHeroes,
   splash: [

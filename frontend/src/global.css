@@ -1622,6 +1622,44 @@ html[data-theme='dark'] .system-operation-card--critical .system-operation-icon 
 .system-operation-options .ant-divider { margin-block: 14px; }
 html[data-theme='dark'] .system-operation-options { border-color: var(--border-color-dark); background: #111827; }
 
+.system-user-summary {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color-light);
+  border-radius: var(--border-radius-md);
+  background: var(--card-header-bg-light);
+}
+html[data-theme='dark'] .system-user-summary {
+  border-color: var(--border-color-dark);
+  background: var(--card-header-bg-dark);
+}
+.system-user-filters { margin-bottom: 16px; }
+.system-user-mobile-list { display: none; }
+.system-user-mobile-list .ant-list-item { padding-inline: 0; }
+.system-user-mobile-card { width: 100%; }
+.system-user-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.system-user-card-heading > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.system-user-card-heading .ant-typography { overflow-wrap: anywhere; }
+.system-user-affiliation {
+  display: grid;
+  gap: 2px;
+  margin-block: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color-light);
+}
+html[data-theme='dark'] .system-user-affiliation { border-top-color: var(--border-color-dark); }
+.system-user-edit-actions { width: 100%; justify-content: flex-end; }
+
 /* ============================================================
    NEXT ACTIONS, PROGRESS & COMPLETION
    ============================================================ */
@@ -1722,9 +1760,9 @@ a:focus-visible,
   outline: 3px solid rgba(13, 148, 136, 0.38) !important;
   outline-offset: 2px !important;
 }
-.enhanced-empty { padding: 28px 16px; }
-.enhanced-empty h5.ant-typography { margin: 0 0 4px; }
-.enhanced-empty .ant-empty-description { max-width: 440px; margin-inline: auto; }
+.actionable-empty-state { padding: 28px 16px; }
+.actionable-empty-state h5.ant-typography { margin: 0 0 4px; }
+.actionable-empty-state .ant-empty-description { max-width: 440px; margin-inline: auto; }
 
 .page-media-actions .ant-btn:not(.ant-btn-primary) { background: transparent; }
 .page-media-actions .ant-tag { padding: 4px 8px; }
@@ -1823,6 +1861,13 @@ a:focus-visible,
   .system-control-tabs > .ant-tabs-nav { top: calc(var(--app-header-height) + var(--app-context-height) + 4px); margin-inline: -2px; }
   .system-command-hero .ant-space { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
   .system-command-hero .ant-space-item .ant-btn { width: 100%; }
+  .system-user-desktop-table { display: none; }
+  .system-user-mobile-list { display: block; }
+  .system-user-filters > .ant-space-item { flex-basis: 100%; }
+  .system-user-filters .ant-btn { width: 100%; }
+  .system-user-edit-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .system-user-edit-actions .ant-space-item,
+  .system-user-edit-actions .ant-btn { width: 100%; }
   .release-status-panel { min-height: 0; }
   .workflow-form { padding: 18px 14px; }
   .workflow-page-heading { align-items: flex-start; flex-direction: column; gap: 12px; }

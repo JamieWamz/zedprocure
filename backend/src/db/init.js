@@ -11,15 +11,16 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 const pool = require('../config/db');
+const { normalizeIdentityEmail } = require('../services/identityEmailGuard');
 
 async function updateAdminPassword(client, emailEnv, passwordEnv, defaultEmail, roleName) {
-  const email = process.env[emailEnv] || defaultEmail;
+  const email = normalizeIdentityEmail(process.env[emailEnv] || defaultEmail);
   const password = process.env[passwordEnv];
 
   if (password && password.length >= 10 && email) {
     const hash = await bcrypt.hash(password, 12);
     await client.query(
-      `UPDATE platform_admins SET password_hash=$1 WHERE email=$2`,
+      `UPDATE platform_admins SET password_hash=$1 WHERE LOWER(BTRIM(email))=$2`,
       [hash, email]
     );
     console.log(`${roleName} password updated for ${email}.`);

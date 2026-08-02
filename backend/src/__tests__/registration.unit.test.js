@@ -23,7 +23,13 @@ function makeApp() {
 function makeClient({ existingEmail = false } = {}) {
   return {
     query: jest.fn(async (sql, params = []) => {
-      if (sql.includes('SELECT email FROM')) return { rows: existingEmail ? [{ email: params[0] }] : [] };
+      if (sql.includes('SELECT candidate.user_type')) {
+        return {
+          rows: existingEmail
+            ? [{ user_type: 'platform_admin', id: 'existing-user-id', email: params[0] }]
+            : [],
+        };
+      }
       if (sql.includes('INSERT INTO tenant_users')) {
         return { rows: [{ id: 'customer-user-id', email: params[2], full_name: params[4], role: 'customer' }] };
       }

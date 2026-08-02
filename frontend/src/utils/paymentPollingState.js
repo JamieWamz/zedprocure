@@ -1,4 +1,4 @@
-export function nextPaymentResult(providerStatus, attempt, maxAttempts = 30) {
+export function resolvePaymentPollingState(providerStatus, attempt, maxAttempts = 30) {
   if (providerStatus === 'successful') {
     return { terminal: true, step: 2, finalStatus: 'successful' };
   }

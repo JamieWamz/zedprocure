@@ -21,7 +21,7 @@ const EVALUATION_CRITERIA = [
 
 export default function BidEvaluation() {
   // useParams().bidId is only populated when mounted under a Route with :bidId.
-  // AdminPortal renders BidEvaluation inline (no nested Route), so fall back to
+  // BusinessAdminPortal renders BidEvaluation inline (no nested Route), so fall back to
   // parsing the UUID from the pathname: /admin/bids/<uuid>/evaluate
   const rawParams = useParams();
   const location = useLocation();

@@ -14,13 +14,13 @@ import DigitalSignatureModal from './DigitalSignatureModal';
 import PaymentModal from './PaymentModal';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
-import EnhancedEmpty from './EnhancedEmpty';
+import ActionableEmptyState from './ActionableEmptyState';
 import ProgressSteps from './ProgressSteps';
 import DashboardStatistic from './DashboardStatistic';
 import NextActionPanel from './NextActionPanel';
 import { getNotificationDestination, isActivationKey } from '../utils/notificationNavigation';
 import RotatingMediaBanner from './RotatingMediaBanner';
-import { cdnImages } from '../cdnAssets';
+import { remoteImages } from '../remoteImageAssets';
 import ProcurementRequestDetails from './ProcurementRequestDetails';
 
 const { Text } = Typography;
@@ -432,7 +432,7 @@ ${values.warranty || 'No specific warranty requirements.'}
   return (
     <div className="workspace-page">
       <RotatingMediaBanner
-        images={cdnImages.customerHeroes}
+        images={remoteImages.customerHeroes}
         className="portal-welcome-header"
         imagePosition="center 52%"
         ariaLabel="Customer workspace overview"
@@ -497,7 +497,7 @@ ${values.warranty || 'No specific warranty requirements.'}
             label: <span><FileTextOutlined /> Choose a bid</span>,
             children: customerBids.length === 0 ? (
               <Card className="portal-empty-card">
-                <EnhancedEmpty
+                <ActionableEmptyState
                   title="No open bids match your organization yet"
                   description="You do not need to wait. Send a request and the procurement team can prepare the right bid for you."
                   ctaText="Start a request"
@@ -605,7 +605,7 @@ ${values.warranty || 'No specific warranty requirements.'}
                     ),
                     rowExpandable: record => !!record.description || !!record.required_delivery_date,
                   }}
-                  locale={{ emptyText: <EnhancedEmpty title="You have not sent a request yet" description="Start with a short description of what your organization needs." ctaText="Start a request" onAction={() => setCreateReqModal(true)} /> }}
+                  locale={{ emptyText: <ActionableEmptyState title="You have not sent a request yet" description="Start with a short description of what your organization needs." ctaText="Start a request" onAction={() => setCreateReqModal(true)} /> }}
                 />
               </Card>
             ),
@@ -623,7 +623,7 @@ ${values.warranty || 'No specific warranty requirements.'}
                   columns={orderColumns}
                   pagination={{ pageSize: 10 }}
                   scroll={{ x: 900 }}
-                  locale={{ emptyText: <EnhancedEmpty title="No Orders Yet" description="Your awarded bids and orders will appear here once ready." /> }}
+                  locale={{ emptyText: <ActionableEmptyState title="No Orders Yet" description="Your awarded bids and orders will appear here once ready." /> }}
                 />
               </Card>
             ),
@@ -641,7 +641,7 @@ ${values.warranty || 'No specific warranty requirements.'}
                   columns={columns}
                   pagination={{ pageSize: 8 }}
                   scroll={{ x: 720 }}
-                  locale={{ emptyText: <EnhancedEmpty title="No Invoices Yet" description="Invoices will appear here once orders are billed." /> }}
+                  locale={{ emptyText: <ActionableEmptyState title="No Invoices Yet" description="Invoices will appear here once orders are billed." /> }}
                 />
               </Card>
             ),

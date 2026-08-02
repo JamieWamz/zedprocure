@@ -62,7 +62,7 @@ There is no tenant-admin role. Customers and suppliers self-register. Suppliers 
 ```
 ┌─────────────────────────────────────────────┐
 │              React Frontend (SPA)            │
-│  CustomerPortal · SupplierPortal · AdminPortal│
+│ Customer · Supplier · Business/System Admin  │
 └──────────────────────┬──────────────────────┘
                        │ HTTPS / Axios + httpOnly cookies
 ┌──────────────────────▼──────────────────────┐
@@ -136,10 +136,12 @@ zedprocure/
 │       ├── App.js
 │       └── index.js
 ├── docs/
-│   └── PAYMENT_INTEGRATION.md  # Full payment API integration guide
+│   ├── BRANCHING_STRATEGY.md   # Git branching strategy
+│   ├── ENGINEERING_HISTORY.md  # Archived implementation history
+│   ├── PAYMENT_INTEGRATION.md  # Full payment API integration guide
+│   └── RELATIONAL_DATABASE_COMPLIANCE.md # Relational design notes
 ├── nginx/                       # Nginx config for Docker deployments
 ├── .github/workflows/           # CI/CD pipelines
-├── BRANCHES.md                  # Git branching strategy
 ├── render.yaml                  # Render deployment blueprint
 ├── docker-compose.yml
 ├── Dockerfile.backend
@@ -150,7 +152,7 @@ zedprocure/
 
 ## 5. Git Branching Strategy
 
-See [BRANCHES.md](./BRANCHES.md) for the full workflow guide.
+See [Branching Strategy](./docs/BRANCHING_STRATEGY.md) for the full workflow guide.
 
 | Branch | Purpose |
 |---|---|
@@ -342,6 +344,7 @@ Workflows live in [`.github/workflows/`](.github/workflows/).
 | **Ledger** | `GET /api/ledger/accounts`, `GET /api/ledger/trial-balance`, `GET /api/ledger/income-statement` |
 | **Signatures** | `POST /api/signatures`, `GET /api/signatures/:type/:id` |
 | **Notifications** | `GET /api/notifications`, `PUT /api/notifications/:id/read` |
+| **System User Maintenance** | `GET /api/system/users`, `PATCH /api/system/users/:userType/:id` |
 | **Admin** | `GET /api/admin/*`, `GET /api/system/*` |
 
 ---

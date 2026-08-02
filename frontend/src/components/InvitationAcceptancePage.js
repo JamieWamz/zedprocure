@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Form, Input, Button, Card, Typography, message } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { cdnImages } from '../cdnAssets';
+import { remoteImages } from '../remoteImageAssets';
 import { strongPasswordRule } from '../utils/passwordValidation';
 
 const { Title, Text } = Typography;
 
-export default function AcceptInvite() {
+export default function InvitationAcceptancePage() {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [token, setToken] = useState('');
@@ -44,7 +44,7 @@ export default function AcceptInvite() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: `url(${cdnImages.loginHero}) no-repeat center center fixed`,
+      background: `url(${remoteImages.loginHero}) no-repeat center center fixed`,
       backgroundSize: 'cover'
     }}>
       <Card style={{ width: 400, maxWidth: 'calc(100vw - 24px)', padding: 24, borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>

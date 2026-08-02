@@ -1,4 +1,7 @@
-# Zambia Procurement System — Agent Implementation Log
+# Zambia Procurement System — Engineering History
+
+> Archive note: paths, commands, and implementation details below describe the
+> repository at the time of each session and may differ from the current layout.
 
 ## Session 1: Frontend Build & Deployment Infrastructure Fixes
 
@@ -39,7 +42,7 @@
   - **Root cause:** The entire route body had no `try/catch`, meaning any DB error (connection timeout, constraint violation) would propagate as an unhandled rejection and potentially crash the process.
   - **Fix:** Wrapped all queries in try/catch; DB errors now return a clean HTTP 500.
 
-- [x] **`backend/src/routes/supplierList.js` — Missing try/catch (unhandled promise rejection)**
+- [x] **`backend/src/routes/verifiedSupplierDirectory.js` — Missing try/catch (unhandled promise rejection)**
   - Same issue as requirement.js — no error handling at all.
   - **Fix:** Wrapped query in try/catch; added `ORDER BY company_name` for consistent output.
 
@@ -96,7 +99,7 @@
 | `backend/src/routes/registration.js` | NULL registration_number ON CONFLICT fix |
 | `backend/src/routes/ledger.js` | LIMIT/OFFSET parameter index fix |
 | `backend/src/routes/requirement.js` | Added try/catch error handling |
-| `backend/src/routes/supplierList.js` | Added try/catch + ORDER BY |
+| `backend/src/routes/verifiedSupplierDirectory.js` | Added try/catch + ORDER BY |
 | `backend/src/routes/dashboard.js` | Moved crypto require to top-level |
 | `backend/uploads/.gitkeep` | Created to track directory in git |
 | `docker-compose.yml` | COOKIE_SECURE, JWT_SECRET fallback, APP_URL, migrate command |
@@ -125,4 +128,3 @@
 ### Version Control & CI/CD
 - [x] **Committed all infrastructure configurations**
   - Added and committed `.dockerignore`, `.github/workflows/ci.yml`, `.github/workflows/cd.yml`, `.github/workflows/pages.yml`, `Dockerfile.backend`, `Dockerfile.frontend`, and `docker-compose.yml` to trigger the CI/CD pipeline.
-

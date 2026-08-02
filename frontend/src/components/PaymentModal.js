@@ -8,7 +8,7 @@ import {
 } from '@ant-design/icons';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { nextPaymentResult } from './paymentFlow';
+import { resolvePaymentPollingState } from '../utils/paymentPollingState';
 
 const { Text, Title } = Typography;
 
@@ -129,7 +129,7 @@ export default function PaymentModal({
     pollAttemptsRef.current = 0;
     pollRef.current = setInterval(async () => {
       pollAttemptsRef.current += 1;
-      const timeoutResult = nextPaymentResult('pending', pollAttemptsRef.current);
+      const timeoutResult = resolvePaymentPollingState('pending', pollAttemptsRef.current);
       if (timeoutResult.terminal) {
         clearPoll();
         setFinalStatus(timeoutResult.finalStatus);
@@ -138,7 +138,7 @@ export default function PaymentModal({
       }
       try {
         const { data } = await axios.get(`/api/payments/mobile/${logId}/status`);
-        const result = nextPaymentResult(data.status, pollAttemptsRef.current);
+        const result = resolvePaymentPollingState(data.status, pollAttemptsRef.current);
         if (result.terminal) {
           clearPoll();
           setFinalStatus(result.finalStatus);

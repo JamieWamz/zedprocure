@@ -1,6 +1,6 @@
 const PDFDocument = require('pdfkit');
 
-function generateInvoicePDF(invoice, stream) {
+function generateInvoicePdf(invoice, stream) {
   const doc = new PDFDocument({ margin: 50 });
 
   doc.pipe(stream);
@@ -72,4 +72,4 @@ function generateInvoicePDF(invoice, stream) {
   doc.end();
 }
 
-module.exports = { generateInvoicePDF };
+module.exports = { generateInvoicePdf };

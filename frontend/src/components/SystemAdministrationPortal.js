@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Button, Card, Col, Descriptions, Divider, Empty, Form, Input, List, Modal,
   Popconfirm, Progress, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag,
@@ -7,15 +7,23 @@ import {
 import {
   AuditOutlined, BankOutlined, CheckCircleOutlined, ClockCircleOutlined,
   CloudServerOutlined, CodeOutlined, ConsoleSqlOutlined, DatabaseOutlined,
-  DeploymentUnitOutlined, ExperimentOutlined, FileTextOutlined, PlusOutlined,
+  DeploymentUnitOutlined, EditOutlined, ExperimentOutlined, FileTextOutlined, PlusOutlined,
   PlayCircleOutlined, ReloadOutlined, RocketOutlined, SafetyCertificateOutlined,
-  ShopOutlined, TeamOutlined, ToolOutlined, UserOutlined, WarningOutlined,
+  SearchOutlined, ShopOutlined, TeamOutlined, ToolOutlined, UserOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
 import AdminSupportInbox from './AdminSupportInbox';
 import RotatingMediaBanner from './RotatingMediaBanner';
-import { cdnImages } from '../cdnAssets';
+import { useAuth } from '../context/AuthContext';
+import { remoteImages } from '../remoteImageAssets';
+import { strongPasswordRule } from '../utils/passwordValidation';
+import {
+  buildSystemUserUpdate,
+  filterSystemUsers,
+  isProtectedPrimaryAdmin,
+  SYSTEM_USER_TYPE_LABELS,
+} from '../utils/systemUserMaintenance';
 
 const { Text } = Typography;
 const IMMUTABLE_EMAIL = 'wamuyuwamundia@gmail.com';
@@ -42,17 +50,32 @@ const RISK_META = {
   critical: { color: 'error', label: 'Privileged change' },
 };
 
+const SYSTEM_USER_TYPE_COLORS = {
+  platform_admin: 'purple',
+  tenant_user: 'blue',
+  supplier_user: 'cyan',
+};
+
+function humanizeRole(role) {
+  return String(role || 'Unassigned')
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, character => character.toUpperCase());
+}
+
+function userAffiliation(user) {
+  return user.organization?.name || user.company?.name || 'Platform';
+}
+
 const SYSTEM_TAB_KEYS = new Set([
   'overview', 'tests', 'operations', 'deployments', 'admins',
   'organizations', 'users', 'suppliers', 'audit', 'console',
   'support',
 ]);
 
-export default function SystemHealthPortal() {
+export default function SystemAdministrationPortal() {
   const [stats, setStats] = useState(null);
   const [admins, setAdmins] = useState([]);
   const [tenants, setTenants] = useState([]);
-  const [tenantUsers, setTenantUsers] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [controlPlane, setControlPlane] = useState(null);
@@ -66,6 +89,7 @@ export default function SystemHealthPortal() {
   const [clearDeployCache, setClearDeployCache] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const { reloadProfile } = useAuth();
   const tabQuery = new URLSearchParams(location.search).get('tab');
   const requestedTab = SYSTEM_TAB_KEYS.has(tabQuery) ? tabQuery : 'overview';
 
@@ -74,11 +98,22 @@ export default function SystemHealthPortal() {
   const [tenantOpen, setTenantOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [selectedAdmin, setSelectedAdmin] = useState(null);
+  const [systemUsers, setSystemUsers] = useState([]);
+  const [systemUsersLoading, setSystemUsersLoading] = useState(false);
+  const [systemUsersError, setSystemUsersError] = useState('');
+  const [systemUserSearch, setSystemUserSearch] = useState('');
+  const [systemUserType, setSystemUserType] = useState('all');
+  const [systemUserStatus, setSystemUserStatus] = useState('all');
+  const [selectedSystemUser, setSelectedSystemUser] = useState(null);
+  const [systemUserEditOpen, setSystemUserEditOpen] = useState(false);
+  const [systemUserSaving, setSystemUserSaving] = useState(false);
+  const [systemUserEditError, setSystemUserEditError] = useState('');
 
   const [adminForm] = Form.useForm();
   const [editAdminForm] = Form.useForm();
   const [tenantForm] = Form.useForm();
   const [userForm] = Form.useForm();
+  const [systemUserEditForm] = Form.useForm();
 
   const [consoleCommand, setConsoleCommand] = useState('');
   const [consoleOutput, setConsoleOutput] = useState('');
@@ -88,14 +123,26 @@ export default function SystemHealthPortal() {
   const hasBusinessAdmin = activeAdmins.some(admin => admin.role === 'business_admin');
   const adminSeatsFull = hasSystemAdmin && hasBusinessAdmin;
 
+  const loadSystemUsers = useCallback(async () => {
+    setSystemUsersLoading(true);
+    setSystemUsersError('');
+    try {
+      const { data } = await axios.get('/api/system/users');
+      setSystemUsers(Array.isArray(data?.users) ? data.users : []);
+    } catch (error) {
+      setSystemUsersError(error.response?.data?.error || 'Unable to load user accounts.');
+    } finally {
+      setSystemUsersLoading(false);
+    }
+  }, []);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsRes, adminsRes, tenantsRes, usersRes, suppliersRes, auditRes, controlRes] = await Promise.all([
+      const [statsRes, adminsRes, tenantsRes, suppliersRes, auditRes, controlRes] = await Promise.all([
         axios.get('/api/system/stats'),
         axios.get('/api/system/admins'),
         axios.get('/api/admin/tenants'),
-        axios.get('/api/admin/tenant-users'),
         axios.get('/api/admin/suppliers'),
         axios.get('/api/admin/audit-logs').catch(() => ({ data: [] })),
         axios.get('/api/system/control-plane').catch(() => ({ data: null })),
@@ -103,7 +150,6 @@ export default function SystemHealthPortal() {
       setStats(statsRes.data);
       setAdmins(adminsRes.data);
       setTenants(tenantsRes.data);
-      setTenantUsers(usersRes.data);
       setSuppliers(suppliersRes.data);
       setAuditLogs(auditRes.data);
       setControlPlane(controlRes.data);
@@ -117,6 +163,11 @@ export default function SystemHealthPortal() {
   const selectTab = (tab) => {
     navigate(`/system-health?tab=${encodeURIComponent(tab)}`, { replace: true });
     window.setTimeout(() => document.getElementById('system-control-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
+
+  const refreshPortal = () => {
+    loadAll();
+    if (requestedTab === 'users') loadSystemUsers();
   };
 
   const executeOperation = async (operation, confirmation = '', args = {}) => {
@@ -157,6 +208,10 @@ export default function SystemHealthPortal() {
     }, 30000);
     return () => clearInterval(interval);
   }, [loadAll]);
+
+  useEffect(() => {
+    if (requestedTab === 'users') loadSystemUsers();
+  }, [loadSystemUsers, requestedTab]);
 
   const handleAddAdmin = async (values) => {
     setFormLoading(true);
@@ -240,6 +295,7 @@ export default function SystemHealthPortal() {
       setUserOpen(false);
       userForm.resetFields();
       loadAll();
+      loadSystemUsers();
     } catch (err) {
       message.error(err.response?.data?.error || 'Failed to create user');
     } finally {
@@ -247,15 +303,78 @@ export default function SystemHealthPortal() {
     }
   };
 
-  const toggleTenantUser = async (id) => {
+  const openSystemUserEdit = (user) => {
+    setSystemUserEditError('');
+    setSelectedSystemUser(user);
+    systemUserEditForm.setFieldsValue({
+      full_name: user.full_name,
+      email: user.email,
+      is_active: user.is_active,
+    });
+    setSystemUserEditOpen(true);
+  };
+
+  const closeSystemUserEdit = () => {
+    if (systemUserSaving) return;
+    setSystemUserEditOpen(false);
+    setSelectedSystemUser(null);
+    setSystemUserEditError('');
+    systemUserEditForm.resetFields();
+  };
+
+  const handleSystemUserEdit = async (values) => {
+    if (!selectedSystemUser) return;
+
+    const userBeingEdited = selectedSystemUser;
+    const payload = buildSystemUserUpdate(userBeingEdited, values);
+
+    setSystemUserEditError('');
+    setSystemUserSaving(true);
     try {
-      await axios.put(`/api/admin/tenant-users/${id}/toggle-active`);
-      message.success('User status updated');
+      const { data } = await axios.patch(
+        `/api/system/users/${userBeingEdited.user_type}/${userBeingEdited.id}`,
+        payload,
+      );
+      const updatedUser = data?.user;
+      if (updatedUser) {
+        setSystemUsers(current => current.map(user => (
+          user.id === userBeingEdited.id && user.user_type === userBeingEdited.user_type
+            ? { ...user, ...updatedUser }
+            : user
+        )));
+      } else {
+        await loadSystemUsers();
+      }
+      setSystemUsersError('');
+      setSystemUserEditError('');
+      message.success(data?.message || 'User account updated');
+      setSystemUserEditOpen(false);
+      setSelectedSystemUser(null);
+      systemUserEditForm.resetFields();
       loadAll();
-    } catch (err) {
-      message.error(err.response?.data?.error || 'Failed to update user');
+      if (userBeingEdited.user_type === 'platform_admin') {
+        reloadProfile().catch(() => {});
+      }
+    } catch (error) {
+      const detail = error.response?.data?.error || 'Unable to update this user account.';
+      setSystemUserEditError(detail);
+      message.error(detail);
+    } finally {
+      setSystemUserSaving(false);
     }
   };
+
+  const filteredSystemUsers = useMemo(() => filterSystemUsers(systemUsers, {
+    search: systemUserSearch,
+    type: systemUserType,
+    status: systemUserStatus,
+  }), [systemUserSearch, systemUserStatus, systemUserType, systemUsers]);
+
+  const systemUserCounts = useMemo(() => ({
+    total: systemUsers.length,
+    active: systemUsers.filter(user => user.is_active).length,
+    platformAdmins: systemUsers.filter(user => user.user_type === 'platform_admin').length,
+  }), [systemUsers]);
 
   const runConsoleCommand = async () => {
     if (!consoleCommand.trim()) return;
@@ -309,13 +428,52 @@ export default function SystemHealthPortal() {
     { title: 'Created', dataIndex: 'created_at', render: value => value ? new Date(value).toLocaleDateString() : '-' },
   ];
 
-  const userColumns = [
-    { title: 'Name', dataIndex: 'full_name' },
-    { title: 'Email', dataIndex: 'email' },
-    { title: 'Organization', dataIndex: 'tenant_name' },
-    { title: 'Role', dataIndex: 'role', render: value => <Tag>{value}</Tag> },
-    { title: 'Active', dataIndex: 'is_active', render: (value, record) => <Switch checked={value} onChange={() => toggleTenantUser(record.id)} /> },
-    { title: 'Last Login', dataIndex: 'last_login', render: value => value ? new Date(value).toLocaleString() : 'Never' },
+  const systemUserColumns = [
+    {
+      title: 'User',
+      key: 'identity',
+      render: (_, user) => (
+        <Space direction="vertical" size={0}>
+          <Space size={6} wrap>
+            <Text strong>{user.full_name || 'Unnamed user'}</Text>
+            {isProtectedPrimaryAdmin(user) && <Tag color="gold">Primary</Tag>}
+          </Space>
+          <Text type="secondary" copyable>{user.email}</Text>
+        </Space>
+      ),
+    },
+    {
+      title: 'Account Type',
+      dataIndex: 'user_type',
+      render: value => (
+        <Tag color={SYSTEM_USER_TYPE_COLORS[value] || 'default'}>
+          {SYSTEM_USER_TYPE_LABELS[value] || humanizeRole(value)}
+        </Tag>
+      ),
+    },
+    { title: 'Role', dataIndex: 'role', render: value => <span className="text-capitalize">{humanizeRole(value)}</span> },
+    { title: 'Organization / Company', key: 'affiliation', render: (_, user) => userAffiliation(user) },
+    {
+      title: 'Status',
+      dataIndex: 'is_active',
+      render: value => <Tag color={value ? 'success' : 'default'}>{value ? 'Active' : 'Inactive'}</Tag>,
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      fixed: 'right',
+      width: 96,
+      render: (_, user) => (
+        <Button
+          size="small"
+          icon={<EditOutlined />}
+          aria-label={`Edit ${user.full_name || user.email}`}
+          onClick={() => openSystemUserEdit(user)}
+        >
+          Edit
+        </Button>
+      ),
+    },
   ];
 
   const supplierColumns = [
@@ -652,14 +810,153 @@ export default function SystemHealthPortal() {
     },
     {
       key: 'users',
-      label: 'Users',
+      label: 'User Maintenance',
       children: (
         <Card
-          className="table-card"
-          title="Tenant Users"
-          extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => { userForm.resetFields(); setUserOpen(true); }}>Create User</Button>}
+          className="table-card system-user-maintenance"
+          title={<Space><UserOutlined /> User Maintenance</Space>}
+          extra={(
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => { userForm.resetFields(); setUserOpen(true); }}
+            >
+              Create Organization User
+            </Button>
+          )}
         >
-          <Table loading={loading} dataSource={tenantUsers} rowKey="id" columns={userColumns} scroll={{ x: 980 }} />
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Maintain accounts across the platform"
+            description="Search and edit platform administrators, organization users, and supplier users. Primary system-administrator identity and access controls are protected."
+          />
+
+          {systemUsersError && (
+            <Alert
+              type="error"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="User accounts could not be loaded"
+              description={systemUsers.length > 0
+                ? `${systemUsersError} Showing the most recently loaded data.`
+                : systemUsersError}
+              action={<Button size="small" onClick={loadSystemUsers}>Try again</Button>}
+            />
+          )}
+
+          {(!systemUsersError || systemUsers.length > 0) && (<>
+          <div className="system-user-summary" aria-label="User account summary">
+            <Space wrap size={[8, 8]}>
+              <Tag color="blue">{systemUserCounts.total} total</Tag>
+              <Tag color="green">{systemUserCounts.active} active</Tag>
+              <Tag color="purple">{systemUserCounts.platformAdmins} platform administrators</Tag>
+              <Text type="secondary">Showing {filteredSystemUsers.length}</Text>
+            </Space>
+          </div>
+
+          <Space className="responsive-control-row system-user-filters" wrap size={[10, 10]}>
+            <Input
+              allowClear
+              aria-label="Search users"
+              prefix={<SearchOutlined />}
+              placeholder="Search name, email or organization"
+              value={systemUserSearch}
+              onChange={event => setSystemUserSearch(event.target.value)}
+              style={{ width: 320 }}
+            />
+            <Select
+              aria-label="Filter by account type"
+              value={systemUserType}
+              onChange={setSystemUserType}
+              style={{ width: 210 }}
+              options={[
+                { value: 'all', label: 'All account types' },
+                { value: 'platform_admin', label: 'Platform administrators' },
+                { value: 'tenant_user', label: 'Organization users' },
+                { value: 'supplier_user', label: 'Supplier users' },
+              ]}
+            />
+            <Select
+              aria-label="Filter by account status"
+              value={systemUserStatus}
+              onChange={setSystemUserStatus}
+              style={{ width: 160 }}
+              options={[
+                { value: 'all', label: 'All statuses' },
+                { value: 'active', label: 'Active' },
+                { value: 'inactive', label: 'Inactive' },
+              ]}
+            />
+            <Button
+              disabled={!systemUserSearch && systemUserType === 'all' && systemUserStatus === 'all'}
+              onClick={() => {
+                setSystemUserSearch('');
+                setSystemUserType('all');
+                setSystemUserStatus('all');
+              }}
+            >
+              Clear filters
+            </Button>
+            <Button icon={<ReloadOutlined />} loading={systemUsersLoading} onClick={loadSystemUsers}>
+              Refresh
+            </Button>
+          </Space>
+
+          <Table
+            className="system-user-desktop-table"
+            loading={systemUsersLoading}
+            dataSource={filteredSystemUsers}
+            rowKey={user => `${user.user_type}:${user.id}`}
+            columns={systemUserColumns}
+            pagination={{ pageSize: 10, showSizeChanger: true }}
+            scroll={{ x: 980 }}
+            locale={{ emptyText: <Empty description="No user accounts match these filters" /> }}
+          />
+
+          <List
+            className="system-user-mobile-list"
+            loading={systemUsersLoading}
+            dataSource={filteredSystemUsers}
+            pagination={{ pageSize: 10, size: 'small', hideOnSinglePage: true }}
+            locale={{ emptyText: <Empty description="No user accounts match these filters" /> }}
+            renderItem={user => (
+              <List.Item key={`${user.user_type}:${user.id}`}>
+                <Card size="small" className="system-user-mobile-card">
+                  <div className="system-user-card-heading">
+                    <div>
+                      <Text strong>{user.full_name || 'Unnamed user'}</Text>
+                      <Text type="secondary">{user.email}</Text>
+                    </div>
+                    <Tag color={user.is_active ? 'success' : 'default'}>
+                      {user.is_active ? 'Active' : 'Inactive'}
+                    </Tag>
+                  </div>
+                  <Space wrap size={[6, 6]}>
+                    <Tag color={SYSTEM_USER_TYPE_COLORS[user.user_type] || 'default'}>
+                      {SYSTEM_USER_TYPE_LABELS[user.user_type] || humanizeRole(user.user_type)}
+                    </Tag>
+                    <Tag>{humanizeRole(user.role)}</Tag>
+                    {isProtectedPrimaryAdmin(user) && <Tag color="gold">Primary</Tag>}
+                  </Space>
+                  <div className="system-user-affiliation">
+                    <Text type="secondary">Organization / company</Text>
+                    <Text>{userAffiliation(user)}</Text>
+                  </div>
+                  <Button
+                    block
+                    icon={<EditOutlined />}
+                    aria-label={`Edit ${user.full_name || user.email}`}
+                    onClick={() => openSystemUserEdit(user)}
+                  >
+                    Edit user
+                  </Button>
+                </Card>
+              </List.Item>
+            )}
+          />
+          </>)}
         </Card>
       ),
     },
@@ -717,13 +1014,13 @@ export default function SystemHealthPortal() {
 
   return (
     <div className="workspace-page system-control-plane">
-      <RotatingMediaBanner images={cdnImages.systemHeroes} imagePosition="center 45%" ariaLabel="System command center">
+      <RotatingMediaBanner images={remoteImages.systemHeroes} imagePosition="center 45%" ariaLabel="System command center">
         <div>
           <h2><CloudServerOutlined /> System Command Center</h2>
           <p>Test, maintain, upgrade and deploy the platform from one guarded operations workspace.</p>
         </div>
         <div className="page-media-actions">
-          <Button icon={<ReloadOutlined />} onClick={loadAll} loading={loading}>Refresh</Button>
+          <Button icon={<ReloadOutlined />} onClick={refreshPortal} loading={loading || systemUsersLoading}>Refresh</Button>
         </div>
       </RotatingMediaBanner>
 
@@ -882,8 +1179,106 @@ export default function SystemHealthPortal() {
         </Form>
       </Modal>
 
-      <Modal title="Create Tenant User" open={userOpen} onCancel={() => setUserOpen(false)} onOk={() => userForm.submit()} confirmLoading={formLoading}>
-        <Form form={userForm} layout="vertical" onFinish={handleCreateUser}>
+      <Modal
+        title="Edit User Account"
+        open={systemUserEditOpen}
+        onCancel={closeSystemUserEdit}
+        footer={null}
+        maskClosable={!systemUserSaving}
+        closable={!systemUserSaving}
+      >
+        {selectedSystemUser && (
+          <>
+            <Space wrap style={{ marginBottom: 16 }}>
+              <Tag color={SYSTEM_USER_TYPE_COLORS[selectedSystemUser.user_type] || 'default'}>
+                {SYSTEM_USER_TYPE_LABELS[selectedSystemUser.user_type] || humanizeRole(selectedSystemUser.user_type)}
+              </Tag>
+              <Tag>{humanizeRole(selectedSystemUser.role)}</Tag>
+              <Text type="secondary">{userAffiliation(selectedSystemUser)}</Text>
+            </Space>
+
+            {isProtectedPrimaryAdmin(selectedSystemUser) && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="Protected primary administrator"
+                description="The primary administrator's email address and active status cannot be changed. You can still update the display name."
+              />
+            )}
+
+            {!isProtectedPrimaryAdmin(selectedSystemUser) && selectedSystemUser.can_edit_status === false && (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="Your active status is protected"
+                description="You cannot deactivate the account you are currently using. You can still update its name and email address."
+              />
+            )}
+
+            {systemUserEditError && (
+              <Alert
+                type="error"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="User account was not updated"
+                description={systemUserEditError}
+              />
+            )}
+
+            <Form form={systemUserEditForm} layout="vertical" onFinish={handleSystemUserEdit}>
+              <Form.Item
+                name="full_name"
+                label="Full Name"
+                rules={[
+                  { required: true, whitespace: true, message: 'Enter the user\'s full name' },
+                  { max: 150, message: 'Full name must be 150 characters or fewer' },
+                ]}
+              >
+                <Input autoComplete="name" />
+              </Form.Item>
+              <Form.Item
+                name="email"
+                label="Email Address"
+                rules={[
+                  { required: true, message: 'Enter an email address' },
+                  { type: 'email', message: 'Enter a valid email address' },
+                  { max: 254, message: 'Email address must be 254 characters or fewer' },
+                ]}
+              >
+                <Input
+                  autoComplete="email"
+                  disabled={isProtectedPrimaryAdmin(selectedSystemUser)}
+                />
+              </Form.Item>
+              <Form.Item
+                name="is_active"
+                label="Account Access"
+                valuePropName="checked"
+                extra={selectedSystemUser.can_edit_status === false || isProtectedPrimaryAdmin(selectedSystemUser)
+                  ? (isProtectedPrimaryAdmin(selectedSystemUser)
+                    ? 'The primary system administrator must remain active.'
+                    : 'You cannot deactivate the account you are currently using.')
+                  : 'Inactive users cannot sign in.'}
+              >
+                <Switch
+                  checkedChildren="Active"
+                  unCheckedChildren="Inactive"
+                  disabled={selectedSystemUser.can_edit_status === false || isProtectedPrimaryAdmin(selectedSystemUser)}
+                />
+              </Form.Item>
+              <Space className="system-user-edit-actions">
+                <Button onClick={closeSystemUserEdit} disabled={systemUserSaving}>Cancel</Button>
+                <Button type="primary" htmlType="submit" loading={systemUserSaving}>Save Changes</Button>
+              </Space>
+            </Form>
+          </>
+        )}
+      </Modal>
+
+      <Modal title="Create Organization User" open={userOpen} onCancel={() => setUserOpen(false)} onOk={() => userForm.submit()} confirmLoading={formLoading}>
+        <Form form={userForm} layout="vertical" initialValues={{ role: 'customer' }} onFinish={handleCreateUser}>
           <Form.Item name="tenant_id" label="Organization" rules={[{ required: true }]}>
             <Select
               showSearch
@@ -891,9 +1286,35 @@ export default function SystemHealthPortal() {
               options={tenants.map(tenant => ({ value: tenant.id, label: tenant.name }))}
             />
           </Form.Item>
-          <Form.Item name="full_name" label="Full Name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email' }]}><Input /></Form.Item>
-          <Form.Item name="password" label="Password" rules={[{ required: true, min: 10 }]}><Input.Password /></Form.Item>
+          <Form.Item
+            name="full_name"
+            label="Full Name"
+            rules={[
+              { required: true, whitespace: true, message: 'Enter the user\'s full name' },
+              { max: 150, message: 'Full name must be 150 characters or fewer' },
+            ]}
+          >
+            <Input maxLength={150} autoComplete="name" />
+          </Form.Item>
+          <Form.Item
+            name="email"
+            label="Email"
+            rules={[
+              { required: true, message: 'Enter an email address' },
+              { type: 'email', message: 'Enter a valid email address' },
+              { max: 254, message: 'Email address must be 254 characters or fewer' },
+            ]}
+          >
+            <Input maxLength={254} autoComplete="email" />
+          </Form.Item>
+          <Form.Item
+            name="password"
+            label="Password"
+            rules={[strongPasswordRule]}
+            extra="Use at least 10 characters with uppercase, lowercase, number, and special character."
+          >
+            <Input.Password autoComplete="new-password" />
+          </Form.Item>
           <Form.Item name="role" label="Role" rules={[{ required: true }]}>
             <Select options={[{ value: 'customer', label: 'Customer' }]} />
           </Form.Item>

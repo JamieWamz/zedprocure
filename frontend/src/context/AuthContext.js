@@ -51,6 +51,12 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  const reloadProfile = useCallback(async () => {
+    const meRes = await axios.get('/api/me');
+    applyMe(meRes.data);
+    return meRes.data;
+  }, [applyMe]);
+
   // Initial session bootstrap (cookie may already be present).
   useEffect(() => {
     let cancelled = false;
@@ -143,7 +149,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, login, logout, dashboardRoute, loading,
+      user, login, logout, reloadProfile, dashboardRoute, loading,
       activeTenantId, setActiveTenantId: handleSetActiveTenant,
       tenants,
     }}>

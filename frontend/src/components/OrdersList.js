@@ -3,7 +3,7 @@ import { Alert, Button, Card, Select, Space, Table, Tag, Typography, message } f
 import { AuditOutlined, ReloadOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import DigitalSignatureModal from './DigitalSignatureModal';
-import EnhancedEmpty from './EnhancedEmpty';
+import ActionableEmptyState from './ActionableEmptyState';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const { Text } = Typography;
@@ -128,7 +128,7 @@ export default function OrdersList() {
         columns={columns}
         scroll={{ x: 900 }}
         rowClassName={(record) => new URLSearchParams(location.search).get('focus') === record.id ? 'notification-focus-row' : ''}
-        locale={{ emptyText: <EnhancedEmpty title="No orders yet" description="Award a supplier response from bid evaluation to create the first order." ctaText="Review bids" ctaPath="/admin/bids" /> }}
+        locale={{ emptyText: <ActionableEmptyState title="No orders yet" description="Award a supplier response from bid evaluation to create the first order." ctaText="Review bids" ctaPath="/admin/bids" /> }}
       />
       <DigitalSignatureModal
         open={!!signingOrder}

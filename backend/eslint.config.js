@@ -6,6 +6,7 @@ module.exports = [
       sourceType: 'commonjs',
       globals: {
         Buffer: 'readonly',
+        AbortSignal: 'readonly',
         URL: 'readonly',
         __dirname: 'readonly',
         clearInterval: 'readonly',
@@ -20,6 +21,7 @@ module.exports = [
         test: 'readonly',
         it: 'readonly',
         expect: 'readonly',
+        fetch: 'readonly',
         jest: 'readonly',
         beforeAll: 'readonly',
         beforeEach: 'readonly',

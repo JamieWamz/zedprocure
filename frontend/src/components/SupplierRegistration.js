@@ -4,7 +4,7 @@ import { UploadOutlined, InboxOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { cdnImages } from '../cdnAssets';
+import { remoteImages } from '../remoteImageAssets';
 import { strongPasswordRule } from '../utils/passwordValidation';
 
 const { Step } = Steps;
@@ -232,7 +232,7 @@ export default function SupplierRegistration() {
         maxWidth: 800, 
         margin: '40px auto', 
         padding: 24,
-        backgroundImage: `url(${cdnImages.registration})`,
+        backgroundImage: `url(${remoteImages.registration})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',

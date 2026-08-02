@@ -17,21 +17,21 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import BusinessAdminDashboard from './BusinessAdminDashboard';
-import TenantBidsList from './TenantBidsList';
+import BidManagement from './BidManagement';
 import CreateBidWizard from './CreateBidWizard';
 import BidDetail from './BidDetail';
 import BidEvaluation from './BidEvaluation';
 import SupplierVerification from './SupplierVerification';
 import FinancialLedger from './FinancialLedger';
-import FinanceInvoices from './FinanceInvoices';
+import InvoiceManagement from './InvoiceManagement';
 import OrdersList from './OrdersList';
 import UserManagement from './UserManagement';
-import TenantManagement from './TenantManagement';
+import OrganizationManagement from './OrganizationManagement';
 import AdminSupportInbox from './AdminSupportInbox';
 
 const { Sider, Content } = Layout;
 
-export default function AdminPortal() {
+export default function BusinessAdminPortal() {
   const { user } = useAuth();
   const { appearance } = useTheme();
   const role = user?.role;
@@ -95,17 +95,17 @@ export default function AdminPortal() {
     if (path === '/admin' || path === '/admin/') {
       return <BusinessAdminDashboard />;
     }
-    if (path === '/admin/bids') return <TenantBidsList />;
+    if (path === '/admin/bids') return <BidManagement />;
     if (path === '/admin/bids/new') return <CreateBidWizard />;
     // /admin/bids/:id/evaluate — must check before the generic :id route
     if (path.startsWith('/admin/bids/') && path.endsWith('/evaluate')) return <BidEvaluation />;
     if (path.startsWith('/admin/bids/') && path.split('/').length === 4) return <BidDetail />;
     if (path === '/admin/orders') return <OrdersList />;
-    if (path === '/admin/invoices') return <FinanceInvoices />;
+    if (path === '/admin/invoices') return <InvoiceManagement />;
     if (path === '/admin/verification') return <SupplierVerification />;
     if (path === '/admin/ledger') return <FinancialLedger />;
     if (path === '/admin/users') return <UserManagement />;
-    if (path === '/admin/tenants') return <TenantManagement />;
+    if (path === '/admin/tenants') return <OrganizationManagement />;
     if (path === '/admin/support') return <AdminSupportInbox />;
     return <BusinessAdminDashboard />;
   };

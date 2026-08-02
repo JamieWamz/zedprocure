@@ -8,15 +8,15 @@ const crypto = require('crypto');
 const multer = require('multer');
 const path = require('path');
 const pool = require('../config/db');
-const { validatePassword } = require('../utils/validation');
+const { validatePassword } = require('../utils/passwordValidation');
 const { cleanText } = require('../utils/requestValidation');
 const { sendPasswordReset, sendWelcome } = require('../services/emailService');
+const {
+  assertIdentityEmailAvailable,
+  normalizeIdentityEmail,
+  requireValidIdentityEmail,
+} = require('../services/identityEmailGuard');
 const router = express.Router();
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function normalizeEmail(value) {
-  return typeof value === 'string' ? value.trim().toLowerCase() : '';
-}
 
 function sendWelcomeSafely(email, fullName) {
   const logFailure = error => {
@@ -75,13 +75,14 @@ const MANDATORY_DOCUMENT_TYPES = [
 
 // ─── Self-service customer / supplier registration ──────────────────────────
 router.post('/register', async (req, res) => {
-  const email = normalizeEmail(req.body.email);
   const { password, account_type } = req.body;
 
+  let email;
   let fullName;
   let organization;
   let registrationNumber;
   try {
+    email = requireValidIdentityEmail(req.body.email);
     fullName = cleanText(req.body.full_name, { required: true, maxLength: 150 });
     organization = cleanText(req.body.organization, { required: true, maxLength: 255 });
     registrationNumber = cleanText(req.body.registration_number, { maxLength: 100 }) || null;
@@ -89,9 +90,6 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: error.message });
   }
 
-  if (!EMAIL_PATTERN.test(email) || email.length > 254) {
-    return res.status(400).json({ error: 'A valid email address is required' });
-  }
   if (!['customer', 'supplier'].includes(account_type)) {
     return res.status(400).json({ error: 'Account type must be customer or supplier' });
   }
@@ -105,21 +103,7 @@ router.post('/register', async (req, res) => {
     client = await pool.connect();
     await client.query('BEGIN');
 
-    // Serialize registrations for the same normalized email so simultaneous
-    // requests cannot create identities in different user tables.
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [email]);
-    const { rows: existing } = await client.query(
-      `SELECT email FROM (
-        SELECT email FROM platform_admins UNION ALL
-        SELECT email FROM tenant_users UNION ALL
-        SELECT email FROM supplier_users
-       ) users WHERE LOWER(email) = $1 LIMIT 1`,
-      [email]
-    );
-    if (existing.length > 0) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'An account with this email already exists' });
-    }
+    await assertIdentityEmailAvailable(client, email);
 
     const passwordHash = await bcrypt.hash(password, 12);
     if (account_type === 'customer') {
@@ -158,6 +142,9 @@ router.post('/register', async (req, res) => {
   } catch (error) {
     if (!committed && client) {
       try { await client.query('ROLLBACK'); } catch { /* connection may already be unavailable */ }
+    }
+    if (error.statusCode === 409) {
+      return res.status(409).json({ error: error.message });
     }
     if (error.code === '23505') {
       return res.status(409).json({
@@ -205,17 +192,18 @@ router.post('/register-supplier', upload.fields([
   { name: 'directors_id', maxCount: 1 },
   { name: 'bank_reference', maxCount: 1 }
 ]), async (req, res) => {
-  const email = normalizeEmail(req.body.email);
+  let email;
   const { password, full_name, company_name, registration_number, business_category } = req.body;
+  try {
+    email = requireValidIdentityEmail(req.body.email);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
   
   // Validate required fields
   if (!email || !password || !full_name || !company_name || !business_category) {
     return res.status(400).json({ error: 'Email, password, full name, company name, and business category are required' });
   }
-  if (!EMAIL_PATTERN.test(email) || email.length > 254) {
-    return res.status(400).json({ error: 'A valid email address is required' });
-  }
-  
   const pwErr = validatePassword(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
 
@@ -236,21 +224,7 @@ router.post('/register-supplier', upload.fields([
   try {
     client = await pool.connect();
     await client.query('BEGIN');
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [email]);
-    
-    // Check if email already exists
-    const { rows: existing } = await client.query(
-      `SELECT email FROM (
-        SELECT email FROM platform_admins UNION ALL
-        SELECT email FROM tenant_users UNION ALL
-        SELECT email FROM supplier_users
-      ) u WHERE LOWER(email)=$1 LIMIT 1`,
-      [email]
-    );
-    if (existing.length) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'An account with this email already exists' });
-    }
+    await assertIdentityEmailAvailable(client, email);
 
     const hash = await bcrypt.hash(password, 12);
     const supplierId = crypto.randomUUID();
@@ -296,11 +270,14 @@ router.post('/register-supplier', upload.fields([
     if (!committed && client) {
       try { await client.query('ROLLBACK'); } catch { /* connection may already be unavailable */ }
     }
+    if (e.statusCode === 409) {
+      return res.status(409).json({ error: e.message });
+    }
     if (e.code === '23505') {
       return res.status(409).json({ error: 'An account with this email or registration number already exists' });
     }
     console.error('Supplier registration error:', e);
-    res.status(500).json({ error: 'Registration failed: ' + e.message });
+    res.status(500).json({ error: 'Supplier registration could not be completed' });
   } finally {
     client?.release();
   }
@@ -308,20 +285,29 @@ router.post('/register-supplier', upload.fields([
 
 // ─── Forgot Password ─────────────────────────────────────────────────────────
 router.post('/forgot-password', async (req, res) => {
-  const { email } = req.body;
+  const email = normalizeIdentityEmail(req.body.email);
   if (!email) return res.status(400).json({ error: 'Email required' });
+  const genericResponse = () => res.json({
+    message: 'If the email exists, a reset link has been sent.',
+  });
 
   try {
     // Find user across all tables
     const { rows: users } = await pool.query(
-      `SELECT id, 'platform_admin' AS ut FROM platform_admins WHERE email=$1 AND is_active=true
-       UNION ALL SELECT id, 'tenant_user' AS ut FROM tenant_users WHERE email=$1 AND is_active=true
-       UNION ALL SELECT id, 'supplier_user' AS ut FROM supplier_users WHERE email=$1 AND is_active=true`,
+      `SELECT id, 'platform_admin' AS ut FROM platform_admins WHERE LOWER(BTRIM(email))=$1 AND is_active=true
+       UNION ALL SELECT id, 'tenant_user' AS ut FROM tenant_users WHERE LOWER(BTRIM(email))=$1 AND is_active=true
+       UNION ALL SELECT id, 'supplier_user' AS ut FROM supplier_users WHERE LOWER(BTRIM(email))=$1 AND is_active=true`,
       [email]
     );
-    if (!users.length) {
-      // Don't reveal whether email exists — security best practice
-      return res.json({ message: 'If the email exists, a reset link has been sent.' });
+    if (users.length !== 1) {
+      if (users.length > 1) {
+        console.error('Ambiguous normalized identity detected during password reset', {
+          matches: users.length,
+        });
+      }
+      // Do not reveal absence or legacy ambiguity, and never select one of
+      // several identities for a credential-changing operation.
+      return genericResponse();
     }
 
     const token = crypto.randomBytes(32).toString('hex');
@@ -335,8 +321,12 @@ router.post('/forgot-password', async (req, res) => {
       [users[0].id, users[0].ut, token, expiresAt]
     );
 
-    await sendPasswordReset(email, token);
-    res.json({ message: 'If the email exists, a reset link has been sent.' });
+    try {
+      await sendPasswordReset(email, token);
+    } catch (deliveryError) {
+      console.error('Password reset email could not be sent:', deliveryError.message);
+    }
+    return genericResponse();
   } catch (e) {
     console.error('Forgot password error:', e);
     res.status(500).json({ error: 'Failed to process request' });
@@ -380,17 +370,31 @@ router.post('/reset-password', async (req, res) => {
 
 // ─── Accept Invitation ──────────────────────────────────────────────────────────
 router.post('/accept-invitation', async (req, res) => {
-  const { token, password, full_name, company_name } = req.body;
-  if (!token || !password || !full_name) {
+  const { password } = req.body;
+  if (!req.body.token || !password || !req.body.full_name) {
     return res.status(400).json({ error: 'Token, password, and full name are required' });
+  }
+
+  let token;
+  let fullName;
+  let companyName;
+  try {
+    token = cleanText(req.body.token, { required: true, maxLength: 128 });
+    fullName = cleanText(req.body.full_name, { required: true, maxLength: 150 });
+    companyName = cleanText(req.body.company_name, { maxLength: 255 });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
   
   const pwErr = validatePassword(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
 
-  const client = await pool.connect();
+  let client;
+  let transactionStarted = false;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
+    transactionStarted = true;
     
     // Find invitation
     const { rows: [invitation] } = await client.query(
@@ -399,35 +403,39 @@ router.post('/accept-invitation', async (req, res) => {
     );
     if (!invitation) {
       await client.query('ROLLBACK');
+      transactionStarted = false;
       return res.status(400).json({ error: 'Invalid or expired invitation token' });
     }
 
+    const email = await assertIdentityEmailAvailable(client, invitation.email);
     const hash = await bcrypt.hash(password, 12);
     
     if (invitation.role === 'supplier') {
-      if (!company_name) {
+      if (!companyName) {
         await client.query('ROLLBACK');
+        transactionStarted = false;
         return res.status(400).json({ error: 'Company name is required for supplier accounts' });
       }
       const supplierId = crypto.randomUUID();
       await client.query(
         `INSERT INTO suppliers (id, company_name, verification_status, is_active, verification_method)
          VALUES ($1, $2, 'verified', true, 'manual')`,
-        [supplierId, company_name]
+        [supplierId, companyName]
       );
       await client.query(
         `INSERT INTO supplier_users (id, supplier_id, email, password_hash, full_name)
          VALUES ($1, $2, $3, $4, $5)`,
-        [crypto.randomUUID(), supplierId, invitation.email, hash, full_name]
+        [crypto.randomUUID(), supplierId, email, hash, fullName]
       );
     } else if (invitation.role === 'customer') {
       await client.query(
         `INSERT INTO tenant_users (id, tenant_id, email, password_hash, full_name, role)
          VALUES ($1, (SELECT id FROM tenants LIMIT 1), $2, $3, $4, 'customer')`,
-        [crypto.randomUUID(), invitation.email, hash, full_name]
+        [crypto.randomUUID(), email, hash, fullName]
       );
     } else {
       await client.query('ROLLBACK');
+      transactionStarted = false;
       return res.status(400).json({ error: 'Unknown role in invitation' });
     }
 
@@ -438,13 +446,19 @@ router.post('/accept-invitation', async (req, res) => {
     );
 
     await client.query('COMMIT');
+    transactionStarted = false;
     res.json({ message: 'Account created successfully. You can now log in.' });
   } catch (e) {
-    await client.query('ROLLBACK');
+    if (transactionStarted && client) {
+      try { await client.query('ROLLBACK'); } catch { /* connection may be unavailable */ }
+    }
+    if (e.statusCode === 409 || e.code === '23505') {
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
     console.error('Accept invitation error:', e);
-    res.status(500).json({ error: 'Failed to accept invitation: ' + e.message });
+    res.status(500).json({ error: 'Failed to accept invitation' });
   } finally {
-    client.release();
+    client?.release();
   }
 });
 

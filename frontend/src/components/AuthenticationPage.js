@@ -9,13 +9,13 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { cdnImages } from '../cdnAssets';
+import { remoteImages } from '../remoteImageAssets';
 import { useTheme } from '../context/ThemeContext';
 import { strongPasswordRule } from '../utils/passwordValidation';
 
-const LOGIN_HERO_IMAGES = cdnImages.loginHeroes?.length ? cdnImages.loginHeroes : [cdnImages.loginHero];
+const LOGIN_HERO_IMAGES = remoteImages.loginHeroes?.length ? remoteImages.loginHeroes : [remoteImages.loginHero];
 
-export default function UnifiedLogin() {
+export default function AuthenticationPage() {
   const { login } = useAuth();
   const { appearance, setAppearance } = useTheme();
   const navigate = useNavigate();

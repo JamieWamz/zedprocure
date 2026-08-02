@@ -1,4 +1,4 @@
-# Codd's 13 Rules — ZedProcure PostgreSQL Mapping
+# Relational Database Compliance — Codd's Rules
 
 Codd's rules describe what a relational DBMS must provide; they are not thirteen
 application features that can be reimplemented in Express. ZedProcure relies on

@@ -1,5 +1,5 @@
 /**
- * Submission Guard
+ * Bid submission validator.
  * Centralized validation for bid submissions in the open marketplace.
  * Rejects submissions past deadline or from unverified suppliers.
  */

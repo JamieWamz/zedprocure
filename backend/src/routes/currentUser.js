@@ -1,5 +1,5 @@
 /**
- * Current User Profile Route
+ * Current user profile route.
  * Extracted from inline route in index.js for architectural consistency.
  * Returns the authenticated user's profile and dashboard routing info.
  */

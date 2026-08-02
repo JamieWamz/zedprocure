@@ -3,12 +3,12 @@ import { Empty, Button, Typography } from 'antd';
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 
-const EnhancedEmpty = ({ title, description, ctaText, ctaPath, onAction, icon }) => {
+const ActionableEmptyState = ({ title, description, ctaText, ctaPath, onAction, icon }) => {
   const navigate = useNavigate();
 
   return (
     <Empty
-      className="enhanced-empty"
+      className="actionable-empty-state"
       image={icon || Empty.PRESENTED_IMAGE_SIMPLE}
       description={
         <div>
@@ -26,4 +26,4 @@ const EnhancedEmpty = ({ title, description, ctaText, ctaPath, onAction, icon })
   );
 };
 
-export default EnhancedEmpty;
+export default ActionableEmptyState;

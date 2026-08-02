@@ -10,6 +10,10 @@ const { authenticate } = require('../middleware/authMiddleware');
 const { debitWallet } = require('../services/walletService');
 const { calculateWithdrawal, MonetizationError } = require('../services/monetizationService');
 const { cleanText, requireEnum } = require('../utils/requestValidation');
+const {
+  lockIdentityEmails,
+  requireValidIdentityEmail,
+} = require('../services/identityEmailGuard');
 const router = express.Router();
 
 async function withdrawalPricing(amount) {
@@ -48,13 +52,22 @@ router.get('/', authenticate, async (req, res) => {
 router.post('/transfer', authenticate, async (req, res) => {
   const { to_email, amount, description } = req.body;
   const requestedAmount = Number(amount);
-  if (!to_email || !Number.isFinite(requestedAmount) || requestedAmount <= 0 || requestedAmount > 1_000_000_000) {
+  if (!Number.isFinite(requestedAmount) || requestedAmount <= 0 || requestedAmount > 1_000_000_000) {
     return res.status(400).json({ error: 'Recipient email and positive amount required' });
   }
-
-  const client = await pool.connect();
+  let toEmail;
   try {
+    toEmail = requireValidIdentityEmail(to_email);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  let client;
+  let transactionStarted = false;
+  try {
+    client = await pool.connect();
     await client.query('BEGIN');
+    transactionStarted = true;
 
     // Lock sender wallet
     const { rows: [senderWallet] } = await client.query(
@@ -63,38 +76,77 @@ router.post('/transfer', authenticate, async (req, res) => {
     );
     if (!senderWallet || parseFloat(senderWallet.balance) < parseFloat(amount)) {
       await client.query('ROLLBACK');
+      transactionStarted = false;
       return res.status(400).json({ error: 'Insufficient balance' });
     }
 
-    // Find recipient wallet
+    await lockIdentityEmails(client, [toEmail]);
+    const { rows: recipientMatches } = await client.query(
+      `SELECT identities.id AS identity_id, identities.user_type,
+              w.id AS wallet_id, w.balance
+       FROM (
+         SELECT id, 'tenant_user'::text AS user_type
+         FROM tenant_users
+         WHERE LOWER(BTRIM(email)) = $1 AND is_active = true
+         UNION ALL
+         SELECT id, 'supplier_user'::text AS user_type
+         FROM supplier_users
+         WHERE LOWER(BTRIM(email)) = $1 AND is_active = true
+         UNION ALL
+         SELECT id, 'platform_admin'::text AS user_type
+         FROM platform_admins
+         WHERE LOWER(BTRIM(email)) = $1 AND is_active = true
+       ) identities
+       LEFT JOIN wallets w
+         ON w.user_id = identities.id AND w.user_type = identities.user_type`,
+      [toEmail]
+    );
+    if (recipientMatches.length === 0) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(404).json({ error: 'Recipient not found' });
+    }
+    if (recipientMatches.length !== 1) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(409).json({
+        error: 'Recipient email is linked to multiple accounts. Contact support before retrying.',
+      });
+    }
+
+    const [recipientIdentity] = recipientMatches;
+    if (!recipientIdentity.wallet_id) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(404).json({ error: 'Recipient wallet not found' });
+    }
     const { rows: [recipient] } = await client.query(
-      `SELECT id, user_id, user_type, balance FROM wallets WHERE user_id IN (
-        SELECT id FROM tenant_users WHERE email=$1 AND is_active=true
-        UNION ALL SELECT id FROM supplier_users WHERE email=$1
-        UNION ALL SELECT id FROM platform_admins WHERE email=$1 AND is_active=true
-      ) LIMIT 1 FOR UPDATE`,
-      [to_email]
+      'SELECT id, user_id, user_type, balance FROM wallets WHERE id = $1 FOR UPDATE',
+      [recipientIdentity.wallet_id]
     );
     if (!recipient) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Recipient not found' });
+      transactionStarted = false;
+      return res.status(404).json({ error: 'Recipient wallet not found' });
     }
     if (recipient.id === senderWallet.id) {
       await client.query('ROLLBACK');
+      transactionStarted = false;
       return res.status(400).json({ error: 'Cannot transfer funds to the same wallet' });
     }
 
     const txId = crypto.randomUUID();
     const amt = requestedAmount;
+    const senderBalanceAfter = parseFloat(senderWallet.balance) - amt;
 
     // Debit sender
     await client.query(
       `INSERT INTO wallet_transactions (id, wallet_id, type, amount, balance_before, balance_after, description)
        VALUES ($1, $2, 'transfer_out', $3, $4, $5, $6)`,
-      [txId, senderWallet.id, amt, senderWallet.balance, parseFloat(senderWallet.balance) - amt, description || `Transfer to ${to_email}`]
+      [txId, senderWallet.id, amt, senderWallet.balance, senderBalanceAfter, description || `Transfer to ${toEmail}`]
     );
     await client.query(`UPDATE wallets SET balance=$1, updated_at=NOW() WHERE id=$2`,
-      [parseFloat(senderWallet.balance) - amt, senderWallet.id]);
+      [senderBalanceAfter, senderWallet.id]);
 
     // Credit recipient
     await client.query(
@@ -106,14 +158,16 @@ router.post('/transfer', authenticate, async (req, res) => {
       [parseFloat(recipient.balance) + amt, recipient.id]);
 
     await client.query('COMMIT');
-    const { rows: [updated] } = await pool.query('SELECT balance FROM wallets WHERE id=$1', [senderWallet.id]);
-    res.json({ message: 'Transfer completed', balance: parseFloat(updated.balance).toFixed(2) });
+    transactionStarted = false;
+    res.json({ message: 'Transfer completed', balance: senderBalanceAfter.toFixed(2) });
   } catch (e) {
-    await client.query('ROLLBACK');
+    if (transactionStarted && client) {
+      try { await client.query('ROLLBACK'); } catch { /* connection may be unavailable */ }
+    }
     console.error('Transfer error:', e);
     res.status(500).json({ error: 'Transfer failed' });
   } finally {
-    client.release();
+    client?.release();
   }
 });
 

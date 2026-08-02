@@ -2,7 +2,12 @@ const express = require('express');
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const { authenticate } = require('../middleware/authMiddleware');
-const { validatePassword } = require('../utils/validation');
+const { validatePassword } = require('../utils/passwordValidation');
+const { cleanText, requireUuid } = require('../utils/requestValidation');
+const {
+  assertIdentityEmailAvailable,
+  requireValidIdentityEmail,
+} = require('../services/identityEmailGuard');
 const router = express.Router();
 
 const { getOrganizationBids } = require('../services/bidService');
@@ -83,29 +88,53 @@ router.post('/admin/tenant-users', authenticate, async (req, res) => {
   if (req.user.role !== 'business_admin' && req.user.role !== 'system_admin') {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  const { tenant_id, email, password, full_name } = req.body;
-  if (!tenant_id || !email || !password || !full_name) {
+  const { password } = req.body;
+  if (!req.body.tenant_id || !req.body.email || !password || !req.body.full_name) {
     return res.status(400).json({ error: 'tenant_id, email, password, and full_name are required' });
+  }
+
+  let tenantId;
+  let email;
+  let fullName;
+  try {
+    tenantId = requireUuid(req.body.tenant_id, 'tenant_id');
+    email = requireValidIdentityEmail(req.body.email);
+    fullName = cleanText(req.body.full_name, { required: true, maxLength: 150 });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
 
   const pwErr = validatePassword(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
 
+  let client;
+  let transactionStarted = false;
   try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    transactionStarted = true;
+    await assertIdentityEmailAvailable(client, email);
     const hash = await bcrypt.hash(password, 12);
-    const { rows } = await pool.query(
+    const { rows } = await client.query(
       `INSERT INTO tenant_users (tenant_id, email, password_hash, full_name, role)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, tenant_id, email, full_name, role, is_active`,
-      [tenant_id, email, hash, full_name, 'customer']
+      [tenantId, email, hash, fullName, 'customer']
     );
+    await client.query('COMMIT');
+    transactionStarted = false;
     res.status(201).json(rows[0]);
   } catch (e) {
-    if (e.code === '23505') {
-      return res.status(409).json({ error: 'A user with this email already exists in this tenant.' });
+    if (transactionStarted && client) {
+      try { await client.query('ROLLBACK'); } catch { /* connection may be unavailable */ }
+    }
+    if (e.statusCode === 409 || e.code === '23505') {
+      return res.status(409).json({ error: 'An account with this email already exists.' });
     }
     console.error('Error creating tenant user:', e);
-    res.status(500).json({ error: 'Failed to create user: ' + e.message });
+    res.status(500).json({ error: 'Failed to create user' });
+  } finally {
+    client?.release();
   }
 });
 
@@ -134,16 +163,75 @@ router.put('/admin/tenant-users/:id/toggle-active', authenticate, async (req, re
   if (req.user.role !== 'business_admin' && req.user.role !== 'system_admin') {
     return res.status(403).json({ error: 'Forbidden' });
   }
+
+  let userId;
   try {
-    const { rows } = await pool.query(
-      `UPDATE tenant_users SET is_active = NOT is_active WHERE id = $1 RETURNING id, email, full_name, role, is_active`,
-      [req.params.id]
+    userId = requireUuid(req.params.id, 'id');
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  let client;
+  let transactionStarted = false;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    transactionStarted = true;
+    const { rows: [existing] } = await client.query(
+      `SELECT id, email, full_name, role, is_active
+       FROM tenant_users
+       WHERE id = $1
+       FOR UPDATE`,
+      [userId]
     );
-    if (!rows.length) return res.status(404).json({ error: 'User not found' });
-    res.json(rows[0]);
+    if (!existing) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const nextActive = !existing.is_active;
+    if (nextActive) {
+      await assertIdentityEmailAvailable(client, existing.email, {
+        userType: 'tenant_user',
+        id: userId,
+      });
+    }
+
+    const { rows: [updatedUser] } = await client.query(
+      `UPDATE tenant_users
+       SET is_active = $1
+       WHERE id = $2
+       RETURNING id, email, full_name, role, is_active`,
+      [nextActive, userId]
+    );
+    await client.query(
+      `INSERT INTO audit_log
+         (actor_id, actor_type, actor_email, action, target_type, target_id, details)
+       VALUES ($1, $2, $3, $4, 'tenant_user', $5, $6)`,
+      [
+        req.user.id || req.user.user_id,
+        req.user.user_type || 'platform_admin',
+        req.user.email || null,
+        nextActive ? 'tenant_user_activated' : 'tenant_user_deactivated',
+        userId,
+        JSON.stringify({ changed_fields: ['is_active'], status_changed: true }),
+      ]
+    );
+    await client.query('COMMIT');
+    transactionStarted = false;
+    return res.json(updatedUser);
   } catch (e) {
+    if (transactionStarted && client) {
+      try { await client.query('ROLLBACK'); } catch { /* connection may be unavailable */ }
+    }
+    if (e.statusCode === 409 || e.code === '23505') {
+      return res.status(409).json({ error: 'An account with this email already exists.' });
+    }
     console.error('Error toggling user status:', e);
-    res.status(500).json({ error: 'Failed to toggle user status' });
+    return res.status(500).json({ error: 'Failed to toggle user status' });
+  } finally {
+    client?.release();
   }
 });
 
@@ -152,37 +240,54 @@ router.post('/admin/suppliers', authenticate, async (req, res) => {
   if (req.user.role !== 'business_admin' && req.user.role !== 'system_admin') {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  const { company_name, registration_number, email, password, full_name } = req.body;
-  if (!company_name || !email || !password || !full_name) {
+  const { registration_number, password } = req.body;
+  if (!req.body.company_name || !req.body.email || !password || !req.body.full_name) {
     return res.status(400).json({ error: 'company_name, email, password, and full_name are required' });
+  }
+  let companyName;
+  let email;
+  let fullName;
+  try {
+    companyName = cleanText(req.body.company_name, { required: true, maxLength: 255 });
+    email = requireValidIdentityEmail(req.body.email);
+    fullName = cleanText(req.body.full_name, { required: true, maxLength: 150 });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
   const pwErr = validatePassword(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
-  const client = await pool.connect();
+  let client;
+  let transactionStarted = false;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
+    transactionStarted = true;
+    await assertIdentityEmailAvailable(client, email);
     const { rows: [supplier] } = await client.query(
       `INSERT INTO suppliers (company_name, registration_number, verification_status, is_active)
        VALUES ($1, $2, 'pending', false) RETURNING id, company_name, registration_number, verification_status, is_active`,
-      [company_name, registration_number || null]
+      [companyName, registration_number || null]
     );
     const hash = await bcrypt.hash(password, 12);
     const { rows: [user] } = await client.query(
       `INSERT INTO supplier_users (supplier_id, email, password_hash, full_name)
        VALUES ($1, $2, $3, $4) RETURNING id, email, full_name`,
-      [supplier.id, email, hash, full_name]
+      [supplier.id, email, hash, fullName]
     );
     await client.query('COMMIT');
+    transactionStarted = false;
     res.status(201).json({ supplier, user });
   } catch (e) {
-    await client.query('ROLLBACK');
-    if (e.code === '23505') {
+    if (transactionStarted && client) {
+      try { await client.query('ROLLBACK'); } catch { /* connection may be unavailable */ }
+    }
+    if (e.statusCode === 409 || e.code === '23505') {
       return res.status(409).json({ error: 'A supplier with this registration number or email already exists.' });
     }
     console.error('Error creating supplier:', e);
-    res.status(500).json({ error: 'Failed to create supplier: ' + e.message });
+    res.status(500).json({ error: 'Failed to create supplier' });
   } finally {
-    client.release();
+    client?.release();
   }
 });
 
