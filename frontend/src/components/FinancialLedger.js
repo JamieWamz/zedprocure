@@ -195,7 +195,7 @@ export default function FinancialLedger() {
       label: 'Journal',
       children: (
         <Card className="table-card" extra={<Button icon={<DownloadOutlined />} onClick={exportJournal}>Export Journal</Button>}>
-          <Space style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+          <Space className="responsive-control-row" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
             <Input
               allowClear
               prefix={<SearchOutlined />}

@@ -443,11 +443,11 @@ export default function BidDetail() {
               onClick={async () => {
                 setInviteModalOpen(true);
                 try {
-                  const { data } = await axios.get('/api/admin/suppliers/pending');
+                  const { data } = await axios.get('/api/suppliers/verified');
                   setAllSuppliers(data || []);
-                } catch (_) {
-                  // Fallback
+                } catch (error) {
                   setAllSuppliers([]);
+                  message.error(error.response?.data?.error || 'Verified suppliers could not be loaded');
                 }
               }}
             >
@@ -556,6 +556,7 @@ export default function BidDetail() {
                     pagination={false}
                     size="small"
                     bordered
+                    scroll={{ x: 700 }}
                     style={{ marginTop: 8 }}
                     columns={[
                       { title: '#', width: 40, render: (_, __, idx) => idx + 1 },
@@ -673,9 +674,11 @@ export default function BidDetail() {
           onChange={setSelectedSuppliersToInvite}
           optionFilterProp="children"
         >
-          {allSuppliers.map(s => (
+          {allSuppliers
+            .filter(s => !bid.suppliers?.some(invited => invited.id === s.id))
+            .map(s => (
             <Select.Option key={s.id} value={s.id}>
-              {s.company_name} ({s.verification_status || 'Pending'})
+              {s.company_name}
             </Select.Option>
           ))}
         </Select>

@@ -10,12 +10,17 @@ describe('Bid Routes', () => {
   let tenantId;
   let adminId;
   let customerId;
+  let invitedSupplierId;
+  let invitedSupplierUserId;
+  let invitedSupplierToken;
+  let uninvitedSupplierUserId;
+  let uninvitedSupplierToken;
   let authToken;
   let customerToken;
 
   beforeAll(async () => {
     client = await pool.connect();
-    await client.query('TRUNCATE TABLE tenants, platform_admins, tenant_users RESTART IDENTITY CASCADE');
+    await client.query('TRUNCATE TABLE tenants, platform_admins, tenant_users, suppliers, supplier_users RESTART IDENTITY CASCADE');
     const tenantRes = await client.query(
       "INSERT INTO tenants (name, registration_number) VALUES ('Test Tenant', 'REG123') RETURNING id"
     );
@@ -34,6 +39,107 @@ describe('Bid Routes', () => {
     );
     customerId = customerRes.rows[0].id;
     customerToken = jwt.sign({ user_id: customerId, user_type: 'tenant_user', tenant_id: tenantId, role: 'customer' }, jwtSecret, { expiresIn: '1h' });
+
+    const invitedSupplierRes = await client.query(
+      `INSERT INTO suppliers (company_name, registration_number, verification_status, is_active)
+       VALUES ('Invited Supplier', 'SUP-INVITED', 'verified', true) RETURNING id`
+    );
+    invitedSupplierId = invitedSupplierRes.rows[0].id;
+    invitedSupplierUserId = randomUUID();
+    await client.query(
+      `INSERT INTO supplier_users (id, supplier_id, email, password_hash, full_name, role)
+       VALUES ($1, $2, 'invited-supplier@test.com', 'hash', 'Invited Supplier User', 'supplier_user')`,
+      [invitedSupplierUserId, invitedSupplierId]
+    );
+    invitedSupplierToken = jwt.sign(
+      { user_id: invitedSupplierUserId, user_type: 'supplier_user', role: 'supplier_user' },
+      jwtSecret,
+      { expiresIn: '1h' }
+    );
+
+    const uninvitedSupplierRes = await client.query(
+      `INSERT INTO suppliers (company_name, registration_number, verification_status, is_active)
+       VALUES ('Uninvited Supplier', 'SUP-UNINVITED', 'verified', true) RETURNING id`
+    );
+    const uninvitedSupplierId = uninvitedSupplierRes.rows[0].id;
+    uninvitedSupplierUserId = randomUUID();
+    await client.query(
+      `INSERT INTO supplier_users (id, supplier_id, email, password_hash, full_name, role)
+       VALUES ($1, $2, 'uninvited-supplier@test.com', 'hash', 'Uninvited Supplier User', 'supplier_user')`,
+      [uninvitedSupplierUserId, uninvitedSupplierId]
+    );
+    uninvitedSupplierToken = jwt.sign(
+      { user_id: uninvitedSupplierUserId, user_type: 'supplier_user', role: 'supplier_user' },
+      jwtSecret,
+      { expiresIn: '1h' }
+    );
+  });
+
+  describe('invite-only bid access', () => {
+    const restrictedBidData = () => ({
+      title: `Restricted Bid ${randomUUID()}`,
+      description: 'Private sourcing event',
+      deadline: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      delivery_terms: 'DDP',
+      visibility: 'restricted',
+      line_items: JSON.stringify([{ item_description: 'Private item', unit_of_measure: 'each', quantity: 1 }]),
+      bidding_fee_amount: 0,
+    });
+
+    it('requires an invite list when creating an invite-only bid', async () => {
+      const res = await request(app)
+        .post(`/api/tenants/${tenantId}/bids`)
+        .set('Cookie', `${TOKEN_COOKIE}=${authToken}`)
+        .field(restrictedBidData());
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body.error).toMatch(/at least one verified supplier/i);
+    });
+
+    it('stores invitations and prevents discovery or access by uninvited suppliers', async () => {
+      const createRes = await request(app)
+        .post(`/api/tenants/${tenantId}/bids`)
+        .set('Cookie', `${TOKEN_COOKIE}=${authToken}`)
+        .field({
+          ...restrictedBidData(),
+          supplier_ids: JSON.stringify([invitedSupplierId]),
+        });
+
+      expect(createRes.statusCode).toBe(201);
+      const restrictedBidId = createRes.body.id;
+
+      const publishRes = await request(app)
+        .put(`/api/bids/${restrictedBidId}/publish`)
+        .set('Cookie', `${TOKEN_COOKIE}=${authToken}`);
+      expect(publishRes.statusCode).toBe(200);
+
+      const publicRes = await request(app).get('/api/public/bids');
+      expect(publicRes.statusCode).toBe(200);
+      expect(publicRes.body.some(bid => bid.id === restrictedBidId)).toBe(false);
+
+      const uninvitedDetailRes = await request(app)
+        .get(`/api/bids/${restrictedBidId}`)
+        .set('Cookie', `${TOKEN_COOKIE}=${uninvitedSupplierToken}`);
+      expect(uninvitedDetailRes.statusCode).toBe(403);
+
+      const expressInterestRes = await request(app)
+        .post(`/api/supplier/bids/${restrictedBidId}/express-interest`)
+        .set('Cookie', `${TOKEN_COOKIE}=${uninvitedSupplierToken}`);
+      expect(expressInterestRes.statusCode).toBe(403);
+      expect(expressInterestRes.body.error).toMatch(/invite-only/i);
+
+      const invitedDetailRes = await request(app)
+        .get(`/api/bids/${restrictedBidId}`)
+        .set('Cookie', `${TOKEN_COOKIE}=${invitedSupplierToken}`);
+      expect(invitedDetailRes.statusCode).toBe(200);
+      expect(invitedDetailRes.body.suppliers[0].bid_supplier_id).toBeTruthy();
+
+      const supplierFeedRes = await request(app)
+        .get('/api/supplier/bids')
+        .set('Cookie', `${TOKEN_COOKIE}=${uninvitedSupplierToken}`);
+      expect(supplierFeedRes.statusCode).toBe(200);
+      expect(supplierFeedRes.body.some(bid => bid.id === restrictedBidId)).toBe(false);
+    });
   });
 
   afterAll(async () => {

@@ -6,7 +6,7 @@ const router = express.Router();
 router.get('/suppliers/verified', authenticate, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, company_name FROM suppliers WHERE verification_status = 'verified' ORDER BY company_name"
+      "SELECT id, company_name FROM suppliers WHERE verification_status = 'verified' AND is_active = true ORDER BY company_name"
     );
     res.json(rows);
   } catch (e) {

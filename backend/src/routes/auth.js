@@ -7,11 +7,11 @@ const { jwtSecret, ACCESS_TTL, REFRESH_TTL, cookieOptions, TOKEN_COOKIE, REFRESH
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
-// Rate limiting: max 10 login attempts per 15 minutes per IP
+// Rate limiting: max 10 login attempts per 10 minutes per IP
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 10 * 60 * 1000,
   max: 10,
-  message: { error: 'Too many login attempts. Please try again after 15 minutes.' }
+  message: { error: 'Too many login attempts. Please try again after 10 minutes.' }
 });
 
 function signTokens(user) {

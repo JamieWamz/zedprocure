@@ -81,6 +81,16 @@ const uploadResponse = multer({
 // Valid Incoterms for validation
 const VALID_INCOTERMS = ['EXW','FCA','FAS','FOB','CFR','CIF','CPT','CIP','DPU','DAP','DDP'];
 const VALID_UOMS = ['each','kg','g','ton','meters','cm','liters','ml','sqm','sqft','hours','days','months','lump_sum','boxes','pairs','sets'];
+const VALID_VISIBILITIES = ['global', 'restricted'];
+
+function parseSupplierIds(value) {
+  if (value === undefined || value === null || value === '') return [];
+  const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+  if (!Array.isArray(parsed)) throw new Error('supplier_ids must be an array');
+  const supplierIds = [...new Set(parsed)];
+  supplierIds.forEach((supplierId) => requireUuid(supplierId, 'supplier_id'));
+  return supplierIds;
+}
 
 async function loadAwardPricing(client, bidId, responseId, requirementId) {
   requireUuid(bidId, 'bidId');
@@ -154,7 +164,7 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
     title, description, deadline, delivery_start, delivery_end,
     requires_large_contract, evaluation_method, bidding_fee_amount,
     delivery_terms, technical_specifications,
-    line_items, business_category, visibility, express_match, source_request_id
+    line_items, business_category, visibility, express_match, source_request_id, supplier_ids
   } = req.body;
 
   // Validate required fields
@@ -211,6 +221,21 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
   const bidFee = Number(bidding_fee_amount);
   if (!Number.isFinite(bidFee) || bidFee < 0 || bidFee > 1_000_000) {
     return res.status(400).json({ error: 'Bidding fee must be between 0 and 1,000,000 ZMW' });
+  }
+
+  const visibilityMode = visibility || 'global';
+  if (!VALID_VISIBILITIES.includes(visibilityMode)) {
+    return res.status(400).json({ error: `Visibility must be one of: ${VALID_VISIBILITIES.join(', ')}` });
+  }
+
+  let invitedSupplierIds;
+  try {
+    invitedSupplierIds = parseSupplierIds(supplier_ids);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  if (visibilityMode === 'restricted' && invitedSupplierIds.length === 0) {
+    return res.status(400).json({ error: 'Invite-only bids require at least one verified supplier' });
   }
 
   // Parse line_items from body (may be JSON string from FormData)
@@ -282,6 +307,18 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
     );
     const isExpressMatch = express_match === true || express_match === 'true';
 
+    if (invitedSupplierIds.length > 0) {
+      const { rows: eligibleSuppliers } = await client.query(
+        `SELECT id FROM suppliers
+         WHERE id = ANY($1::uuid[]) AND verification_status = 'verified' AND is_active = true`,
+        [invitedSupplierIds]
+      );
+      if (eligibleSuppliers.length !== invitedSupplierIds.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Every invited supplier must be active and verified' });
+      }
+    }
+
     const bidRes = await client.query(
       `INSERT INTO bids (tenant_id, title, description, deadline, delivery_start, delivery_end,
         requires_large_contract, evaluation_method, bidding_fee_amount, delivery_terms,
@@ -291,12 +328,20 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
       [
         tenantId, safeTitle, safeDescription, deadline, delivery_start || null, delivery_end || null,
         isLargeContract, evalMethod, bidFee, delivery_terms,
-        safeTechnicalSpecifications, techSpecPath, visibility || 'global', business_category || null, req.user.user_id,
+        safeTechnicalSpecifications, techSpecPath, visibilityMode, business_category || null, req.user.user_id,
         isExpressMatch, isExpressMatch ? Number(monetizationSettings?.express_match_fee || 0) : 0,
         source_request_id || null
       ]
     );
     const bid = bidRes.rows[0];
+
+    for (const supplierId of invitedSupplierIds) {
+      await client.query(
+        `INSERT INTO bid_suppliers (bid_id, supplier_id)
+         VALUES ($1, $2) ON CONFLICT (bid_id, supplier_id) DO NOTHING`,
+        [bid.id, supplierId]
+      );
+    }
 
     if (source_request_id) {
       await client.query(
@@ -323,7 +368,11 @@ router.post('/tenants/:tid/bids', authenticate, requireRole('business_admin'), u
       `INSERT INTO system_logs (actor_id, actor_type, action, entity_type, entity_id, metadata)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [req.user.user_id, req.user.role, 'bid_created', 'bid', bid.id,
-       JSON.stringify({ title: bid.title, line_items_count: parsedLineItems.length })]
+       JSON.stringify({
+         title: bid.title,
+         line_items_count: parsedLineItems.length,
+         invited_suppliers_count: invitedSupplierIds.length,
+       })]
     );
 
     await client.query('COMMIT');
@@ -375,6 +424,21 @@ router.put('/bids/:bidId/publish', authenticate, requireRole('business_admin'), 
       });
     }
 
+    let restrictedSupplierIds = [];
+    if (existing.visibility === 'restricted') {
+      const { rows: invitedSuppliers } = await client.query(
+        `SELECT supplier_id FROM bid_suppliers WHERE bid_id = $1`,
+        [req.params.bidId]
+      );
+      restrictedSupplierIds = invitedSuppliers.map(({ supplier_id }) => supplier_id);
+      if (restrictedSupplierIds.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(422).json({
+          error: 'Cannot publish an invite-only bid without at least one invited supplier.'
+        });
+      }
+    }
+
     // Publish the bid
     const { rows: [bid] } = await client.query(
       `UPDATE bids SET status = 'open'
@@ -403,6 +467,12 @@ router.put('/bids/:bidId/publish', authenticate, requireRole('business_admin'), 
       notifySuppliersOnBidPublished(bid).catch(err => {
         console.error('Error notifying suppliers on bid publish:', err);
       });
+    } else {
+      for (const supplierId of restrictedSupplierIds) {
+        notifySupplierInvited(bid, supplierId).catch(err => {
+          console.error('Error notifying invited supplier on bid publish:', err);
+        });
+      }
     }
 
     res.json(bid);
@@ -473,8 +543,9 @@ router.get('/bids/:bidId', authenticate, async (req, res) => {
          WHERE bs.bid_id = $1 AND bs.supplier_id = (SELECT supplier_id FROM supplier_users WHERE id = $2)`,
         [bidId, req.user.user_id]
       );
-      // Suppliers can view if it's open & global, or if they are invited
-      if (!invite && (bid.visibility !== 'global' || !['open', 'evaluation'].includes(bid.status) || new Date(bid.deadline) <= new Date())) {
+      const bidIsActive = ['open', 'evaluation'].includes(bid.status) && new Date(bid.deadline) > new Date();
+      const supplierHasAccess = bid.visibility === 'global' || Boolean(invite);
+      if (!bidIsActive || !supplierHasAccess) {
         return res.status(403).json({ error: 'Forbidden' });
       }
       
@@ -669,7 +740,8 @@ router.get('/public/bids', async (req, res) => {
               b.views_count, t.name AS tenant_name,
               (SELECT COUNT(*)::int FROM bid_line_items bli WHERE bli.bid_id = b.id) AS total_line_items
        FROM bids b JOIN tenants t ON t.id = b.tenant_id
-       WHERE b.status = 'open' ORDER BY b.created_at DESC`
+       WHERE b.status = 'open' AND b.visibility = 'global' AND b.deadline > now()
+       ORDER BY b.created_at DESC`
     );
     res.json(rows);
   } catch (e) {
@@ -734,7 +806,7 @@ router.post('/supplier/bids/:bidId/express-interest', supplierBidLimiter, authen
 
     // 1. Bid exists, is open, and deadline hasn't passed
     const { rows: [bid] } = await pool.query(
-      `SELECT id, status, deadline, title FROM bids WHERE id = $1`,
+      `SELECT id, status, deadline, title, visibility FROM bids WHERE id = $1`,
       [bidId]
     );
     if (!bid) {
@@ -742,6 +814,9 @@ router.post('/supplier/bids/:bidId/express-interest', supplierBidLimiter, authen
     }
     if (!['open', 'evaluation'].includes(bid.status)) {
       return res.status(422).json({ error: 'This bid is not currently accepting submissions' });
+    }
+    if (bid.visibility !== 'global') {
+      return res.status(403).json({ error: 'This is an invite-only bid. Only invited suppliers can participate.' });
     }
     if (new Date() > new Date(bid.deadline)) {
       return res.status(422).json({ error: 'The deadline for this bid has passed' });
@@ -808,7 +883,7 @@ router.post('/supplier/bids/:bidSupplierId/response', supplierBidLimiter, authen
     } else {
       // Fallback: Check if bidSupplierId is actually a bid_id
       const { rows: [bid] } = await pool.query(
-        `SELECT id, status, deadline FROM bids WHERE id = $1`,
+        `SELECT id, status, deadline, visibility FROM bids WHERE id = $1`,
         [req.params.bidSupplierId]
       );
       if (bid) {
@@ -819,8 +894,8 @@ router.post('/supplier/bids/:bidSupplierId/response', supplierBidLimiter, authen
            WHERE su.id = $1`,
           [req.user.user_id]
         );
-        if (sup && sup.verification_status === 'verified') {
-          // Auto-create bid_suppliers record so the supplier is never blocked
+        if (bid.visibility === 'global' && sup && sup.verification_status === 'verified') {
+          // Global bids allow verified suppliers to create their access record.
           const { rows: [newBs] } = await pool.query(
             `INSERT INTO bid_suppliers (bid_id, supplier_id, accepted, accepted_at)
              VALUES ($1, $2, true, now())
@@ -1093,17 +1168,42 @@ router.post('/bids/:bidId/invite', authenticate, requireRole('business_admin', '
   const { bidId } = req.params;
   const { supplier_ids } = req.body;
 
-  if (!supplier_ids || !Array.isArray(supplier_ids) || supplier_ids.length === 0) {
+  let invitedSupplierIds;
+  try {
+    invitedSupplierIds = parseSupplierIds(supplier_ids);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  if (invitedSupplierIds.length === 0) {
     return res.status(400).json({ error: '`supplier_ids` must be a non-empty array.' });
   }
 
+  const client = await pool.connect();
   try {
-    const { rows: [bid] } = await pool.query('SELECT * FROM bids WHERE id = $1', [bidId]);
-    if (!bid) return res.status(404).json({ error: 'Bid not found' });
+    await client.query('BEGIN');
+    const { rows: [bid] } = await client.query('SELECT * FROM bids WHERE id = $1 FOR UPDATE', [bidId]);
+    if (!bid) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Bid not found' });
+    }
+    if (req.user.user_type === 'tenant_user' && bid.tenant_id !== req.user.tenant_id) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'You can only invite suppliers to bids for your organization' });
+    }
+
+    const { rows: eligibleSuppliers } = await client.query(
+      `SELECT id FROM suppliers
+       WHERE id = ANY($1::uuid[]) AND verification_status = 'verified' AND is_active = true`,
+      [invitedSupplierIds]
+    );
+    if (eligibleSuppliers.length !== invitedSupplierIds.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Every invited supplier must be active and verified' });
+    }
 
     const invitedList = [];
-    for (const sid of supplier_ids) {
-      const { rows: [bs] } = await pool.query(
+    for (const sid of invitedSupplierIds) {
+      const { rows: [bs] } = await client.query(
         `INSERT INTO bid_suppliers (bid_id, supplier_id, invited_at)
          VALUES ($1, $2, now())
          ON CONFLICT (bid_id, supplier_id) DO UPDATE SET invited_at = now()
@@ -1111,15 +1211,23 @@ router.post('/bids/:bidId/invite', authenticate, requireRole('business_admin', '
         [bidId, sid]
       );
       invitedList.push(bs);
+    }
 
-      // Send notification and email
-      notifySupplierInvited(bid, sid).catch(err => console.error('Error notifying invited supplier:', err));
+    await client.query('COMMIT');
+
+    if (['open', 'evaluation'].includes(bid.status)) {
+      for (const sid of invitedSupplierIds) {
+        notifySupplierInvited(bid, sid).catch(err => console.error('Error notifying invited supplier:', err));
+      }
     }
 
     res.json({ success: true, count: invitedList.length, invited: invitedList });
   } catch (e) {
+    await client.query('ROLLBACK');
     console.error('Error inviting suppliers:', e);
     res.status(500).json({ error: 'Failed to invite suppliers: ' + e.message });
+  } finally {
+    client.release();
   }
 });
 

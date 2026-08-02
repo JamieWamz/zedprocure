@@ -46,7 +46,7 @@ export default function AcceptInvite() {
       background: `url(${cdnImages.loginHero}) no-repeat center center fixed`,
       backgroundSize: 'cover'
     }}>
-      <Card style={{ width: 400, padding: 24, borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
+      <Card style={{ width: 400, maxWidth: 'calc(100vw - 24px)', padding: 24, borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <Title level={3} style={{ margin: 0 }}>Accept Invitation</Title>
           <Text type="secondary">Complete your profile to get started.</Text>

@@ -275,7 +275,7 @@ ${values.warranty || 'No specific warranty requirements.'}
   };
 
   const notificationContent = (
-    <div style={{ width: 360, maxHeight: 400, overflowY: 'auto' }}>
+    <div className="notification-popover-content" style={{ width: 360, maxHeight: 400, overflowY: 'auto' }}>
       {notifications.length === 0 ? (
         <Empty description="No notifications" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : (

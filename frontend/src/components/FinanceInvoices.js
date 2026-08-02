@@ -366,7 +366,7 @@ export default function FinanceInvoices() {
       )}
 
       <Card className="table-card">
-        <Space style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+        <Space className="responsive-control-row" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
           <Select allowClear placeholder="Status" style={{ width: 160 }} value={filters.status}
             onChange={v => setFilters(f => ({ ...f, status: v }))}
             options={Object.entries(STATUS_META).filter(([k]) => k !== 'overdue').map(([k, m]) => ({ value: k, label: m.label }))} />

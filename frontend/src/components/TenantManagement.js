@@ -50,26 +50,26 @@ export default function TenantManagement() {
 
   return (
     <div>
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} sm={8}>
           <Card><Statistic title="Active Tenants" value={totalActive} prefix={<BankOutlined />} /></Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} sm={8}>
           <Card><Statistic title="Total Users" value={totalUsers} prefix={<TeamOutlined />} /></Card>
         </Col>
-        <Col span={8}>
+        <Col xs={24} sm={8}>
           <Card><Statistic title="Total Bids" value={totalBids} prefix={<FileTextOutlined />} /></Card>
         </Col>
       </Row>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div className="responsive-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2>Organizations (Tenants)</h2>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
           Create Tenant
         </Button>
       </div>
 
-      <Table dataSource={tenants} rowKey="id" columns={columns} />
+      <Table dataSource={tenants} rowKey="id" columns={columns} scroll={{ x: 720 }} />
 
       <Modal
         title="Create New Tenant"

@@ -210,7 +210,7 @@ export default function BidEvaluation() {
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div className="responsive-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <Title level={3} style={{ margin: 0 }}>Bid Evaluation: {bid.title}</Title>
           <Text type="secondary">
@@ -313,7 +313,7 @@ export default function BidEvaluation() {
 
               <Divider />
               <Title level={5}>Score a Supplier</Title>
-              <Form form={scoreForm} layout="inline" onFinish={handleScoreSubmit} style={{ flexWrap: 'wrap', gap: 8 }}>
+              <Form className="responsive-inline-form" form={scoreForm} layout="inline" onFinish={handleScoreSubmit} style={{ flexWrap: 'wrap', gap: 8 }}>
                 <Form.Item name="supplier_id" rules={[{ required: true }]}>
                   <Select placeholder="Select supplier" style={{ width: 200 }}
                     onChange={(val) => {
@@ -356,7 +356,7 @@ export default function BidEvaluation() {
               {responses.responses.length > 0 ? (
                 responses.responses.map(resp => (
                   <Card key={resp.id} size="small" style={{ marginBottom: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <div className="responsive-page-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <div>
                         <Text strong style={{ fontSize: 15 }}>{resp.supplier_name}</Text>
                         <br />

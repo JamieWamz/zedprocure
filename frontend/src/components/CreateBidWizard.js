@@ -76,6 +76,9 @@ export default function CreateBidWizard() {
   const [techSpecFile, setTechSpecFile] = useState(null);
   const [saveAsDraft, setSaveAsDraft] = useState(false);
   const [sourceRequest, setSourceRequest] = useState(null);
+  const [verifiedSuppliers, setVerifiedSuppliers] = useState([]);
+  const [suppliersLoading, setSuppliersLoading] = useState(false);
+  const [suppliersError, setSuppliersError] = useState('');
 
   useEffect(() => {
     const requestData = location.state?.request;
@@ -88,6 +91,28 @@ export default function CreateBidWizard() {
       }
     }
   }, [location.state, form, setActiveTenantId]);
+
+  useEffect(() => {
+    if (visibility !== 'restricted' || verifiedSuppliers.length > 0) return;
+
+    let active = true;
+    setSuppliersLoading(true);
+    setSuppliersError('');
+    axios.get('/api/suppliers/verified')
+      .then(({ data }) => {
+        if (active) setVerifiedSuppliers(Array.isArray(data) ? data : []);
+      })
+      .catch((error) => {
+        if (active) {
+          setSuppliersError(error.response?.data?.error || 'Verified suppliers could not be loaded');
+        }
+      })
+      .finally(() => {
+        if (active) setSuppliersLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [visibility, verifiedSuppliers.length]);
 
   const onFinish = async (values) => {
     const tid = values.tenant_id || activeTenantId;
@@ -112,6 +137,9 @@ export default function CreateBidWizard() {
       formData.append('delivery_start', values.delivery_start?.toISOString() || '');
       formData.append('delivery_end', values.delivery_end?.toISOString() || '');
       formData.append('visibility', values.visibility || 'global');
+      formData.append('supplier_ids', JSON.stringify(
+        values.visibility === 'restricted' ? (values.invited_supplier_ids || []) : []
+      ));
       if (values.business_category) {
         formData.append('business_category', values.business_category);
       }
@@ -140,7 +168,9 @@ export default function CreateBidWizard() {
 
       if (!saveAsDraft) {
         await axios.put(`/api/bids/${bid.id}/publish`);
-        message.success('Bid published and suppliers notified');
+        message.success(values.visibility === 'restricted'
+          ? 'Invite-only bid published and selected suppliers notified'
+          : 'Bid published and suppliers notified');
       } else {
         message.success('Bid saved as draft. Publish it later from the dashboard.');
       }
@@ -305,6 +335,37 @@ export default function CreateBidWizard() {
               ))}
             </Select>
           </Form.Item>
+        )}
+
+        {visibility === 'restricted' && (
+          <Form.Item
+            name="invited_supplier_ids"
+            label="Invited Suppliers"
+            extra="Only these verified suppliers will be able to discover, open, and respond to this bid."
+            rules={[{ required: true, type: 'array', min: 1, message: 'Select at least one verified supplier' }]}
+          >
+            <Select
+              mode="multiple"
+              loading={suppliersLoading}
+              placeholder={suppliersLoading ? 'Loading verified suppliers…' : 'Select verified suppliers to invite'}
+              optionFilterProp="label"
+              options={verifiedSuppliers.map(supplier => ({
+                value: supplier.id,
+                label: supplier.company_name,
+              }))}
+              notFoundContent={suppliersLoading ? 'Loading…' : 'No verified suppliers available'}
+              status={suppliersError ? 'error' : undefined}
+            />
+          </Form.Item>
+        )}
+
+        {visibility === 'restricted' && suppliersError && (
+          <Alert
+            type="error"
+            showIcon
+            message={suppliersError}
+            style={{ marginTop: -8, marginBottom: 16 }}
+          />
         )}
 
         <Form.Item name="requires_large_contract" label="Large Contract?" valuePropName="checked">

@@ -75,14 +75,14 @@ export default function UserManagement() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div className="responsive-page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2>User Accounts</h2>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
           Create User
         </Button>
       </div>
 
-      <Table dataSource={users} rowKey="id" columns={columns} />
+      <Table dataSource={users} rowKey="id" columns={columns} scroll={{ x: 720 }} />
 
       <Modal
         title="Create New User"

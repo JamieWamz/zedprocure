@@ -112,7 +112,7 @@ export default function PublicNoticeboard() {
   ];
 
   return (
-    <div style={{ maxWidth: 1200, margin: '40px auto', padding: 24 }}>
+    <div className="public-noticeboard" style={{ maxWidth: 1200, margin: '40px auto', padding: 24 }}>
       <div style={{ marginBottom: 24 }}>
         <Title level={2}>Public Procurement Noticeboard</Title>
         <Title level={4} type="secondary">Open bids from all procuring entities</Title>
@@ -149,7 +149,7 @@ export default function PublicNoticeboard() {
         </Col>
       </Row>
 
-      <Space style={{ marginBottom: 16, flexWrap: 'wrap', width: '100%' }}>
+      <Space className="responsive-control-row" style={{ marginBottom: 16, flexWrap: 'wrap', width: '100%' }}>
         <Input
           placeholder="Search bids by title, description, or entity"
           prefix={<SearchOutlined />}
