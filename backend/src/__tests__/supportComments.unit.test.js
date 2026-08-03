@@ -163,6 +163,9 @@ describe('support issue conversations', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body.status).toBe('resolved');
+    expect(client.query.mock.calls.some(([sql]) => (
+      sql.includes('$1::varchar(20)') && sql.includes('RETURNING si.*')
+    ))).toBe(true);
     expect(client.query).toHaveBeenCalledWith('COMMIT');
     expect(client.query.mock.calls.filter(([sql]) => sql === 'ROLLBACK')).toHaveLength(0);
     consoleSpy.mockRestore();

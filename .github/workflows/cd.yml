@@ -1,9 +1,8 @@
-name: CD
+name: Self-hosted CD
 
+# Render deploys the production services automatically from main via render.yaml.
+# Keep this workflow as an explicit fallback for Docker Compose deployments.
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       environment:

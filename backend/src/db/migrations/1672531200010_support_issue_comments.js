@@ -1,6 +1,6 @@
 exports.up = pgm => {
   pgm.sql(`
-    CREATE TABLE support_issue_comments (
+    CREATE TABLE IF NOT EXISTS support_issue_comments (
       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
       issue_id UUID NOT NULL REFERENCES support_issues(id) ON DELETE CASCADE,
       author_user_id UUID NOT NULL,
@@ -12,7 +12,7 @@ exports.up = pgm => {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
-    CREATE INDEX support_issue_comments_issue_created_idx
+    CREATE INDEX IF NOT EXISTS support_issue_comments_issue_created_idx
       ON support_issue_comments(issue_id, created_at ASC);
   `);
 };

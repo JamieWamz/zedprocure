@@ -385,11 +385,11 @@ Workflows live in [`.github/workflows/`](.github/workflows/).
 
 | Workflow | Trigger | Steps |
 |---|---|---|
-| `ci.yml` | Push to `main` / pull request | Backend install and syntax checks; non-blocking backend Jest run; frontend install/build; Docker Compose validation/image builds; separate non-blocking backend/frontend lint job |
+| `ci.yml` | Push to `main` / pull request | Migrate a disposable PostgreSQL service; run backend and frontend tests; type-check payment modules; build the frontend and Docker images; validate Docker Compose; run separate non-blocking lint checks |
 | `pages.yml` | Manual (`workflow_dispatch`) | Build React → deploy to GitHub Pages |
-| `cd.yml` | Push to `main` or manual | Validate deploy secrets → SSH into server → fast-forward pull → `docker compose up --build -d` |
+| `cd.yml` | Manual (`workflow_dispatch`) | Optional self-hosted fallback: validate deploy secrets → SSH into server → fast-forward pull → `docker compose up --build -d`. Render remains the automatic production deployment for pushes to `main`. |
 
-Frontend Jest tests are part of the local validation baseline above but are not currently executed by `ci.yml`.
+The application checks are blocking: a migration, test, type-check, build, or Docker validation failure fails CI. Lint remains advisory while the existing rule backlog is being addressed.
 
 ---
 

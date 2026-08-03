@@ -303,11 +303,22 @@ router.put('/issues/:id', authenticate, requireRole('business_admin', 'system_ad
     }
 
     const { rows: [updated] } = await client.query(
-      `UPDATE support_issues
-       SET status = $1, resolution_note = NULLIF($2, ''), assigned_admin_id = $3,
-           resolved_at = CASE WHEN $1 IN ('resolved','closed') THEN COALESCE(resolved_at, now()) ELSE NULL END,
+      `WITH input AS (
+         SELECT $1::varchar(20) AS next_status,
+                NULLIF($2::text, '') AS next_resolution_note
+       )
+       UPDATE support_issues AS si
+       SET status = input.next_status,
+           resolution_note = input.next_resolution_note,
+           assigned_admin_id = $3::uuid,
+           resolved_at = CASE
+             WHEN input.next_status IN ('resolved','closed') THEN COALESCE(si.resolved_at, now())
+             ELSE NULL
+           END,
            updated_at = now()
-       WHERE id = $4 RETURNING *`,
+       FROM input
+       WHERE si.id = $4::uuid
+       RETURNING si.*`,
       [status, resolutionNote, req.user.user_id, req.params.id]
     );
     await client.query(
