@@ -657,6 +657,58 @@ html[data-theme='dark'] .header-support-button { color: var(--text-secondary-dar
   font-size: 11px;
 }
 
+.support-conversation-back {
+  margin: -8px 0 8px -12px;
+}
+
+.support-conversation-heading {
+  margin-bottom: 16px;
+}
+
+.support-comment-list {
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+
+.support-comment {
+  border: 1px solid var(--border-color-light);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  padding: 12px 14px !important;
+}
+
+.support-comment--care {
+  background: rgba(15, 107, 93, 0.07);
+}
+
+.support-comment--reporter {
+  background: var(--card-header-bg-light);
+}
+
+html[data-theme='dark'] .support-comment {
+  border-color: var(--border-color-dark);
+}
+
+html[data-theme='dark'] .support-comment--care {
+  background: rgba(69, 183, 166, 0.12);
+}
+
+html[data-theme='dark'] .support-comment--reporter {
+  background: var(--card-header-bg-dark);
+}
+
+.support-comment-composer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.support-reply-form {
+  margin-top: 16px;
+}
+
 @media (max-width: 700px) {
   .header-support-button span { display: none; }
   .support-inbox-actions { align-items: stretch; flex-direction: column; }

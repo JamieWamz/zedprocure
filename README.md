@@ -228,6 +228,7 @@ features/your-feature  →  staging  →  test  →  production
 
 ### Other
 - Near-real-time notifications with 30s polling and mark-as-read
+- Two-way customer-care conversations with append-only replies, status tracking, automatic reopening on customer response, and audited resolution notes
 - Responsive layouts across all portals, including 320px phone screens, overflow-safe data views and touch-friendly mobile controls
 - Paperless **digital signatures** on invoices and orders (signer identity, consent, SHA hash, timestamp, IP/user-agent, audit log)
 - Supplier compliance tracking with per-document status (PACRA, ZRA TPIN, Tax Clearance, Business License, Directors ID, Bank Reference)
@@ -305,6 +306,7 @@ npm run migrate:up && node src/index.js
 
 Recent forward-only compatibility migrations include:
 
+- `1672531200010_support_issue_comments.js` — adds append-only customer-care conversations so reporters and platform administrators can exchange replies without overwriting resolution history.
 - `1672531200008_registration_schema_repair.js` — idempotently restores supplier business categories, verification fields, required document definitions and document metadata needed by registration.
 - `1672531200009_prepare_platform_admin_active_role_constraint.js` — adds the one-active-admin-per-role index when legacy data is clean, or warns and defers it so conflicting seats can be repaired through System Admin maintenance.
 
@@ -354,7 +356,7 @@ Requires a local or Docker PostgreSQL 15 instance.
 
 ### Validation
 
-Use Node.js 24.14.1 or a compatible Node 24 release. The current validation baseline is **20 backend Jest suites / 122 tests** and **5 frontend suites / 26 tests**, plus a successful production frontend build.
+Use Node.js 24.14.1 or a compatible Node 24 release. The current validation baseline is **21 backend Jest suites / 126 tests** and **5 frontend suites / 26 tests**, plus a successful production frontend build.
 
 > Backend integration suites reset database tables. Run them only against a disposable, fully migrated test database—not a development or production database containing data you need.
 

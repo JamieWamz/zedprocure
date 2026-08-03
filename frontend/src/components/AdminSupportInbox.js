@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Col, Descriptions, Empty, Form, Input, Modal, Row, Select, Statistic, Table, Tag, Typography, message } from 'antd';
-import { CustomerServiceOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Col, Descriptions, Divider, Empty, Form, Input, List, Modal, Row, Select, Space, Spin, Statistic, Table, Tag, Typography, message } from 'antd';
+import { CustomerServiceOutlined, ReloadOutlined, SendOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useLocation } from 'react-router-dom';
 
@@ -18,6 +18,10 @@ export default function AdminSupportInbox() {
   const [saving, setSaving] = useState(false);
   const [statusFilter, setStatusFilter] = useState('active');
   const [selected, setSelected] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentBody, setCommentBody] = useState('');
+  const [commentSaving, setCommentSaving] = useState(false);
   const [form] = Form.useForm();
   const location = useLocation();
 
@@ -42,8 +46,22 @@ export default function AdminSupportInbox() {
     if (issue) {
       setSelected(issue);
       form.setFieldsValue({ status: issue.status, resolution_note: issue.resolution_note || '' });
+      loadComments(issue.id);
     }
   }, [form, issues, location.search]);
+
+  const loadComments = async (issueId) => {
+    setCommentsLoading(true);
+    try {
+      const { data } = await axios.get(`/api/support/issues/${issueId}/comments`);
+      setComments(Array.isArray(data) ? data : []);
+    } catch (error) {
+      message.error(error.response?.data?.error || 'Unable to load the issue conversation');
+      setComments([]);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
 
   const visibleIssues = useMemo(() => {
     if (statusFilter === 'all') return issues;
@@ -53,7 +71,28 @@ export default function AdminSupportInbox() {
 
   const openIssue = (issue) => {
     setSelected(issue);
+    setCommentBody('');
     form.setFieldsValue({ status: issue.status, resolution_note: issue.resolution_note || '' });
+    loadComments(issue.id);
+  };
+
+  const addComment = async () => {
+    const body = commentBody.trim();
+    if (body.length < 2) return message.error('Enter at least 2 characters for your reply');
+    setCommentSaving(true);
+    try {
+      const { data } = await axios.post(`/api/support/issues/${selected.id}/comments`, { body });
+      setComments(current => [...current, data.comment]);
+      setSelected(current => ({ ...current, status: data.status }));
+      form.setFieldValue('status', data.status);
+      setCommentBody('');
+      await load();
+      message.success('Comment added and reporter notified');
+    } catch (error) {
+      message.error(error.response?.data?.error || 'Unable to add the comment');
+    } finally {
+      setCommentSaving(false);
+    }
   };
 
   const updateIssue = async (values) => {
@@ -119,7 +158,7 @@ export default function AdminSupportInbox() {
       <Modal
         title={selected ? `Issue ${selected.reference}` : 'Customer-care issue'}
         open={Boolean(selected)}
-        onCancel={() => setSelected(null)}
+        onCancel={() => { setSelected(null); setComments([]); setCommentBody(''); }}
         footer={null}
         width={720}
       >
@@ -133,13 +172,44 @@ export default function AdminSupportInbox() {
               <Descriptions.Item label="Subject" span={2}>{selected.subject}</Descriptions.Item>
               <Descriptions.Item label="Details" span={2}><Text style={{ whiteSpace: 'pre-wrap' }}>{selected.description}</Text></Descriptions.Item>
             </Descriptions>
+            <Divider orientation="left">Conversation</Divider>
+            <Spin spinning={commentsLoading}>
+              <List
+                className="support-comment-list"
+                dataSource={comments}
+                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No comments yet" /> }}
+                renderItem={comment => {
+                  const fromCare = comment.author_user_type === 'platform_admin';
+                  return (
+                    <List.Item className={fromCare ? 'support-comment support-comment--care' : 'support-comment support-comment--reporter'}>
+                      <List.Item.Meta
+                        title={<Space><Text strong>{fromCare ? comment.author_name || 'Customer care' : selected.reporter_name || 'Customer'}</Text><Text type="secondary">{new Date(comment.created_at).toLocaleString()}</Text></Space>}
+                        description={<Text style={{ whiteSpace: 'pre-wrap' }}>{comment.body}</Text>}
+                      />
+                    </List.Item>
+                  );
+                }}
+              />
+            </Spin>
+            <div className="support-comment-composer">
+              <Input.TextArea
+                rows={3}
+                maxLength={4000}
+                showCount
+                value={commentBody}
+                onChange={event => setCommentBody(event.target.value)}
+                placeholder="Write a response to the customer. This is added to the conversation and cannot overwrite earlier comments."
+              />
+              <Button type="primary" icon={<SendOutlined />} onClick={addComment} loading={commentSaving}>Add comment</Button>
+            </div>
+            <Divider orientation="left">Status and resolution</Divider>
             <Form form={form} layout="vertical" onFinish={updateIssue} className="support-resolution-form">
               <Form.Item name="status" label="Status" rules={[{ required: true }]}>
                 <Select options={Object.entries(STATUS_META).map(([value, meta]) => ({ value, label: meta.label }))} />
               </Form.Item>
               <Form.Item
                 name="resolution_note"
-                label="Response or resolution note"
+                label="Final resolution note"
                 dependencies={['status']}
                 rules={[({ getFieldValue }) => ({
                   validator: (_, value) => !['resolved', 'closed'].includes(getFieldValue('status')) || String(value || '').trim().length >= 5
@@ -147,7 +217,7 @@ export default function AdminSupportInbox() {
                     : Promise.reject(new Error('Add a resolution note before resolving this issue')),
                 })]}
               >
-                <Input.TextArea rows={4} maxLength={2000} showCount placeholder="Record what was checked, changed, or communicated." />
+                <Input.TextArea rows={4} maxLength={2000} showCount placeholder="Summarise the final outcome when resolving or closing the issue." />
               </Form.Item>
               <Button type="primary" htmlType="submit" loading={saving}>Save and notify reporter</Button>
             </Form>

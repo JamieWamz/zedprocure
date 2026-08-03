@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, Divider, Form, Input, List, Modal, Result, Select, Tag, Typography, message } from 'antd';
-import { CustomerServiceOutlined, SendOutlined } from '@ant-design/icons';
+import { Alert, Button, Divider, Empty, Form, Input, List, Modal, Result, Select, Space, Spin, Tag, Typography, message } from 'antd';
+import { ArrowLeftOutlined, CustomerServiceOutlined, SendOutlined } from '@ant-design/icons';
 import axios from 'axios';
 
 const { Text } = Typography;
@@ -10,19 +10,68 @@ export default function SupportIssueModal({ open, onClose }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(null);
   const [recentIssues, setRecentIssues] = useState([]);
+  const [conversationIssue, setConversationIssue] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [conversationLoading, setConversationLoading] = useState(false);
+  const [replying, setReplying] = useState(false);
+  const [replyForm] = Form.useForm();
+
+  const loadRecentIssues = () => axios.get('/api/support/issues/mine')
+    .then(({ data }) => {
+      const next = Array.isArray(data) ? data : [];
+      setRecentIssues(next);
+      return next;
+    })
+    .catch(() => {
+      setRecentIssues([]);
+      return [];
+    });
 
   useEffect(() => {
     if (open) {
-      axios.get('/api/support/issues/mine')
-        .then(({ data }) => setRecentIssues(Array.isArray(data) ? data : []))
-        .catch(() => setRecentIssues([]));
+      loadRecentIssues();
       return;
     }
     form.resetFields();
     setSubmitted(null);
     setSubmitting(false);
     setRecentIssues([]);
-  }, [form, open]);
+    setConversationIssue(null);
+    setComments([]);
+    setConversationLoading(false);
+    setReplying(false);
+    replyForm.resetFields();
+  }, [form, open, replyForm]);
+
+  const openConversation = async (issue) => {
+    setConversationIssue(issue);
+    setConversationLoading(true);
+    try {
+      const { data } = await axios.get(`/api/support/issues/${issue.id}/comments`);
+      setComments(Array.isArray(data) ? data : []);
+    } catch (error) {
+      message.error(error.response?.data?.error || 'Unable to load this conversation');
+      setComments([]);
+    } finally {
+      setConversationLoading(false);
+    }
+  };
+
+  const sendReply = async ({ body }) => {
+    setReplying(true);
+    try {
+      const { data } = await axios.post(`/api/support/issues/${conversationIssue.id}/comments`, { body });
+      setComments(current => [...current, data.comment]);
+      setConversationIssue(current => ({ ...current, status: data.status }));
+      replyForm.resetFields();
+      await loadRecentIssues();
+      message.success(data.status === 'open' ? 'Reply sent and issue reopened' : 'Reply sent to customer care');
+    } catch (error) {
+      message.error(error.response?.data?.error || 'Unable to add your reply');
+    } finally {
+      setReplying(false);
+    }
+  };
 
   const submit = async (values) => {
     setSubmitting(true);
@@ -46,7 +95,54 @@ export default function SupportIssueModal({ open, onClose }) {
       width={600}
       destroyOnClose
     >
-      {submitted ? (
+      {conversationIssue ? (
+        <div className="support-conversation">
+          <Button type="link" icon={<ArrowLeftOutlined />} onClick={() => setConversationIssue(null)} className="support-conversation-back">
+            My issues
+          </Button>
+          <Space wrap className="support-conversation-heading">
+            <Text code>{conversationIssue.reference}</Text>
+            <Text strong>{conversationIssue.subject}</Text>
+            <Tag color={conversationIssue.status === 'resolved' ? 'success' : conversationIssue.status === 'in_progress' ? 'processing' : 'default'}>
+              {conversationIssue.status.replace('_', ' ')}
+            </Tag>
+          </Space>
+          <Alert
+            type="info"
+            showIcon
+            message="Your original report"
+            description={<Text style={{ whiteSpace: 'pre-wrap' }}>{conversationIssue.description}</Text>}
+          />
+          <Divider orientation="left">Conversation</Divider>
+          <Spin spinning={conversationLoading}>
+            <List
+              className="support-comment-list"
+              dataSource={comments}
+              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No replies yet" /> }}
+              renderItem={comment => {
+                const fromCare = comment.author_user_type === 'platform_admin';
+                return (
+                  <List.Item className={fromCare ? 'support-comment support-comment--care' : 'support-comment support-comment--reporter'}>
+                    <List.Item.Meta
+                      title={<Space><Text strong>{fromCare ? 'Customer care' : 'You'}</Text><Text type="secondary">{new Date(comment.created_at).toLocaleString()}</Text></Space>}
+                      description={<Text style={{ whiteSpace: 'pre-wrap' }}>{comment.body}</Text>}
+                    />
+                  </List.Item>
+                );
+              }}
+            />
+          </Spin>
+          {conversationIssue.resolution_note && (
+            <Alert type="success" showIcon message="Resolution" description={conversationIssue.resolution_note} />
+          )}
+          <Form form={replyForm} layout="vertical" onFinish={sendReply} className="support-reply-form">
+            <Form.Item name="body" label="Add a reply" rules={[{ required: true, min: 2, max: 4000 }]}>
+              <Input.TextArea rows={3} maxLength={4000} showCount placeholder="Share an update or answer customer care." />
+            </Form.Item>
+            <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={replying}>Send reply</Button>
+          </Form>
+        </div>
+      ) : submitted ? (
         <Result
           status="success"
           title="Your issue has been sent"
@@ -113,10 +209,10 @@ export default function SupportIssueModal({ open, onClose }) {
                 size="small"
                 dataSource={recentIssues.slice(0, 5)}
                 renderItem={issue => (
-                  <List.Item extra={<Tag color={issue.status === 'resolved' ? 'success' : issue.status === 'in_progress' ? 'processing' : 'default'}>{issue.status.replace('_', ' ')}</Tag>}>
+                  <List.Item extra={<Space><Tag color={issue.status === 'resolved' ? 'success' : issue.status === 'in_progress' ? 'processing' : 'default'}>{issue.status.replace('_', ' ')}</Tag><Button size="small" onClick={() => openConversation(issue)}>View</Button></Space>}>
                     <List.Item.Meta
                       title={<span><Text code>{issue.reference}</Text> {issue.subject}</span>}
-                      description={issue.resolution_note || new Date(issue.created_at).toLocaleString()}
+                      description={`${issue.comment_count || 0} replies · Updated ${new Date(issue.latest_comment_at || issue.updated_at || issue.created_at).toLocaleString()}`}
                     />
                   </List.Item>
                 )}
